@@ -24,6 +24,10 @@ infra surface, QA last because a real test plan needs everything else already wr
 Tick a row when its folder is filled by a factory run. An unticked row is not a gap in the plan —
 it is a slot that has not run yet. See `/factory-run`.
 
+**One folder here has no role and never will:** `learn/` holds
+`ai-native-delivery.md`, the note that explains this whole method. **No subagent may write to it.**
+It is updated by a person, or by `/learn`, and `node scripts/learn-note.mjs` lists its sections.
+
 ## Three rules that apply to every file here
 
 1. **A number with nothing checking it is a wish.** Every target in `400-architecture/06-nfrs.md`

@@ -16,7 +16,7 @@ Three things are already loaded — never re-ask what they answer:
 - **State** — the files on disk, which `/start` reads for you.
 
 If the user wants to understand the process rather than run it, it is one note:
-`ai-native-learn/ai-native-delivery.md`.
+`docs/learn/ai-native-delivery.md`.
 
 ## What this is
 
@@ -31,7 +31,7 @@ not happen.
 docs/            The specs, one folder per role. docs/context/stack.md first
 docs/ADR/        Decisions. Each ends in an instruction you must follow
 factory/         The line that produced docs/ — registry, handoff map, role contracts
-ai-native-learn/ One note explaining the whole method. Keep it current
+docs/learn/       One note explaining the whole method. Keep it current
 apps/            web (Next.js) and api (Nest.js)
 packages/        contracts (Zod) and anything else shared
 infra/           CDK

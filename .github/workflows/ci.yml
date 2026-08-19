@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The specs are written before any code exists, so CI has to survive a repo with no package.json.
+  # Every job below runs its real steps only once this says yes.
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_code: ${{ steps.check.outputs.has_code }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          if [ -f package.json ]; then
+            echo "has_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_code=false" >> "$GITHUB_OUTPUT"
+            echo "No package.json yet — the spec run has not produced code. Skipping build steps." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  quality:
+    needs: detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        if: needs.detect.outputs.has_code == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm ci
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm run format:check
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm run lint
+
+  # Runs from the first commit: it checks the factory wiring, which exists before any code does.
+  factory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Wiring is sound - single writer, no dangling reads, correct order
+        run: node scripts/check-wiring.mjs
+      - name: Role adapters match their source contracts
+        run: |
+          node scripts/derive-agents.mjs
+          git diff --exit-code -- .claude/agents \
+            || { echo "::error::.claude/agents is out of date. Run node scripts/derive-agents.mjs and commit."; exit 1; }
+
+  audit:
+    needs: detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        if: needs.detect.outputs.has_code == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      # --package-lock-only skips installing: the advisory check only needs the lockfile.
+      # Low and moderate are reported but do not fail. High and critical stop the merge.
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm audit --audit-level=high --package-lock-only
+
+  test:
+    needs: detect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [apps/web, apps/api, packages/contracts]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        if: needs.detect.outputs.has_code == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm ci
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm -w ${{ matrix.workspace }} run type-check --if-present
+      # A missing script counts as a pass, so a workspace can be added before it has tests.
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm -w ${{ matrix.workspace }} run test:coverage --if-present
+      - name: Coverage summary
+        if: always() && needs.detect.outputs.has_code == 'true'
+        run: |
+          cat ${{ matrix.workspace }}/coverage/coverage-summary.json >> $GITHUB_STEP_SUMMARY \
+            || echo "no coverage" >> $GITHUB_STEP_SUMMARY
+
+  build:
+    needs: [detect, quality, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        if: needs.detect.outputs.has_code == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm ci
+      - if: needs.detect.outputs.has_code == 'true'
+        run: npm run build
+
+  # The one check to require in branch protection. `always()` is needed because a skipped
+  # check counts as a pass, which would let a failed build merge.
+  ci-ok:
+    if: always()
+    needs: [quality, factory, audit, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless every job succeeded
+        run: |
+          [ "${{ needs.quality.result }}" = "success" ] \
+            && [ "${{ needs.factory.result }}" = "success" ] \
+            && [ "${{ needs.audit.result }}" = "success" ] \
+            && [ "${{ needs.test.result }}" = "success" ] \
+            && [ "${{ needs.build.result }}" = "success" ]

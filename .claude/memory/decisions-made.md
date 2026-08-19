@@ -27,7 +27,7 @@ questions. Changing one is a human decision and needs an ADR.
 **Repositories — decided 2026-08-19, after research**
 
 - **One repository for the product.** `apps/web`, `apps/api`, `packages/contracts`, `infra/`,
-  `docs/`, `factory/`, `ai-native-learn/` all together.
+  `docs/` (including `docs/learn/`), `factory/` and `.claude/` all together.
 - The user pushed hard for separate front-end and back-end repos, so do not treat this as a casual
   default. What settled it: Cal.com runs the same Next.js + Nest.js pairing in one repo; a shared
   package can be published to npm from inside a monorepo using Changesets, so no second repo is

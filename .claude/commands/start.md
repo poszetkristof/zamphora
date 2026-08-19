@@ -37,5 +37,5 @@ not a menu. Then stop and wait.
   the user asks a question during the session, that is also a trigger — the notes did not answer
   it.
 - If the user wants to understand the process rather than run it, point at
-  `ai-native-learn/ai-native-delivery.md`. One note, with a table of contents. It sits outside this
-  folder.
+  `docs/learn/ai-native-delivery.md`. One note: part one is the idea, part two walks a whole run.
+  `node scripts/learn-note.mjs` prints its sections.

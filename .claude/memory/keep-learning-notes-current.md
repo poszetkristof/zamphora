@@ -25,7 +25,7 @@ memory, and it is wrong.
 
 | What was learned | Goes to |
 | --- | --- |
-| How the AI-native process works — the line, seams, gates, the documents | `ai-native-learn/ai-native-delivery.md` |
+| How the AI-native process works — the line, seams, gates, the documents | `docs/learn/ai-native-delivery.md` |
 | Why **this project** is built the way it is — the stack, a package, a pattern | `README.md` in this repo |
 | A fact about an AWS service | the AWS study notes, see [[where-things-are]] |
 
@@ -51,6 +51,6 @@ pointless.
 
 ## Where the note is
 
-`ai-native-learn/ai-native-delivery.md`, a sibling of this repo on the user's machine. It is **one
-file with a table of contents**: add to the section that fits, never start a second file. If it is
-not there, ask where it moved to. Do not guess, and do not create a copy.
+`docs/learn/ai-native-delivery.md`, **in this repo**. It is **one file with a table of contents**:
+add to the section that fits, never start a second file. Run `node scripts/learn-note.mjs` to list
+the sections. If it is not there, ask where it moved to. Do not guess, and do not create a copy.

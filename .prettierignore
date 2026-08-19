@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+package-lock.json
+
+# Drizzle owns these — generated SQL and snapshots, never hand-edited
+**/db/migrations/**

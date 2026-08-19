@@ -8,7 +8,7 @@ metadata:
 **The notes that explain how this repo works.** Read these before trying to explain the process to
 the user, and keep them in step when the factory changes:
 
-- `ai-native-learn/ai-native-delivery.md` — **inside this repo**, one note. Part one is the idea.
+- `docs/learn/ai-native-delivery.md` — **inside this repo**, one note. Part one is the idea.
   Part two walks one whole run, from an empty folder to finished specs, and explains each term at
   the moment the run needs it. Then a glossary. Add to the right section, never start a second
   file. `node scripts/learn-note.mjs` prints its sections.

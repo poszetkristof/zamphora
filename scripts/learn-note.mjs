@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync } from "node:fs"
 
-const NOTE = "ai-native-learn/ai-native-delivery.md"
+const NOTE = "docs/learn/ai-native-delivery.md"
 
 if (!existsSync(NOTE)) {
   console.log(`NOT FOUND at ${NOTE}`)
