@@ -1,0 +1,143 @@
+# CLAUDE.md
+
+@.claude/memory/MEMORY.md
+
+The **hot layer**: loaded every session, so it stays short. Detail lives in `docs/`.
+
+## Start here
+
+**Run `/start` at the beginning of every session.** It reads the real state off disk and names the
+one next action. Do not guess the state from this file.
+
+Three things are already loaded — never re-ask what they answer:
+
+- **Rules** — this file.
+- **Facts** — `.claude/memory/`. Who the user is, what the app is, what is already decided.
+- **State** — the files on disk, which `/start` reads for you.
+
+If the user wants to understand the process rather than run it, it is one note:
+`ai-native-learn/ai-native-delivery.md`.
+
+## What this is
+
+`zamphora` — a plant-care companion. It remembers what each houseplant needs and when, and it can
+assess a photo of a sick plant and turn the advice into a scheduled task. Phone first, several
+languages.
+
+**Files, not chats, are the unit of delivery.** If a decision mattered and is not in a file, it did
+not happen.
+
+```
+docs/            The specs, one folder per role. docs/context/stack.md first
+docs/ADR/        Decisions. Each ends in an instruction you must follow
+factory/         The line that produced docs/ — registry, handoff map, role contracts
+ai-native-learn/ One note explaining the whole method. Keep it current
+apps/            web (Next.js) and api (Nest.js)
+packages/        contracts (Zod) and anything else shared
+infra/           CDK
+TASKS.md         The implementation backlog
+specs/<feature>/ Per-feature spec, plan and nfr.yml, written at the start of an epic
+```
+
+## Language — chat included
+
+The user is not a native English speaker and reads at B1 level. Write every sentence for that
+reader: chat, comments, commit messages, documents.
+
+- Short sentences. One idea each. Common words. Explain a term the first time it appears.
+- No idioms, no metaphors, no rhetorical questions.
+- **Write "you", never "u".** No chat shorthand in anything written for them.
+- **Simple phrasing never means less information.** Do not drop a fact to shorten a sentence — use
+  two sentences.
+- Be concise. Say the key thing and stop. No preamble, no long code block where a path and a line
+  number would do.
+
+**Banned words**, in chat and in files. Re-read every draft once and hunt for them:
+
+> nuance · granular · resolvable · leverage · robust · salient · corollary · load-bearing ·
+> falsifiable · plateau · stall · lineage · seed (as a verb) · artefact
+
+**The 6-month test.** The user re-reads these files in six months having forgotten the conversation.
+A list of correct facts with no opening sentence of context fails it. So does a section too short to
+rebuild the idea from. And a document never talks **to** the user — no "as you asked", no "correct!".
+
+## Two ways to work
+
+**Building?** Load `spec-driven-tasks`, open `TASKS.md`, work the next unblocked task. `/next-task`
+is the short way in. Stop at every checkpoint.
+
+**Writing specs?** That is a factory run. `/factory-run` shows the state, `/run-role` runs one role.
+One role per invocation, then stop.
+
+**Either way, finish by writing the note.** Work is done when the learning notes explain it, not
+when the file is saved. Run `/learn`. See `.claude/memory/keep-learning-notes-current.md`.
+
+## Before writing code — read the spec section that covers it
+
+Do not infer the design from surrounding code; it may not exist yet.
+
+| Working on | Read |
+| --- | --- |
+| Anything at all | `docs/context/stack.md` |
+| Any `.ts` / `.tsx` | `docs/500-engineering/00-conventions.md` |
+| The web app | `docs/500-engineering/02-web-spec.md` |
+| The API | `docs/500-engineering/03-api-spec.md` |
+| Anything crossing the wire | `docs/500-engineering/01-contracts.md` |
+| Tests | `docs/600-qa/00-test-plan.md` |
+| Anything under `infra/` | `docs/800-infra/` |
+| Auth, uploads, user input, AI calls | `docs/900-security/02-mitigations.md` |
+| "Why is it like this?" | `docs/ADR/` |
+
+## Hard rules
+
+- **Do only what was asked.** No opportunistic refactoring, no drive-by tidying. Spot a real problem
+  outside scope? One sentence, then keep going.
+- **No wire type outside `packages/contracts`.** Writing `type PlantResponse = {…}` in an app? Stop.
+- **No bare string literals** for route names, roles, task kinds, statuses or analytics labels.
+- **No `enum`, no `interface`, no `any`** outside test files.
+- **Every model call goes through `LlmProvider`.** No SDK import outside its adapter.
+- **Tests ship with the change.** CI blocks a pull request that deletes a test file unless the
+  commit message says `DELETE_TESTS: <reason>`.
+- **An ADR outranks your judgement.** Each ends in an instruction with an explicit "do not". If a
+  change would contradict one, stop and name it — do not write the code and mention it after.
+- **Update the doc in the same change that makes it necessary.** A stale `docs/` is worse than a
+  thin one, because it is trusted.
+- **Never edit `.claude/agents/*.md`.** They are generated. Edit `factory/subagent-slots/` or
+  `factory/handoff-map.yaml`, then run `node scripts/derive-agents.mjs`.
+- **Comments: two lines maximum.** Plain English, explain _why_, never _what_. No commented-out
+  code, no `TODO`. Longer explanations go in `docs/` or an ADR.
+- **Never `git commit` or `git push`** unless told to. "Write a commit message" means output text.
+
+## Decisions that are never yours
+
+Stop and ask. Recording the question is the right outcome, not guessing well.
+
+What gets built and when it ships · accepting any risk, security or architectural or cost · spending
+money · deploying anything · owning the kill-switch · what counts as personal data and how long it
+is kept · accepting a new dependency or a new tool the model may call · reversing an accepted ADR ·
+the final merge and the release go/no-go.
+
+## Cost is a correctness property
+
+This runs on the AWS free account plan. It cannot send a surprise bill — it **closes the account**
+instead and takes the resources with it. A runaway retry loop is an availability incident, not an
+accounting one. Everything is in CDK, in git, so a lost account is one deploy from coming back. See
+`docs/800-infra/02-cost-guardrails.md`.
+
+## Commands
+
+```bash
+npm run dev / build / test / lint / format / type-check
+
+node scripts/line-state.mjs        # which roles have run, what stage the project is in
+node scripts/check-wiring.mjs      # single writer, no dangling reads
+node scripts/role-inputs.mjs <id>  # what one role may read, and what is missing
+node scripts/derive-agents.mjs     # regenerate .claude/agents/ from the slot contracts
+```
+
+Before saying a change is done, run each of these and **check its exit code** — never call a run
+green from the tail of the combined output:
+
+```bash
+npm run format:check && npm run lint && npm run type-check && npm run test
+```

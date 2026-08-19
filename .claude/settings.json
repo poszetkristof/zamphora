@@ -1,0 +1,90 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:fix)",
+      "Bash(npm run format)",
+      "Bash(npm run format:check)",
+      "Bash(npm run type-check)",
+      "Bash(npm run build)",
+      "Bash(npm run test)",
+      "Bash(npm run test:coverage)",
+      "Bash(cd:*)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(npm -w:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm view:*)",
+      "Bash(npm pack:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm pkg:*)",
+      "Bash(npm -v)",
+      "Bash(npx:*)",
+      "Bash(npx cdk synth:*)",
+      "Bash(npx cdk diff:*)",
+      "Bash(npx cdk ls:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git config:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(tar:*)",
+      "Bash(awk:*)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Grep(./.env)",
+      "Grep(./**/.env)",
+      "Grep(./**/.env.*)",
+      "Bash(git commit)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(rm -rf:*)",
+      "Bash(npm publish:*)",
+      "Bash(npx cdk deploy:*)",
+      "Bash(npx cdk destroy:*)",
+      "Bash(cdk deploy:*)",
+      "Bash(cdk destroy:*)",
+      "Bash(aws * delete-*)",
+      "Bash(aws * put-*)",
+      "Bash(aws * create-*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptExpansion": [
+      {
+        "matcher": "code-review",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/cache-branch-diff.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}
