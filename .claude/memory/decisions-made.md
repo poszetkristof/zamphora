@@ -12,9 +12,10 @@ questions. Changing one is a human decision and needs an ADR.
 
 - Next.js (React) for the web, **Nest.js** for the API, shared Zod contracts in
   `packages/contracts`.
-- Chosen over staying with Vue + Express for two reasons, and the second one is the honest one:
-  Nest is what senior backend interviews ask about (dependency injection, modules, guards), and the
-  user wanted the biggest learning gap from their previous project.
+- Chosen over staying with Vue + Express. Express gives no structure, so every project invents its
+  own; Nest brings dependency injection, modules and guards, which is the ground the user wants to
+  learn. It was also the biggest gap from their previous project, which is the point of building
+  this one.
 - Anthropic API as the default model provider, behind an `LlmProvider` port so another provider is
   one adapter away.
 

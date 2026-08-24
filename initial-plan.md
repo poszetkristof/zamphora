@@ -16,7 +16,7 @@ My previous project is a full-stack application that works, but it is not a mode
 things are wrong with it, and I do not want to repeat any of them:
 
 - **The front end and the back end are tightly coupled.** Changing one forces a change in the other.
-- **There are security weaknesses** that I would not want a reviewer to find.
+- **Security was added at the end**, not designed in. That order is the mistake, not any one fix.
 - **It was not built mobile-first**, and retro-fitting that has been painful.
 
 So I want to start again, and this time build the specifications before the code.
@@ -44,13 +44,23 @@ A data role may also make sense, but I am not sure it earns its place on a proje
 **Apply only the parts that carry their weight.** My time, my attention and my token budget are all
 limited, and a process I cannot keep up with is worse than a lighter one I can.
 
-The method comes from my own course notes in `C:\Learn\AI\ai-run-mission-2026` — the `learning/`
-and `katas/` folders in particular.
+The method comes from a course I took, and from the worked examples I wrote while taking it.
 
 ## 3. The problem I actually have
 
 I keep houseplants in an apartment and I am not good at it. My favourites are **Monstera**,
 **Rhaphidophora** (the mini monstera), **Zamioculcas** (`legénypálma` in Hungarian) and a cactus.
+
+Added on 2026-08-24, because the first list was too short to be a fair test:
+
+- Several **climbing plants** (`futó` in Hungarian), of **different kinds**.
+- **Pilea peperomioides**, the money plant (`pénznövény`).
+- **Hoya**.
+
+Two of these change what the app must handle. I own more than one climbing plant, so the app cannot
+assume one plant per species — it needs one row per **pot**, with my own name on it. And the
+Hungarian names are the ones I actually use, so the app must show a plant's name in the language I
+am reading.
 
 What goes wrong is always one of these:
 
@@ -111,8 +121,12 @@ figures worth reusing.
 
 ## 7. What a good outcome looks like
 
-I want a project that makes an impression in an interview. Not because it has many features, but
-because every decision in it was made deliberately and written down, with the option that was
-rejected recorded next to it.
+A good outcome is not many features. It is that **every decision in this project was made
+deliberately and written down, with the option that was rejected recorded next to it.**
 
-**It should read as though a senior full-stack developer built it.** That is the bar.
+That gives me two things I did not have on my previous project. I can come back in six months,
+having forgotten the conversation, and still change something safely, because the reason it is like
+that is in a file. And a developer who did not write any of it can do the same.
+
+**The bar: a person who did not build this repo can read it, follow the reasoning, and change it
+without asking me anything.** If they have to ask a basic question, a file is missing something.
