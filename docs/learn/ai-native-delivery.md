@@ -128,7 +128,7 @@ A way to place a team, not a badge. Installing a tool does not move you.
 One test settles it, and it works for one person as well as for a team: **a new developer joins on
 Friday — is the whole setup working on Monday without them asking anyone?** If the answer is yes,
 it is in files. If it needs you to explain something, it is in your head, and that is L1 no matter
-what tools are installed. In this project the answer lives in `factory/handoff-map.yaml` and
+what tools are installed. In this project the answer lives in the `ai-factory` plugin and in
 `.claude/`.
 
 If you ever have to score a team properly, five things get scored 1–3 and averaged — AI
@@ -191,11 +191,14 @@ The only real difference between them is **when the model sees the file**.
 | --- | --- | --- |
 | **Rule file** | `CLAUDE.md`, `AGENTS.md` | every session, always |
 | **Context file** | `docs/` | when a task points at it |
-| **Skill** | `.claude/skills/<name>/SKILL.md` | when the task matches its `description` |
-| **Subagent** | `.claude/agents/<name>.md` | when dispatched, in its own context |
-| **Command** | `.claude/commands/<name>.md` | when you type `/name` |
+| **Skill** | `skills/<name>/SKILL.md` | when the task matches its `description` |
+| **Subagent** | `agents/<name>.md` | when dispatched, in its own context |
+| **Command** | `commands/<name>.md` | when you type `/name` |
 | **Hook** | `settings.json` | on an event, as a shell command |
 | **MCP server** | `.mcp.json` | at session start, giving the agent tools |
+
+Those paths sit under `.claude/` in a project, and under the plugin root in a plugin. Same files,
+same behaviour — only the folder they arrive from differs.
 
 ### What each one is for
 
@@ -279,7 +282,8 @@ If you are writing a repo path inside a skill, you are writing a context file. M
 
 ## 4. Day zero: what is on disk before anything runs
 
-The `docs/` folder is empty. Four files exist, and you wrote two of them yourself.
+The `docs/` folder is empty. Four files decide everything that follows. You wrote two of them, and
+they sit in this repository. The other two are not here at all — they arrive from a plugin.
 
 ### The two files you wrote
 
@@ -306,13 +310,11 @@ Out of scope for this run:
 That "out" list is the fence. When a role tries to grow the feature — and one will — this is the
 file it hits.
 
-**"Out" means not this run. It does not mean never.** The line runs **once per feature** — you edit
-this one file and run it again. All six of those things get built, each in its own run.
+**"Out" means not this run, not never.** The line runs once per feature: edit this file, run again.
 
-Why not all six at once? Because the stops are what you are buying. Eight roles designing six
-features produce documents nobody can check, and a review with 200 handovers you will not do. So run
-1 takes the **hardest** feature: a camera, an upload, storage that costs money, and a model call
-that can be wrong.
+Why not all six at once? The stops are what you are buying, and eight roles designing six features
+produce a review with 200 handovers that nobody will do. So run 1 takes the **hardest** feature — a
+camera, an upload, storage that costs money, and a model call that can be wrong.
 
 ### Run 1 is not like the runs after it
 
@@ -337,7 +339,8 @@ nobody wrote down why.
 
 ### The two files that control the machine
 
-These two are the whole factory. Everything else is built from them.
+These two are the whole factory. Everything else is built from them. **Neither is in this
+repository** — they live in the `ai-factory` plugin, and the next part explains why.
 
 **`factory/subagent-registry.yaml` — who exists, and what each one may write.**
 
@@ -367,6 +370,73 @@ Security opens those three files. Not the PRD. Not the design spec. Not this cha
 
 **Want to change how the line works? Change one of these two files.** Never edit a file that was
 built from them.
+
+### Why the line is a plugin, and the product is not
+
+The line knows nothing about plants. It would run on a banking app unchanged. The product is the
+opposite — it is only ever this product. Those two things change for different reasons and at
+different times, so they live in different repositories:
+
+| Repository | Holds | Changes when |
+| --- | --- | --- |
+| `ai-factory` | the roles, the registry, the handoff map, the scripts, the commands | you improve the **method** |
+| `zamphora` | `docs/`, `feature.md`, the app, the contracts, the infra | you build the **product** |
+
+`ai-factory` is a Claude Code plugin. One committed line in `.claude/settings.json` turns it on, and
+every command then carries its name: `/ai-factory:start`, not `/start`.
+
+**The split is by reuse. It is not by front end and back end.** Two repositories for the web app
+and the API was considered, then rejected. The reason is how a coding agent works: it reads one
+repository at a time. Put the API somewhere else, and the agent changing the web app cannot see who
+calls the code it is changing. One change then needs one pull request in each repository. The
+measured cost is four to six pull requests for a single change that touches both sides.
+
+The web app, the API, the shared contracts and the infrastructure all change inside one feature. So
+they stay together. The line does not change with a feature, so it moved out.
+
+Two more things you get:
+
+- **The agents cannot fall behind the contracts they are built from.** You write a slot contract by
+  hand. A script turns it into an agent file. Both files are now in `ai-factory`, so its CI can
+  compare them on every push. Edit the contract, forget to run the script, and CI fails. If the two
+  files were in different repositories, nothing would notice.
+- **The next project installs the line. It does not copy it.** Copy the folder into a second
+  project, then fix a mistake in one role. The second project still has the mistake, and nobody
+  goes back for it. With a plugin you push the fix once, and every project picks it up by raising a
+  version number.
+
+### Five things that go wrong when you ship a plugin
+
+A plugin is a folder with a **manifest** — a small JSON file that says what is inside. The folder
+can hold any file: YAML, Node scripts, whatever the commands need. Writing the plugin is quick.
+Making it load is the slow part. All five below happened here, and none of them said what was
+really wrong.
+
+- **You need two JSON files, not one.** `plugin.json` describes the plugin. `marketplace.json` is
+  the catalog that lists it. You cannot install a plugin from GitHub without the catalog, even when
+  the repository holds only one plugin. In that case the catalog entry says `"source": "./"`, which
+  means "the plugin is at the top of this repository".
+- **Do not name your folders in `plugin.json` if they use the default names.** The `agents` field
+  wants file paths, not a folder. So `"agents": "./agents/"` fails with `Invalid input`. Use the
+  normal layout — `agents/`, `commands/`, `skills/`, `hooks/hooks.json` — write none of those
+  fields, and Claude Code finds them on its own.
+- **Run `claude plugin validate .` before every push.** It finds both mistakes above in one second.
+  Without it, all you see is an install error that names a temporary cache folder. That name tells
+  you nothing.
+- **The setting is `enabledPlugins`, not `plugins`.** Put `extraKnownMarketplaces` next to it, so a
+  new clone knows where the catalog is. Both belong in `.claude/settings.json`, the file you
+  commit. Put them in your personal settings instead and the plugin works on your machine only.
+  Then the project is back at L1.
+- **`${CLAUDE_PLUGIN_ROOT}` only works inside text.** Claude Code replaces it in a command, a skill
+  or an agent file. It does **not** set it for a script that the command starts. A script reading
+  `process.env.CLAUDE_PLUGIN_ROOT` gets nothing, falls back to the current folder, and then looks
+  for the line's own files inside the product. A script already knows where it is saved, so read
+  that instead: `import.meta.url`.
+
+One more, and this one is not about the JSON files. **A session that is already running keeps the
+version it started with.** You fix a script, push it, update the catalog — and nothing changes
+until you run `/reload-plugins`. Also raise the version number in `plugin.json` every time you
+release. The same number means "the same plugin", and it is never downloaded again.
 
 ### The order, and the two placements that look wrong
 
@@ -977,7 +1047,7 @@ have to hunt for them.
 but **you set the labels.** Only you know what you actually wanted, and an AI marking its own eight
 documents will call almost everything clean.
 
-**How:** type `/factory-run`, then go down the `edges:` list asking one question at each line:
+**How:** type `/ai-factory:factory-run`, then go down the `edges:` list asking one question at each line:
 
 > Did the role on the right have what it needed from this file?
 
@@ -1123,37 +1193,45 @@ you could have written yourself, and learned nothing about where your line is we
 
 ### Phase two is a different machine
 
-The run is over. The documents now turn into `TASKS.md`, and you switch from `/run-role` to
-`/next-task` — one task at a time, until there is working software.
+The run is over. The documents now turn into `TASKS.md`, and you switch from `/ai-factory:run-role` to
+`/ai-factory:next-task` — one task at a time, until there is working software.
 
 **The backlog is generated from the specs, never the other way round.** Every task points at the
 spec section it must follow. A task that cannot name its spec section is a task nobody agreed to.
 
 ### The folder
 
+Two repositories, because the line is reusable and the product is not.
+
 ```
-project/
-├── CLAUDE.md              loaded every session. Rules, routing, what to do first
-├── AGENTS.md              20 lines pointing at CLAUDE.md, for other tools
-├── .claude/
-│   ├── settings.json      what the agent may run, and what it may never run
-│   ├── memory/            facts that survive between sessions
-│   ├── skills/            how to do a kind of task
-│   ├── agents/            the role adapters (generated) + explore-subagent
-│   ├── commands/          /start /learn /factory-run /run-role /next-task /spec-check
-│   └── hooks/             one script that runs before a code review
+ai-factory/                the line, shipped as a Claude Code plugin
+├── .claude-plugin/        plugin.json (what it is) + marketplace.json (the catalog)
+├── agents/                the role adapters (generated) + explore-subagent
+├── commands/              start, learn, factory-run, run-role, next-task, spec-check
+├── skills/                method skills: adr-writer, code-review, root-cause, spec-driven-tasks
+├── hooks/                 one script that runs before a code review
 ├── factory/
 │   ├── subagent-registry.yaml   who exists, what each writes
 │   ├── handoff-map.yaml         who reads what, run order, gate policy
 │   ├── subagent-slots/          the role contracts — the editable source
+│   └── runs/_templates/         seam ledger, human gates, run record
+└── scripts/               the checks the commands run
+
+project/                   the product: web, API, contracts and infra together
+├── CLAUDE.md              loaded every session. Rules, routing, what to do first
+├── AGENTS.md              20 lines pointing at CLAUDE.md, for other tools
+├── .claude/
+│   ├── settings.json      what the agent may run, may never run, and the plugin it turns on
+│   ├── memory/            facts that survive between sessions
+│   └── skills/            the skills that name this stack
+├── factory/
 │   ├── feature.md               the one feature the line runs on
 │   ├── COST_GUARDRAILS.md       how many calls, which model, when to stop
-│   └── runs/_templates/         seam ledger, human gates, run record
+│   └── runs/<slug>/             this run's seam ledger, gates and record
 ├── docs/                  where the roles write, one folder per role
 │   ├── ADR/               decisions, each ending in an explicit "do not"
 │   └── learn/             this note. No role may write here
 ├── context/cold/          reasoning that only ever existed in a conversation
-├── scripts/               the four checks below
 └── .github/workflows/     CI, ready before any code exists
 ```
 
@@ -1162,9 +1240,9 @@ project/
 
 ### Two files per role, and only one is yours
 
-Each role has two files, and it matters which one you open.
+Each role has two files, and it matters which one you open. Both are in the `ai-factory` repository.
 
-| | `factory/subagent-slots/900-security.md` | `.claude/agents/900-security.md` |
+| | `factory/subagent-slots/900-security.md` | `agents/900-security.md` |
 | --- | --- | --- |
 | Who creates it | **you**, by hand | the script `derive-agents.mjs` |
 | What is inside | how the role should think: its goal, its do and do-not table, what it must refuse | which files to read, which to write |
@@ -1181,29 +1259,41 @@ warns you. That is why it starts with a "do not edit" line.
 
 ### The commands
 
+Every one comes from the plugin, so every one carries its name.
+
 | Type this | It does |
 | --- | --- |
-| `/start` | where the project is, and the one thing to do next. **Run it first, every session** |
-| `/learn` | write what was just learned into the right notes file. **Run it before saying done** |
-| `/factory-run` | which roles have run, and how to close a finished run |
-| `/run-role 400-architecture` | run one role with only its declared inputs |
-| `/next-task` | backlog state, then work the next unblocked task |
-| `/spec-check` | audit code against specs — mismatches, dead links, untraced stories |
+| `/ai-factory:start` | where the project is, and the one thing to do next. **Run it first, every session** |
+| `/ai-factory:learn` | write what was just learned into the right notes file. **Run it before saying done** |
+| `/ai-factory:factory-run` | which roles have run, and how to close a finished run |
+| `/ai-factory:run-role 400-architecture` | run one role with only its declared inputs |
+| `/ai-factory:next-task` | backlog state, then work the next unblocked task |
+| `/ai-factory:spec-check` | audit code against specs — mismatches, dead links, untraced stories |
 
-### The four scripts
+### The scripts underneath
 
-All fast, and all of them read the real state instead of trusting a document.
+You never type these. The commands run them for you. They matter because each one reads the real
+state on disk instead of trusting a document. They answer four questions: which roles have run, is
+the wiring sound, what may this one role read, and do the generated agents still match the slot
+contracts.
 
-```bash
-node scripts/line-state.mjs                 # which roles have run, and which one is next
-node scripts/check-wiring.mjs               # single writer, no dangling reads, correct order
-node scripts/role-inputs.mjs 900-security   # what one role may read, and what is missing
-node scripts/derive-agents.mjs              # rebuild .claude/agents/ from the slot contracts
-```
+The most useful one is the wiring check. It reads the two control files — the registry says who
+**writes** what, the handoff map says who **reads** what — and asks whether they agree. Five things
+can be wrong:
 
-`check-wiring.mjs` catches five kinds of mistake: a file written by two roles, a role reading
-something no role produces, a role reading a file made by a role that runs **later**, an `edges:`
-entry that does not match the registry, and a missing run input.
+| The mistake | What it costs you |
+| --- | --- |
+| Two roles are allowed to write the same file | The second role quietly overwrites the first role's work |
+| A role reads a file that no role ever writes | The role starts, finds nothing, and stops |
+| A role reads a file written by a role that runs **later** | It opens an empty folder every single run |
+| The handoff map's `edges:` arrows disagree with its own `reads:` lists | You edited one and forgot the other, so the two now describe different lines |
+| A file the run needs is not in your project | The first role stops before it writes anything |
+
+The first four mistakes are inside the plugin. The last one is inside your project. The check reads
+both repositories at the same time, so one command answers both questions.
+
+**Every one of these is cheap to fix now and expensive to find later.** Without the check you meet
+them as a role that stopped for no clear reason, halfway through a run you already paid for.
 
 ### How a fresh session knows anything at all
 
@@ -1213,7 +1303,7 @@ entry that does not match the registry, and a missing run input.
 | **Facts** | `.claude/memory/` | who is the user, what is already decided? |
 | **State** | the files on disk | how far along is the work? |
 
-The first two load automatically. The third has **no progress file** — `/start` counts the documents
+The first two load automatically. The third has **no progress file** — `/ai-factory:start` counts the documents
 on disk. A progress file would be a second copy of the truth, and two copies stop matching. Counting
 real files cannot be wrong, because the files **are** the work.
 
@@ -1223,13 +1313,13 @@ One row is one sitting. Stop at the end of each and read what came out.
 
 | Session | Type | Produces |
 | --- | --- | --- |
-| 1 | `/run-role 100-consulting`, then `200-product` | brief, market scan, PRD, stories with numbers |
-| 2 | `/run-role 300-design` | journey map, CONTEXT + SPEC, tokens |
-| 3 | `/run-role 400-architecture` | options, C4, timed flow, ADRs, NFR table |
+| 1 | `/ai-factory:run-role 100-consulting`, then `200-product` | brief, market scan, PRD, stories with numbers |
+| 2 | `/ai-factory:run-role 300-design` | journey map, CONTEXT + SPEC, tokens |
+| 3 | `/ai-factory:run-role 400-architecture` | options, C4, timed flow, ADRs, NFR table |
 | 4 | **a fresh session, no history** | the pre-mortem |
-| 5 | `/run-role 500-engineering`, then `800-infra` | specs, deployment plan, cost limits |
-| 6 | `/run-role 900-security`, then `600-qa` | threats, fixes, test plan, evals |
-| 7 | `/factory-run` | seam ledger, gates, then `TASKS.md` |
+| 5 | `/ai-factory:run-role 500-engineering`, then `800-infra` | specs, deployment plan, cost limits |
+| 6 | `/ai-factory:run-role 900-security`, then `600-qa` | threats, fixes, test plan, evals |
+| 7 | `/ai-factory:factory-run` | seam ledger, gates, then `TASKS.md` |
 
 ---
 
@@ -1245,7 +1335,7 @@ Look a word up here instead of guessing. One plain sentence each.
 | **The line** | The role agents running one after another, each handing a file to the next. |
 | **Role / slot** | One job in the line, such as Security. Its contract is a file in `factory/subagent-slots/`. |
 | **Subagent** | An agent that runs in its own separate context and hands back only its result. |
-| **Adapter** | The generated copy of a slot in `.claude/agents/`. Never edit it; edit the slot and regenerate. |
+| **Adapter** | The generated copy of a slot, in the plugin's `agents/`. Never edit it; edit the slot and regenerate. |
 | **Isolation** | Each role reads only its declared inputs. A missing input becomes a visible stop, not a guess. |
 | **Single writer** | Every output file has exactly one role allowed to write it. |
 | **Seam** | One file crossing from one role to the next. This is where the line usually breaks. A seam is a join, like a sewn join in cloth. |

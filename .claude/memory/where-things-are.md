@@ -11,7 +11,7 @@ the user, and keep them in step when the factory changes:
 - `docs/learn/ai-native-delivery.md` — **inside this repo**, one note. Part one is the idea.
   Part two walks one whole run, from an empty folder to finished specs, and explains each term at
   the moment the run needs it. Then a glossary. Add to the right section, never start a second
-  file. `node scripts/learn-note.mjs` prints its sections.
+  file. `/ai-factory:learn` prints its sections first.
 - That note is also the user's **approved model for how learning material should read**: teach as
   a walkthrough, name the actor in every example, say each thing once, and tell the reader which
   parts are lookup rather than learning.

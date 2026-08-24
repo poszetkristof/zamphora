@@ -2,7 +2,7 @@
 
 One folder per role. **One role owns one folder and writes nothing outside it** — that is what
 makes a broken handoff visible instead of silently patched over. The owner of every file is
-declared in `factory/subagent-registry.yaml`, and `node scripts/check-wiring.mjs` enforces it.
+declared in the `ai-factory` plugin's registry, and its wiring check enforces it.
 
 The numbers are role numbers, not a reading order. The line runs
 `100 → 200 → 300 → 400 → 500 → 800 → 900 → 600`: Infra before Security because Security reviews the
@@ -22,11 +22,11 @@ infra surface, QA last because a real test plan needs everything else already wr
 | `ADR/` | 400-architecture | Decisions. Each ends in an instruction with an explicit "do not" | ☐ |
 
 Tick a row when its folder is filled by a factory run. An unticked row is not a gap in the plan —
-it is a slot that has not run yet. See `/factory-run`.
+it is a slot that has not run yet. See `/ai-factory:factory-run`.
 
 **One folder here has no role and never will:** `learn/` holds
 `ai-native-delivery.md`, the note that explains this whole method. **No subagent may write to it.**
-It is updated by a person, or by `/learn`, and `node scripts/learn-note.mjs` lists its sections.
+It is updated by a person, or by `/ai-factory:learn`, which lists its sections first.
 
 ## Three rules that apply to every file here
 

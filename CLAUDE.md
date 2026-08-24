@@ -6,14 +6,17 @@ The **hot layer**: loaded every session, so it stays short. Detail lives in `doc
 
 ## Start here
 
-**Run `/start` at the beginning of every session.** It reads the real state off disk and names the
-one next action. Do not guess the state from this file.
+**Run `/ai-factory:start` at the beginning of every session.** It reads the real state off disk and
+names the one next action. Do not guess the state from this file.
+
+The line lives in the **`ai-factory` plugin**, not in this repo. That is why every command carries
+the `ai-factory:` prefix. `.claude/settings.json` turns it on.
 
 Three things are already loaded — never re-ask what they answer:
 
 - **Rules** — this file.
 - **Facts** — `.claude/memory/`. Who the user is, what the app is, what is already decided.
-- **State** — the files on disk, which `/start` reads for you.
+- **State** — the files on disk, which `/ai-factory:start` reads for you.
 
 If the user wants to understand the process rather than run it, it is one note:
 `docs/learn/ai-native-delivery.md`.
@@ -30,7 +33,8 @@ not happen.
 ```
 docs/            The specs, one folder per role. docs/context/stack.md first
 docs/ADR/        Decisions. Each ends in an instruction you must follow
-factory/         The line that produced docs/ — registry, handoff map, role contracts
+factory/         feature.md (this run's one feature) and the cost limits. The line itself is
+                 the ai-factory plugin, in its own repo
 docs/learn/       One note explaining the whole method. Keep it current
 apps/            web (Next.js) and api (Nest.js)
 packages/        contracts (Zod) and anything else shared
@@ -63,14 +67,15 @@ rebuild the idea from. And a document never talks **to** the user — no "as you
 
 ## Two ways to work
 
-**Building?** Load `spec-driven-tasks`, open `TASKS.md`, work the next unblocked task. `/next-task`
-is the short way in. Stop at every checkpoint.
+**Building?** Load `ai-factory:spec-driven-tasks`, open `TASKS.md`, work the next unblocked task.
+`/ai-factory:next-task` is the short way in. Stop at every checkpoint.
 
-**Writing specs?** That is a factory run. `/factory-run` shows the state, `/run-role` runs one role.
-One role per invocation, then stop.
+**Writing specs?** That is a factory run. `/ai-factory:factory-run` shows the state,
+`/ai-factory:run-role` runs one role. One role per invocation, then stop.
 
 **Either way, finish by writing the note.** Work is done when the learning notes explain it, not
-when the file is saved. Run `/learn`. See `.claude/memory/keep-learning-notes-current.md`.
+when the file is saved. Run `/ai-factory:learn`. See
+`.claude/memory/keep-learning-notes-current.md`.
 
 ## Before writing code — read the spec section that covers it
 
@@ -102,8 +107,9 @@ Do not infer the design from surrounding code; it may not exist yet.
   change would contradict one, stop and name it — do not write the code and mention it after.
 - **Update the doc in the same change that makes it necessary.** A stale `docs/` is worse than a
   thin one, because it is trusted.
-- **Never edit `.claude/agents/*.md`.** They are generated. Edit `factory/subagent-slots/` or
-  `factory/handoff-map.yaml`, then run `node scripts/derive-agents.mjs`.
+- **Never change the line from this repo.** The roles, the handoff map and the slot contracts live
+  in the `ai-factory` plugin repo. Edit them there, run `derive-agents.mjs` there, bump the version,
+  push. Editing a generated agent anywhere is always wrong.
 - **Comments: two lines maximum.** Plain English, explain _why_, never _what_. No commented-out
   code, no `TODO`. Longer explanations go in `docs/` or an ADR.
 - **Never `git commit` or `git push`** unless told to. "Write a commit message" means output text.
@@ -128,11 +134,17 @@ accounting one. Everything is in CDK, in git, so a lost account is one deploy fr
 
 ```bash
 npm run dev / build / test / lint / format / type-check
+```
 
-node scripts/line-state.mjs        # which roles have run, what stage the project is in
-node scripts/check-wiring.mjs      # single writer, no dangling reads
-node scripts/role-inputs.mjs <id>  # what one role may read, and what is missing
-node scripts/derive-agents.mjs     # regenerate .claude/agents/ from the slot contracts
+The factory scripts moved into the plugin. Reach them through the commands, not by path:
+
+```
+/ai-factory:start        which roles have run, what stage the project is in, the one next action
+/ai-factory:factory-run  start, resume or close a run
+/ai-factory:run-role     run one role, with only its declared inputs
+/ai-factory:next-task    the next unblocked task from TASKS.md
+/ai-factory:spec-check   where the code and the specs no longer agree
+/ai-factory:learn        write the note
 ```
 
 Before saying a change is done, run each of these and **check its exit code** — never call a run

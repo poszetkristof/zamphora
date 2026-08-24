@@ -15,5 +15,6 @@ already in `CLAUDE.md`.
 - [Learning style](learning-style.md) — 80/20, context sentence then bullets, real values, the 6-month test.
 - [Keep the learning notes current](keep-learning-notes-current.md) — when work is worth learning from, write the note in the same session, and where it goes.
 - [What the app is](project-zamphora.md) — plant care, and why cost counts as correctness on the AWS free plan.
-- [Decisions already made](decisions-made.md) — stack, roles, scope. Do not re-ask these.
+- [Decisions already made](decisions-made.md) — stack, roles, scope, two repositories. Do not re-ask these.
+- [The factory is a plugin](factory-as-plugin.md) — how this repo turns it on, the trap that breaks a bundled script, and the one thing a plugin cannot do.
 - [Where things are](where-things-are.md) — the learning notes, the source course, the previous project.

@@ -70,9 +70,10 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
 - There is no Data role in this run. Data design belongs to 400 Architecture.
 - **Every user signs in.** A photo is personal data and the AI endpoint costs money per call, so
   there is no anonymous use of this feature.
-- **One repository for the whole product.** Web app, API, shared contracts, infra, the specs, the
-  factory and the learning note all live together. Whether the API ships as one deployable unit or
-  several is Architecture's decision, and it does not need a second repository either way.
+- **Two repositories, decided 2026-08-21.** `ai-factory` holds the line and ships as a Claude Code
+  plugin. `zamphora` holds the whole product: web app, API, shared contracts, infra, the specs and
+  the learning note. Whether the API ships as one deployable unit or several is Architecture's
+  decision, and it does not need a third repository either way.
 - **Two account types from day one: `USER` and `ADMIN`.** A user sees only their own plants and
   photos. An admin can read usage and cost figures, and can turn the AI feature off. The permission
   check ships with this feature. The admin **screens** are a later feature.
@@ -110,23 +111,56 @@ option it rejected. Do not treat a name below as a decision already made.
 | Which features are worth building **later**, including ones nobody has asked for yet | 100 Consulting, then 200 Product | `03-market.md`, then the PRD's Out list |
 | How sign-in works — the protocol, the flow, and where tokens live | 400 Architecture | an ADR, plus `05-patterns.md` |
 | How the two account types are enforced, and where the check runs | 400 Architecture, checked by 900 Security | an ADR, then `docs/900-security/02-mitigations.md` |
-| How the one repository is laid out, and what would justify splitting it later | 400 Architecture | `docs/ADR/0001-repository-layout.md` |
+| How the product repository is laid out, and what would justify splitting it further | 400 Architecture | `docs/ADR/0001-repository-layout.md` |
+| Whether the product repo uses Turborepo, Nx or plain npm workspaces | 400 Architecture | the same ADR |
 
-**On the repository ADR.** One repository is decided; how it is arranged is not. The ADR must name
-the layout, the option it rejected, and the **trigger** that would justify splitting later. Research
-already done, for the ADR to use or to challenge:
+**On the repository ADR.** Two repositories are decided; how the product one is arranged is not.
+The ADR must name the layout, the tool that runs the workspace, the option it rejected, and the
+**trigger** that would justify splitting further. Research already done, for the ADR to use or to
+challenge:
 
 - Cal.com runs a Next.js app and a **Nest.js** API in one repo with shared packages — the closest
   public match to this stack. Next.js itself is a monorepo publishing several npm packages.
 - Shopify consolidated into one repo in 2024 and gave an AI-native reason: *"code is going to be
   increasingly written with AI, and our infrastructure needs to be the substrate for that."*
-- Uber runs thousands of services out of a few monorepos, so **splitting deployment units does not
-  require splitting repositories**.
 - A shared package can be published to npm **from inside** a monorepo (tRPC does this with
   Changesets and the `workspace:*` protocol). A second repository is not needed to make
   `packages/contracts` consumable by an outside project.
-- No public example was found of a well-known product splitting a Next.js front end from its own
-  back end with a published reason.
+- **Every coding agent indexes one repository.** A repo border blocks the agent from seeing who
+  uses the code it changes, needs several pull requests for one change, and resets its context. Nx
+  sells an enterprise product, Polygraph, whose only job is to hide that from agents.
+- Measured cost of the rejected option: **4 to 6 pull requests** per change that crosses the wire.
+  Cloudflare published four pull requests per change before they automated it down to one.
+- Companies that published a move from many repos to one: Block (450 services), Proton (15
+  developers), Airbnb, and Uber — which runs thousands of services out of a few monorepos, so
+  **splitting deployment units does not require splitting repositories**. **No first-party
+  engineering post was found going the other way and calling it a win.**
+- On Turborepo: it worked for the user in a previous project, but that project was several
+  front-end packages. Mercari found remote caching gave little benefit on a repo with no internal
+  package dependencies. Weigh it against plain npm workspaces before adding a tool.
+- AWS CDK guidance warns that several CDK apps sharing one pipeline means a change to one deploys
+  all of them. The answer is **path-filtered workflows and one stack per service**, not a second
+  repository.
+
+### The six split-readiness rules
+
+The product repo must be built so a later split is a change of configuration, not a rewrite. These
+six rules cost nothing today, because no application code exists yet. **400 Architecture must carry
+them into the ADR, and 500 Engineering must carry them into the conventions.**
+
+1. **No relative import crosses an app border.** `apps/web` never writes `../../api/src/...`. If
+   two apps need the same thing, it moves to `packages/contracts`.
+2. **`packages/contracts` is imported by package name only**, never by relative path. This one rule
+   is what decides whether a later split is cheap or expensive.
+3. **Each app owns its `package.json`** with its real dependencies listed. Never rely on hoisting.
+4. **Each app builds from its own folder.** `cd apps/api && npm run build` works on its own.
+5. **Each service gets its own CDK stack**, so deploy borders exist from day one.
+6. **CI is path-filtered per app** from the first workflow file.
+
+**The trigger to revisit.** Split further when one of these becomes true, and not before: a second
+person owns one side; a service is written in a language other than TypeScript, so the Zod
+contracts give it nothing; or CI on the product repo passes about 15 minutes. Write the trigger
+into the ADR as a checkable condition, not as a feeling.
 
 ---
 

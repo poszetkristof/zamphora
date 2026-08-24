@@ -15,33 +15,42 @@ Pick the wrong one and the rule either loads too late, or loads on every unrelat
 **Pick the narrowest layer that does the job.** A CI check beats a hook, a hook beats a rule, a rule
 beats hoping.
 
+Three of the six are **not in this folder**. The agents, four of the skills, all six commands and
+the one hook arrive from the `ai-factory` plugin, which `settings.json` turns on. They still load
+the same way — only the folder they live in changed.
+
 ## Skills
 
-`spec-driven-tasks` (working `TASKS.md`) · `coding-standards` (any `.ts`/`.tsx`) ·
-`testing-patterns` (any test) · `security` (auth, uploads, user input, AI calls) ·
-`accessibility` (JSX, forms, dialogs) · `code-review` (the seven lenses) ·
-`root-cause` (a bug, before editing) · `adr-writer` (a hard-to-undo decision).
+**Here**, because each one names Next.js, Nest.js or this repo's own rules:
+`coding-standards` (any `.ts`/`.tsx`) · `testing-patterns` (any test) ·
+`security` (auth, uploads, user input, AI calls) · `accessibility` (JSX, forms, dialogs).
+
+**From the plugin**, because they are method and work in any repo: `spec-driven-tasks`
+(working `TASKS.md`) · `code-review` (the seven lenses) · `root-cause` (a bug, before editing) ·
+`adr-writer` (a hard-to-undo decision).
 
 ## Agents
 
-`explore-subagent` — a wide `file:line` sweep returning locations and snippets, not whole files.
-Skip it when you will open those files to edit them anyway.
+**The agents are not in this repo.** They come from the `ai-factory` plugin, so their names carry
+its prefix: `ai-factory:100-consulting` … `ai-factory:600-qa`, plus `ai-factory:explore-subagent`.
+`settings.json` turns the plugin on.
 
-`100-consulting` … `600-qa` — the eight role slots. **These are generated.** Edit
-`factory/subagent-slots/*.md` or `factory/handoff-map.yaml`, then run
-`node scripts/derive-agents.mjs`. Editing an adapter directly means the next run of that script
-throws your change away.
+They are **generated** from the slot contracts and the handoff map, both of which live in the
+plugin repo. Change the line there, regenerate there, bump the version, push. Editing a generated
+agent means the next run of the generator throws your change away.
 
 ## Commands
 
+All six come from the plugin, so they carry its prefix.
+
 | Command | Does |
 | --- | --- |
-| `/start` | Where the project is, and the one next action. Run it first, every session |
-| `/learn` | Write what was just learned into the right notes file. Run it before saying done |
-| `/next-task` | Backlog state, then work the next unblocked task |
-| `/spec-check` | Audit code against the specs — mismatches, dead links, untraced stories |
-| `/factory-run` | The state of the line, and what to do next |
-| `/run-role <slot>` | Run one role with only its declared inputs |
+| `/ai-factory:start` | Where the project is, and the one next action. Run it first, every session |
+| `/ai-factory:learn` | Write what was just learned into the right notes file. Run it before saying done |
+| `/ai-factory:next-task` | Backlog state, then work the next unblocked task |
+| `/ai-factory:spec-check` | Audit code against the specs — mismatches, dead links, untraced stories |
+| `/ai-factory:factory-run` | The state of the line, and what to do next |
+| `/ai-factory:run-role <slot>` | Run one role with only its declared inputs |
 
 ## Memory
 
@@ -52,9 +61,14 @@ re-asks a question answered here has a defect.
 
 ## Hook
 
-`hooks/cache-branch-diff.mjs` runs before `code-review` and writes the branch diff into `cache/`.
-Node rather than shell so it works on Windows. It never fails a prompt — on any error it writes
-empty files and exits 0, and the skill says so out loud rather than reviewing nothing.
+One hook, and it ships with the plugin: `cache-branch-diff.mjs` runs before `code-review` and
+writes the branch diff into this repo's `cache/`. That is why the folder is here and the script is
+not. It never fails a prompt — on any error it writes empty files and exits 0, and the skill says
+so out loud rather than reviewing nothing.
+
+A hook is the one place `${CLAUDE_PLUGIN_ROOT}` and `CLAUDE_PROJECT_DIR` arrive as **real**
+environment variables. Everywhere else they are only replaced in text. See
+`memory/factory-as-plugin.md`.
 
 ## settings.json
 

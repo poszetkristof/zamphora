@@ -9,7 +9,7 @@ It is short on purpose. It points at:
 - `docs/` — one folder per role, the specs a change is built against.
 - `docs/ADR/` — decisions. Each ends in an instruction with an explicit "do not".
 - `TASKS.md` — the backlog, worked one task at a time.
-- `factory/` — the delivery line that produced `docs/`.
+- `factory/feature.md` — the one feature the current run covers.
 
 Two rules matter before you touch anything:
 

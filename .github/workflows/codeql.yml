@@ -12,8 +12,30 @@ concurrency:
   group: codeql-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  # CodeQL exits 32 when it finds no source at all, so the scan waits until there is some.
+  # This repo holds only specs until the line has run.
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_code: ${{ steps.check.outputs.has_code }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          if git ls-files '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx' | grep -q .; then
+            echo "has_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_code=false" >> "$GITHUB_OUTPUT"
+            echo "No JavaScript or TypeScript in the repo yet. CodeQL skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   analyze:
+    needs: detect
+    if: needs.detect.outputs.has_code == 'true'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
