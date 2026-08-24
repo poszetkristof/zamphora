@@ -52,5 +52,5 @@ pointless.
 ## Where the note is
 
 `docs/learn/ai-native-delivery.md`, **in this repo**. It is **one file with a table of contents**:
-add to the section that fits, never start a second file. Run `node scripts/learn-note.mjs` to list
-the sections. If it is not there, ask where it moved to. Do not guess, and do not create a copy.
+add to the section that fits, never start a second file. `/ai-factory:learn` lists the sections
+first. If it is not there, ask where it moved to. Do not guess, and do not create a copy.

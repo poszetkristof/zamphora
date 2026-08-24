@@ -24,23 +24,24 @@ questions. Changing one is a human decision and needs an ADR.
 - **No Data role (700) and no Delivery role (1000).** One developer does not need a delivery
   manager agent, and data design belongs inside 400 Architecture.
 
-**Repositories — decided 2026-08-19, after research**
+**Repositories — two, decided 2026-08-21**
 
-- **One repository for the product.** `apps/web`, `apps/api`, `packages/contracts`, `infra/`,
-  `docs/` (including `docs/learn/`), `factory/` and `.claude/` all together.
-- The user pushed hard for separate front-end and back-end repos, so do not treat this as a casual
-  default. What settled it: Cal.com runs the same Next.js + Nest.js pairing in one repo; a shared
-  package can be published to npm from inside a monorepo using Changesets, so no second repo is
-  needed for `packages/contracts`; Uber runs thousands of services from a few monorepos, so future
-  microservices do not require a split; and no public example was found of a known product
-  splitting a Next.js front end from its own back end with a published reason.
-- **Reuse of the factory is a template repository**, not a Claude Code plugin. A plugin cannot
-  carry `factory/*.yaml`, the slot contracts, the permission lists or `CLAUDE.md`, and it has no
-  install step — so it would ship the *generated* agents frozen while their source YAML lived in
-  the project. That breaks the single-source-of-truth rule `derive-agents.mjs` exists to protect.
-- **Still open for 400 Architecture:** how the one repo is arranged, and the trigger that would
-  justify splitting later. It writes `docs/ADR/0001-repository-layout.md`. The research is in
-  `factory/feature.md`.
+1. `ai-factory` — the line, shipped as a Claude Code plugin. Its own repo, its own CI.
+2. `zamphora` — the whole product: `apps/web`, `apps/api`, `packages/contracts`, `infra/`, `docs/`.
+
+The split is by what can be reused, not by front end and back end. Web and API stay together
+because **every coding agent indexes one repository**, and a border there hides who uses the code
+the agent is changing. Separate CI and separate deploys do not need separate repos: path-filtered
+workflows and one CDK stack per service give both.
+
+The user asked three times for separate front-end and back-end repos. The answer is settled. The
+evidence sits in `factory/feature.md`, where role 400 reads it — do not copy it back here.
+
+**Still open for 400 Architecture:** how the product repo is arranged, whether it uses Turborepo, Nx
+or plain npm workspaces, and the trigger for splitting further. It writes
+`docs/ADR/0001-repository-layout.md`.
+
+See [[factory-as-plugin]].
 
 **Scope of this repository**
 
@@ -51,14 +52,12 @@ questions. Changing one is a human decision and needs an ADR.
 
 **The name — decided 2026-08-19**
 
-- **`zamphora`**. Built from two of the user's own favourite houseplants: **Zam**ioculcas
-  (`legénypálma`, the ZZ plant) + Rhaphido**phora** (the mini monstera). Their third favourite,
-  Monstera, is in the same family — all three are Araceae, the aroids.
-- The earlier placeholder `plantry` was dropped because a product of that name already exists.
-  `Monstera`, `Petiole`, `Meristem`, `Phloem` and the whole `Plant*` / `Leaf*` / `Bloom*` family
-  were checked and rejected for the same reason.
-- Web search found nothing using `zamphora`. **A formal trademark check was not done** — USPTO and
-  EUIPO classes 9 and 42 are still worth ten minutes before any public launch.
+- **`zamphora`** — **Zam**ioculcas + Rhaphido**phora**, two of the user's houseplants. Both aroids,
+  the same family as the monstera.
+- `plantry`, `Monstera`, `Petiole`, `Meristem`, `Phloem` and the whole `Plant*` / `Leaf*` / `Bloom*`
+  family are already taken. Do not re-propose them.
+- Nothing was found using `zamphora`. **No trademark check was done** — USPTO and EUIPO classes 9
+  and 42 are worth ten minutes before any public launch.
 
 **Still open, and the user's to decide**
 

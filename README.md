@@ -16,9 +16,13 @@ way round is what produces documentation nobody trusts.
 
 **Current state:** the factory is wired and verified. No role has run yet, so `docs/` is empty.
 
-```bash
-node scripts/line-state.mjs      # → Next role to run: 100-consulting
 ```
+/ai-factory:start      # → Next role to run: 100-consulting
+```
+
+The factory itself is not in this repository. It is a Claude Code plugin,
+[`ai-factory`](https://github.com/poszetkristof/ai-factory), and `.claude/settings.json` turns it
+on. That is why every command below carries the `ai-factory:` prefix.
 
 ---
 
@@ -43,28 +47,31 @@ last because a real test plan needs everything else already written.
 
 ### Two files control all of it
 
+Both live in the `ai-factory` plugin repo, not here.
+
 | File | Says |
 | --- | --- |
 | `factory/subagent-registry.yaml` | who exists, and what each role may **write** |
 | `factory/handoff-map.yaml` | what each role may **read**, in what order, and when to stop and ask a human |
 
-Everything in `.claude/agents/` is **generated** from those two by `scripts/derive-agents.mjs` — no
-AI involved, 110 lines, byte-identical every time. Edit the source, regenerate, never edit the
-output. CI enforces this.
+Every agent is **generated** from those two by `derive-agents.mjs` — no AI involved, 110 lines,
+byte-identical every time. Edit the source, regenerate, never edit the output. The plugin's CI
+enforces this.
 
 ---
 
 ## Layout
 
 ```
-factory/          the line: control files, role contracts, run records
+factory/          feature.md — this run's one feature — and the run cost limits
 docs/             where the roles write, one folder per role
 docs/learn/       the note that explains the whole method
 docs/ADR/         decisions, each ending in an explicit "do not"
 context/cold/     reasoning that only ever existed in a conversation
-scripts/          four checks that read the real state off disk
-.claude/          rules, memory, skills, commands, generated agents
+.claude/          rules, memory, this project's skills, settings
 ```
+
+The line itself — the role contracts, the checks, the generated agents — is in the plugin repo.
 
 `apps/`, `packages/` and `infra/` do not exist yet. **How this repository is arranged is role 400's
 decision**, written up as `docs/ADR/0001-repository-layout.md` before anything is installed.
@@ -73,19 +80,12 @@ decision**, written up as `docs/ADR/0001-repository-layout.md` before anything i
 
 ## Running it
 
-```bash
-/start                        # reads the real state and names the one next action
-/run-role 100-consulting      # runs one role, with only its declared inputs
-/factory-run                  # shows how far the line got, and how to close a run
+These come with the plugin, and they read the real state off disk rather than trusting a document:
+
 ```
-
-Then the four checks, each of which reads the disk rather than trusting a document:
-
-```bash
-node scripts/line-state.mjs                 # which roles have run, which is next
-node scripts/check-wiring.mjs               # single writer, no dangling reads, correct order
-node scripts/role-inputs.mjs 900-security   # what one role may read, and what is missing
-node scripts/derive-agents.mjs              # rebuild .claude/agents/ from the contracts
+/ai-factory:start                     which roles have run, which is next, and the wiring check
+/ai-factory:run-role 100-consulting   what one role may read, what is missing, then run it
+/ai-factory:factory-run               start, resume or close a run
 ```
 
 **A role that stops is not a failure.** It has found something an earlier role should have written
@@ -102,7 +102,7 @@ The full explanation is one document: **[`docs/learn/ai-native-delivery.md`](doc
 Part one is the idea. Part two follows one complete run, from an empty folder to finished
 specifications, explaining each term at the moment the run needs it.
 
-Run `node scripts/learn-note.mjs` to list its sections.
+`/ai-factory:learn` lists its sections before adding to it.
 
 ---
 

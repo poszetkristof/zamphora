@@ -74,17 +74,15 @@
       "Bash(aws * create-*)"
     ]
   },
-  "hooks": {
-    "UserPromptExpansion": [
-      {
-        "matcher": "code-review",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/cache-branch-diff.mjs\""
-          }
-        ]
+  "extraKnownMarketplaces": {
+    "poszet-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "poszetkristof/ai-factory"
       }
-    ]
+    }
+  },
+  "enabledPlugins": {
+    "ai-factory@poszet-plugins": true
   }
 }

@@ -47,21 +47,8 @@ jobs:
       - if: needs.detect.outputs.has_code == 'true'
         run: npm run lint
 
-  # Runs from the first commit: it checks the factory wiring, which exists before any code does.
-  factory:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-      - name: Wiring is sound - single writer, no dangling reads, correct order
-        run: node scripts/check-wiring.mjs
-      - name: Role adapters match their source contracts
-        run: |
-          node scripts/derive-agents.mjs
-          git diff --exit-code -- .claude/agents \
-            || { echo "::error::.claude/agents is out of date. Run node scripts/derive-agents.mjs and commit."; exit 1; }
+  # The factory wiring check used to run here. The line moved to the ai-factory plugin repo,
+  # which runs check-wiring and the generated-agent drift check in its own CI.
 
   audit:
     needs: detect
@@ -124,13 +111,12 @@ jobs:
   # check counts as a pass, which would let a failed build merge.
   ci-ok:
     if: always()
-    needs: [quality, factory, audit, test, build]
+    needs: [quality, audit, test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Fail unless every job succeeded
         run: |
           [ "${{ needs.quality.result }}" = "success" ] \
-            && [ "${{ needs.factory.result }}" = "success" ] \
             && [ "${{ needs.audit.result }}" = "success" ] \
             && [ "${{ needs.test.result }}" = "success" ] \
             && [ "${{ needs.build.result }}" = "success" ]
