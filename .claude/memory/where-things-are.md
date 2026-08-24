@@ -1,6 +1,6 @@
 ---
 name: where-things-are
-description: Pointers to the material this repo came from and the notes that explain it — paths on the user's machine.
+description: The one note that explains how this repo works, and where the rest of the pointers live.
 metadata:
   type: reference
 ---
@@ -16,19 +16,13 @@ the user, and keep them in step when the factory changes:
   a walkthrough, name the actor in every example, say each thing once, and tell the reader which
   parts are lookup rather than learning.
 
-**Where the method came from.**
+**Everything outside this repo is in `PRIVATE-NOTES.md`**, at the repo root and in `.gitignore`.
+That is where the source course, the previous project and the user's AWS study position are written
+down, with the paths on this machine.
 
-- `C:\Learn\AI\ai-run-mission-2026\learning\` — the source course, sixteen study guides. The two
-  that matter most are `1111-assembly-line.md` (the line, seams, human gates) and
-  `400-architecture.md` (options, C4, ADRs, NFR budgets).
-- `C:\Learn\AI\ai-run-mission-2026\katas\` — the user's own worked examples, one folder per role.
-  Good for seeing what a finished document looks like.
+Read it at the start of a session. It is not committed, so a clone will not have it, and that is
+fine — everything needed to work on this project is inside this repository.
 
-**The previous project**, which most of the skills and CI were harvested from:
-
-- `C:\Learn\vue\vue-parcel-project\` — `parcel-hub`, Vue 3 + Express 5 + Zod. Its `README.md` is a
-  study guide worth copying the shape of, and `AWS-1-SERVERLESS.md` holds the free-tier numbers
-  this project reuses.
-
-These are paths on one machine. If the repo was cloned somewhere else, they will not resolve, and
-that is fine — everything needed to work is inside this repository.
+**Why the split.** Every file here is public. Paths on one machine help nobody who clones this, the
+course material is not the user's to publish, and a note about what the user has not learned yet is
+not a fact about the software. See [[user-profile]].

@@ -38,8 +38,8 @@ Follow [[learning-style]] exactly. Short version:
 
 - one or two plain sentences of context first — what it is and what problem it solves
 - then bullets, each a full sentence carrying its own consequence
-- **the alternative that was not picked**, and why it lost. That is the part an interviewer asks
-  about.
+- **the alternative that was not picked**, and why it lost. Without it the note records a fact but
+  not a decision, and a fact cannot be re-argued later.
 - two to five sentences per entry. More than that means it wants its own note.
 - no pasted code. Point at the file.
 

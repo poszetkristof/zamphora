@@ -58,7 +58,8 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
 
 - One developer, part-time.
 - AWS free account plan. The account **closes** rather than billing, so cost is a correctness
-  property, not a finance one. Write the six-month end date into the context brief.
+  property, not a finance one. **The account was opened 2026-07-01, so the free window ends
+  2026-12-31.** Write that date into the context brief.
 - GitHub free tier for CI, on a personal account.
 - The photo is of the inside of someone's home. Treat it as personal data from the first file.
 - Anthropic API as the default model provider, behind a port, so another provider is a swap.
@@ -77,6 +78,60 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
 - **Two account types from day one: `USER` and `ADMIN`.** A user sees only their own plants and
   photos. An admin can read usage and cost figures, and can turn the AI feature off. The permission
   check ships with this feature. The admin **screens** are a later feature.
+- **A photo is kept 180 days, then deleted automatically, decided 2026-08-24.** A storage lifecycle
+  rule does the deleting, not application code, so the rule holds even when the app is broken. The
+  **text** result of an assessment is kept longer, so a plant's history survives without the
+  images. A user can also delete their own photos on demand. GDPR names no period for anything — it
+  requires the owner to choose one, justify it, and actually delete when it expires. This is that
+  number.
+- **Two languages in run 1: Hungarian and English, decided 2026-08-24.** The market scan found the
+  large apps ship no Hungarian, so this is also the one place the product is not a copy of
+  something that already exists.
+- **The model bill is not an AWS bill, decided 2026-08-24.** The Anthropic API is paid from the
+  owner's own Anthropic credits, on a separate account. Amazon Bedrock is not used. Two things
+  follow. A runaway retry loop cannot close the AWS account, because the model spend never reaches
+  AWS — it burns Anthropic credits instead, which is still an outage when they run out. And the
+  cost guardrail must count model calls in the application, because no AWS budget alarm can see
+  them.
+- **What "confidence" means, decided 2026-08-24.** See the section below.
+
+## What "confidence" means on this project
+
+The scope list asks the model call to return "a verdict, a confidence, and a next action". This
+section says what the second word means, so 300 Design can draw it, 500 Engineering can put it in a
+contract, and 600 QA can test it.
+
+**Start from the problem.** If you ask a language model how sure it is, it writes a number. That
+number is the model talking about itself. It is not a measurement, and a wrong answer said at 95%
+looks exactly like a right one. So a percentage on screen tells the user nothing true, and worse,
+it makes the answer look measured when it is not.
+
+**The rule: confidence is a band, not a number.** The model returns one of three literal values.
+No percentage is ever shown to the user.
+
+| Value | What the app does with it |
+| --- | --- |
+| `likely` | Show the verdict and the next action. Offer to write the care task |
+| `unsure` | Show the verdict, say plainly that it may be wrong, and say what a better photo would be. Never write a care task without asking first |
+| `cannot-tell` | Show no verdict at all. Say why — too dark, not a plant, more than one plant in frame |
+
+`cannot-tell` is the important one. Without it the model has no way to refuse, so it invents an
+answer instead. A refusal is a correct result, not an error.
+
+**What makes the band testable.** A self-reported number cannot be tested. A band can, because the
+band is a claim about the world that a person can check. QA builds a golden set — real photos, each
+with a verdict a human wrote down — and measures **agreement**: how often the model's band matched
+what was actually true.
+
+Two provisional bars, to be replaced by measurements after the first 20 real assessments:
+
+- When the model says `likely`, a person agrees with the verdict at least **8 times in 10**.
+- When the model says `cannot-tell`, a person agrees the photo was unusable at least **8 times in
+  10**. A model that hides behind `cannot-tell` is failing too, just quietly.
+
+**Two checks run before the model call**, because they are free and the model is not: the file must
+be an image the app accepts, and the user must have named the plant. Neither needs a model call to
+fail.
 
 ## The backbone — the features the human named
 
@@ -95,6 +150,12 @@ never move one down the list because research turned up something newer.
 
 Two of the owner's requirements are not features. They apply to everything above: **more than one
 language (i18n)** and **phone first**.
+
+**These are product features. A calendar app is not the answer to any of them.** The owner wants
+this app to tell them when to act — a notification, an email, whatever a web app does well. Feature
+5 writes the care task and feature 6 delivers it. Any document that argues watering, soil or
+placement is "just a schedule problem someone else already solved" has moved an approved backbone
+feature down the list, which the rules above forbid.
 
 **Anything not on this list is a proposal, not a priority.** An idea from the market scan, or from
 a role's own thinking, goes in the "worth considering later" list and waits for the owner to pick

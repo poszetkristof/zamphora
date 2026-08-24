@@ -12,10 +12,9 @@ session after.**
 | **Section 13** | the glossary | when a word stops you |
 
 Part two is a story, not a manual. It starts with two files on disk and ends with specifications a
-developer could build from. Nothing is explained before you have seen why it is needed.
-
-The project is real: **`zamphora`**, a plant-care app for someone whose houseplants keep dying. The
-file names, the numbers and the mistakes are the ones you will actually meet.
+developer could build from, and nothing is explained before you have seen why it is needed. The
+project is real: **`zamphora`**, a plant-care app for someone whose houseplants keep dying. The file
+names, the numbers and the mistakes are the ones you will actually meet.
 
 ---
 
@@ -49,8 +48,8 @@ file names, the numbers and the mistakes are the ones you will actually meet.
 
 ### The problem
 
-You open the editor, ask for a component, paste it in, it works. That is normal, and it is fine for
-one file. On a real project it fails in a specific way:
+You open the editor, ask for a component, paste it in, it works. That is fine for one file. On a real
+project it fails in a specific way:
 
 - the AI does not know what the project already decided, so it invents an answer
 - the invented answer looks correct, because AI output always looks correct
@@ -58,9 +57,8 @@ one file. On a real project it fails in a specific way:
 - next week a new session knows none of it, so you type the context again
 
 A real case. You ask for a photo assessment feature. Nowhere is it written how often the answer must
-be right, or what to do when the model is unsure. So the AI picks something: a confident verdict
-every time, even when the model is guessing. Nobody decided that. It happened because no file said
-otherwise.
+be right, or what to do when the model is unsure. So the AI picks: a confident verdict every time,
+even when guessing. Nobody decided that. It happened because no file said otherwise.
 
 ### The idea
 
@@ -92,11 +90,9 @@ Phase 1 is **the line**: eight AI roles run one after another, each writing docu
 reads. Phase 2 is **the backlog**: a task list generated from those documents, worked one task at a
 time, each task pointing at the spec section it must follow.
 
-Different commands, different rules, same repository.
-
 **One run** is one pass of all eight roles over **one feature**. It produces the documents, plus a
-record of how it went in `factory/runs/<name>/`. A product with six features has six runs — and you
-can also re-run the same feature after fixing the setup, and compare the two.
+record of how it went in `factory/runs/<name>/`. A product with six features has six runs — and you can
+also re-run the same feature after fixing the setup, then compare the two.
 
 **Remember:** the backlog is generated from the specs, never the other way round.
 
@@ -117,24 +113,13 @@ Both kinds of team use the same tools. The difference is one thing:
 | Who reviewed it | nobody | reviewed and committed like code |
 | Can you measure it | no | yes, it is a file with a git history |
 
-### Three maturity levels
+Three levels describe a team, and installing a tool does not move you up. **L1** — people use AI in
+chat and the output stays there. **L2** — some prompts and rules are saved and shared. **L3** — every
+stage of the work has a defined AI touchpoint with an expected output file.
 
-A way to place a team, not a badge. Installing a tool does not move you.
-
-- **L1** — people use AI on their own, in chat. Output stays in the chat window.
-- **L2** — some prompts and rules are saved and shared. Reuse starts.
-- **L3** — every stage of the work has a defined AI touchpoint with an expected output file.
-
-One test settles it, and it works for one person as well as for a team: **a new developer joins on
-Friday — is the whole setup working on Monday without them asking anyone?** If the answer is yes,
-it is in files. If it needs you to explain something, it is in your head, and that is L1 no matter
-what tools are installed. In this project the answer lives in the `ai-factory` plugin and in
-`.claude/`.
-
-If you ever have to score a team properly, five things get scored 1–3 and averaged — AI
-capabilities, reusability, a named owner, tracked numbers, daily use — but read them one by one,
-never as an average. A team at 2.0 with nobody owning the setup is a team whose setup leaves when
-one person does.
+One test settles it, and it works for one person as well as a team: **a new developer joins on Friday
+— is the whole setup working on Monday without them asking anyone?** If yes, it is in files. If it
+needs you to explain something, it is in your head, and that is L1 whatever tools are installed.
 
 ### The seven anti-patterns
 
@@ -145,35 +130,24 @@ one person does.
 | **Individual hero** | the setup lives in one person's habits and leaves when they do |
 | **Babysitting the agent** | you watch every token and correct it live |
 | **Biggest model by default** | a premium model on a task the default model handles |
-| **Tool cargo cult** | buying tools and waiting for results. Also: locking into one vendor's tooling |
+| **Tool cargo cult** | buying tools and waiting for results. Also: locking into one vendor |
 | **Anecdote as metric** | "it feels faster" is the whole measurement |
 
-The first one blocks every other improvement, so fix it first. The last one is why most teams cannot
-answer "what did AI actually save us?" — nobody wrote a number down before they started.
+The first blocks every other improvement, so fix it first. The last is why most teams cannot answer
+"what did AI actually save us?" — nobody wrote a number down before they started.
 
 ### What it costs
 
-Two different spends, and mixing them up is why people think this is expensive. **Spec spend** is
-human time, paid once — expensive in hours, cheap in money. **Run spend** is model calls, paid every
-run, mostly at the cached price of roughly a tenth of normal.
-
-One number worth knowing: **a multi-agent run costs about 15× a single chat.** Fine once for a real
-feature. Not fine three times in a row because nobody read the first two.
+Two different spends, and mixing them up is why people think this is expensive. **Spec spend** is human
+time, paid once — expensive in hours, cheap in money. **Run spend** is model calls, paid every run, and
+**a multi-agent run costs about 15× a single chat.** Fine once for a real feature. Not fine three times
+because nobody read the first two.
 
 **A budget is a number that stops something.** "Be careful with cost" stops nothing. Write the limit
-into the setup — this project uses 250,000 tokens per role — and say what happens when it is
-reached: stop and ask a person. Without the number and the stop rule, cost is a surprise on a bill
-instead of a thing you designed.
+into the setup — this project uses 250,000 tokens per role — and say what happens when it is reached:
+stop and ask a person.
 
-**Choosing a model is a test, not a feeling.** Write down the 3 or 4 things that matter first, put
-**one identical prompt** through two models, and score them with a sentence of evidence each. Pick
-on the thing that matters most, not on the total.
-
-Then write the **active constraint**: what could change this within 30 days. People drop that line,
-and models move fast, so a choice with no expiry date quietly becomes a rule nobody agreed to.
-
-**Remember:** AI-native is one question — does the output become a versioned file someone else
-reads?
+**Remember:** AI-native is one question — does the output become a versioned file someone else reads?
 
 ---
 
@@ -182,34 +156,35 @@ reads?
 ### The problem
 
 You want the AI to always use `type` instead of `interface`. There are seven places you could write
-that rule, and they behave very differently. Put it in the wrong one and it either never loads, or
-it loads on every unrelated turn and pushes out something you needed.
+that rule, and they behave very differently. Put it in the wrong one and it either never loads, or it
+loads on every unrelated turn and pushes out something you needed.
 
 The only real difference between them is **when the model sees the file**.
 
-| Block | Lives in | Loads |
-| --- | --- | --- |
-| **Rule file** | `CLAUDE.md`, `AGENTS.md` | every session, always |
-| **Context file** | `docs/` | when a task points at it |
-| **Skill** | `skills/<name>/SKILL.md` | when the task matches its `description` |
-| **Subagent** | `agents/<name>.md` | when dispatched, in its own context |
-| **Command** | `commands/<name>.md` | when you type `/name` |
-| **Hook** | `settings.json` | on an event, as a shell command |
-| **MCP server** | `.mcp.json` | at session start, giving the agent tools |
+| Block | Lives in | Loads | Use it when the rule… |
+| --- | --- | --- | --- |
+| **Rule file** | `CLAUDE.md`, `AGENTS.md` | every session, always | must always be present |
+| **Context file** | `docs/` | when a task points at it | only matters for one kind of work in this repo |
+| **Skill** | `skills/<name>/SKILL.md` | when the task matches its `description` | only matters for one kind of task |
+| **Subagent** | `agents/<name>.md` | when dispatched, in its own context | involves so much reading it would fill your session |
+| **Command** | `commands/<name>.md` | when you type `/name` | is something you will type repeatedly |
+| **Hook** | `settings.json` | on an event, as a shell command | must run automatically on your machine |
+| **MCP server** | `.mcp.json` | at session start, giving the agent tools | needs the agent to *act on* a system outside the repo |
 
-Those paths sit under `.claude/` in a project, and under the plugin root in a plugin. Same files,
-same behaviour — only the folder they arrive from differs.
+Go down that last column and stop at the first one that works — **picking too wide is the expensive
+mistake**. Above all seven sits one more: a rule that must hold on every pull request with no
+exceptions belongs in a **CI required check**. Those paths sit under `.claude/` in a project and under
+the plugin root in a plugin — same files, same behaviour, only the folder differs.
 
-### What each one is for
+### The four that are easy to get wrong
 
-**Rule file** — loads in full every session, so keep it short. Conventions that must always be
-present, plus a table saying which document to read for which kind of work. Past a few hundred lines
-it stops working: the model holds all of it at once, so the important lines carry less weight. Rules
-and pointers here, explanations in `docs/`. `AGENTS.md` beside it is 20 lines saying "the rules are
-in `CLAUDE.md`", so a different tool lands in the same place. A pointer, never a copy.
+**Rule file** — loads in full every session, so keep it short. Past a few hundred lines it stops
+working: the model holds all of it at once, so the important lines carry less weight. Rules and
+pointers here, explanations in `docs/`. `AGENTS.md` beside it is 20 lines saying "the rules are in
+`CLAUDE.md`", so a different tool lands in the same place. A pointer, never a copy.
 
-**Context file** — the layer that does the most work. The stack, the conventions, the specs, the
-decisions. Three layers exist:
+**Context file** — the layer that does the most work: the stack, the conventions, the specs, the
+decisions. It comes in three temperatures:
 
 | Layer | Where | Loaded |
 | --- | --- | --- |
@@ -229,56 +204,26 @@ topic.
 > domain facts.
 
 That is the most common mistake here. A "skill" that hardcodes `apps/web/src/features/plants` is a
-context file with the wrong label on it.
-
-**Subagent** — runs in its own context window and hands back only its result. Use it when the doing
-is useful but the reading would fill your session: searching 40 files for one pattern. Do not use
-one when you need those files open to edit right after — you would read everything twice.
-
-**Command** — a prompt file you run by typing `/name`. It can run shell commands and paste the real
-output in before the model reads anything. So the session starts with the true state, not with your
-memory of it.
+context file with the wrong label on it. Keep the pair straight: a **skill** is *how to do a task* and
+still makes sense elsewhere; a **context file** is *what is true here* and makes sense nowhere else.
 
 **Hook** — a shell command on an event. Not the model deciding, a script running. **Hooks help, CI
-required checks enforce.** A hook runs on your machine, so it protects you and nobody else. A
-required check on `main` protects the branch.
+required checks enforce.** A hook runs on your machine, so it protects you and nobody else. A required
+check on `main` protects the branch.
 
-**MCP server** — the other six give the agent words. This one gives it **tools**: a standard way to
-plug it into a tracker, a database, a browser. New actions it can take, not new text to read. Two
-rules, the same as everywhere else here — **only add a server whose tools a role actually needs**,
-and **say which role may use it**, next to `writes:` in the registry, exactly like web access. This
-project has no MCP server, which is the right answer until one job needs one.
+The remaining three are shorter:
 
-### How to pick — narrowest first
-
-Go down the list and stop at the first one that works. Picking too wide is the expensive mistake.
-
-| If the rule… | Use |
-| --- | --- |
-| must hold on every pull request, no exceptions | CI required check |
-| must run automatically on your machine | hook |
-| must always be present in every session | rule file |
-| only matters for one kind of task | skill |
-| only matters for one kind of work in this repo | context file |
-| is something you will type repeatedly | command |
-| involves so much reading it would fill up your session | subagent |
-| needs the agent to *act on* a system outside the repo | MCP server |
-
-### Skill or context file?
-
-The pair that gets mixed up most.
-
-- A **skill** is *how to do a task*. "How to review a branch." It still makes sense in another
-  repository.
-- A **context file** is *what is true here*. "This repo uses Next.js 15 and DynamoDB." It makes no
-  sense anywhere else.
-
-If you are writing a repo path inside a skill, you are writing a context file. Move it.
+- **Command** — a prompt file you run by typing `/name`. It can run shell commands and paste the real
+  output in before the model reads anything, so the session starts with the true state.
+- **Subagent** — runs in its own context and hands back only its result. Good for searching 40 files,
+  bad when you need those files open to edit right after: you would read everything twice.
+- **MCP server** — gives the agent tools instead of text: a tracker, a database, a browser. Only add
+  one whose tools a role actually needs, and say which role may use it. This project has none, which
+  is the right answer until one job needs one.
 
 **Remember:** the only real difference between the seven blocks is when the model sees the file.
 
 ---
-
 
 ## 4. Day zero: what is on disk before anything runs
 
@@ -287,17 +232,17 @@ they sit in this repository. The other two are not here at all — they arrive f
 
 ### The two files you wrote
 
-**`initial-plan.md`** — what you want, in your own words. Written before any of this existed:
+**`initial-plan.md`** — what you want, in your own words, written before any of this existed:
 
 > I have a problem maintaining my plants at my apartment like my monstera, cactus. The problems are
 > the intervals of watering, soil replacement, where to put each plant. Document the state of my
-> plants — so a camera, and AI needs to interpret the image to assess my plant. Notifications.
-> i18n. Mobile first.
+> plants — so a camera, and AI needs to interpret the image to assess my plant. Notifications. i18n.
+> Mobile first.
 
 It is messy, and that is fine. It is the only place your real goal exists.
 
-**`factory/feature.md`** — the one feature this run is about, and more importantly what it is
-**not** about:
+**`factory/feature.md`** — the one feature this run is about, and more importantly what it is **not**
+about:
 
 ```
 The feature: photograph a plant that looks unwell, get back an assessment and a next action.
@@ -307,13 +252,10 @@ Out of scope for this run:
   · plant identification · a follow-up chat
 ```
 
-That "out" list is the fence. When a role tries to grow the feature — and one will — this is the
-file it hits.
-
-**"Out" means not this run, not never.** The line runs once per feature: edit this file, run again.
-
-Why not all six at once? The stops are what you are buying, and eight roles designing six features
-produce a review with 200 handovers that nobody will do. So run 1 takes the **hardest** feature — a
+That "out" list is the fence. When a role tries to grow the feature — and one will — this is the file
+it hits. **"Out" means not this run, not never:** the line runs once per feature, so you edit this file
+and run again. Why not all six features at once? The stops are what you are buying, and eight roles designing six
+features produce a review with 200 handovers nobody will do. So run 1 takes the **hardest** feature — a
 camera, an upload, storage that costs money, and a model call that can be wrong.
 
 ### Run 1 is not like the runs after it
@@ -330,33 +272,25 @@ instead of deciding it again:
 
 So run 2 is much cheaper. Ask one question of the new feature: **does it change the shape of the
 system** — a new data store, a new outside call, a new deployment unit, a new trust boundary? **No**
-means four roles run instead of eight (Product, Design, Engineering, QA). **Yes** means all eight,
-but Architecture and Infra *extend* their documents — a new ADR is added, an accepted one is never
-edited.
-
-Write that answer in the run record with its reason. "We skipped Security" is itself a finding if
-nobody wrote down why.
+means four roles run instead of eight (Product, Design, Engineering, QA). **Yes** means all eight, but
+Architecture and Infra *extend* their documents. Write that answer in the run record with its reason:
+"we skipped Security" is itself a finding if nobody wrote down why.
 
 ### The two files that control the machine
 
-These two are the whole factory. Everything else is built from them. **Neither is in this
-repository** — they live in the `ai-factory` plugin, and the next part explains why.
+These two are the whole factory, and everything else is built from them. **Neither is in this
+repository** — they live in the `ai-factory` plugin.
 
-**`factory/subagent-registry.yaml` — who exists, and what each one may write.**
+**`factory/subagent-registry.yaml` — who exists, and what each may write.**
 
 ```yaml
 - id: "900-security"
-  role: Security
-  owns_folder: docs/900-security/        # the only folder it may touch
+  owns_folder: docs/900-security/         # the only folder it may touch
   tools: Read, Write, Glob, Grep, WebSearch, WebFetch
-  writes:                                 # the only files it may create
-    - docs/900-security/00-assets.md
-    - docs/900-security/01-threats.md
-    - docs/900-security/02-mitigations.md
-    - docs/900-security/03-evidence.md
+  writes: [00-assets.md, 01-threats.md, 02-mitigations.md, 03-evidence.md]
 ```
 
-**`factory/handoff-map.yaml` — what each one may read, and in what order.**
+**`factory/handoff-map.yaml` — what each may read, and in what order.**
 
 ```yaml
 reads:
@@ -370,6 +304,11 @@ Security opens those three files. Not the PRD. Not the design spec. Not this cha
 
 **Want to change how the line works? Change one of these two files.** Never edit a file that was
 built from them.
+
+The same file holds `execution_order`, and two placements surprise people. **Infra (800) runs before
+Security (900)**, because you cannot threat-model a deployment nobody has described yet. **QA (600)
+runs last**, because a real test plan needs the engineering spec, the infra plan and the security fixes
+already written — a test plan written early only tests the happy path.
 
 ### Why the line is a plugin, and the product is not
 
@@ -385,136 +324,74 @@ different times, so they live in different repositories:
 `ai-factory` is a Claude Code plugin. One committed line in `.claude/settings.json` turns it on, and
 every command then carries its name: `/ai-factory:start`, not `/start`.
 
-**The split is by reuse. It is not by front end and back end.** Two repositories for the web app
-and the API was considered, then rejected. The reason is how a coding agent works: it reads one
-repository at a time. Put the API somewhere else, and the agent changing the web app cannot see who
-calls the code it is changing. One change then needs one pull request in each repository. The
-measured cost is four to six pull requests for a single change that touches both sides.
+**The split is by reuse. It is not by front end and back end.** Two repositories for the web app and
+the API was considered, then rejected, because a coding agent reads one repository at a time. Put the
+API somewhere else and the agent changing the web app cannot see who calls the code it is changing.
+The measured cost is four to six pull requests for a single change that touches both sides.
 
-The web app, the API, the shared contracts and the infrastructure all change inside one feature. So
-they stay together. The line does not change with a feature, so it moved out.
-
-Two more things you get:
+Two more things the plugin buys you:
 
 - **The agents cannot fall behind the contracts they are built from.** You write a slot contract by
-  hand. A script turns it into an agent file. Both files are now in `ai-factory`, so its CI can
-  compare them on every push. Edit the contract, forget to run the script, and CI fails. If the two
-  files were in different repositories, nothing would notice.
-- **The next project installs the line. It does not copy it.** Copy the folder into a second
-  project, then fix a mistake in one role. The second project still has the mistake, and nobody
-  goes back for it. With a plugin you push the fix once, and every project picks it up by raising a
-  version number.
+  hand, a script turns it into an agent file, and both sit in `ai-factory` — so its CI compares them
+  on every push. In two repositories nothing would notice.
+- **The next project installs the line. It does not copy it.** Copy the folder into a second project,
+  fix a mistake in one role, and the second project keeps the mistake. With a plugin you push the fix
+  once and every project picks it up by raising a version number.
 
 ### Five things that go wrong when you ship a plugin
 
-A plugin is a folder with a **manifest** — a small JSON file that says what is inside. The folder
-can hold any file: YAML, Node scripts, whatever the commands need. Writing the plugin is quick.
-Making it load is the slow part. All five below happened here, and none of them said what was
-really wrong.
+A plugin is a folder with a **manifest** — a small JSON file saying what is inside. The folder can hold
+any file: YAML, Node scripts, whatever the commands need. Writing it is quick. Making it load is the
+slow part. All five below happened here, and none of them said what was really wrong.
 
-- **You need two JSON files, not one.** `plugin.json` describes the plugin. `marketplace.json` is
-  the catalog that lists it. You cannot install a plugin from GitHub without the catalog, even when
-  the repository holds only one plugin. In that case the catalog entry says `"source": "./"`, which
-  means "the plugin is at the top of this repository".
-- **Do not name your folders in `plugin.json` if they use the default names.** The `agents` field
-  wants file paths, not a folder. So `"agents": "./agents/"` fails with `Invalid input`. Use the
-  normal layout — `agents/`, `commands/`, `skills/`, `hooks/hooks.json` — write none of those
-  fields, and Claude Code finds them on its own.
-- **Run `claude plugin validate .` before every push.** It finds both mistakes above in one second.
-  Without it, all you see is an install error that names a temporary cache folder. That name tells
-  you nothing.
-- **The setting is `enabledPlugins`, not `plugins`.** Put `extraKnownMarketplaces` next to it, so a
-  new clone knows where the catalog is. Both belong in `.claude/settings.json`, the file you
-  commit. Put them in your personal settings instead and the plugin works on your machine only.
-  Then the project is back at L1.
-- **`${CLAUDE_PLUGIN_ROOT}` only works inside text.** Claude Code replaces it in a command, a skill
-  or an agent file. It does **not** set it for a script that the command starts. A script reading
-  `process.env.CLAUDE_PLUGIN_ROOT` gets nothing, falls back to the current folder, and then looks
-  for the line's own files inside the product. A script already knows where it is saved, so read
-  that instead: `import.meta.url`.
+| The mistake | What to do instead |
+| --- | --- |
+| You need **two** JSON files, not one | `plugin.json` describes the plugin; `marketplace.json` is the catalog that lists it. Even a one-plugin repository needs the catalog, with `"source": "./"` |
+| Naming default folders in `plugin.json` | The `agents` field wants file paths, so `"agents": "./agents/"` fails with `Invalid input`. Use the normal layout and write none of those fields |
+| Pushing without checking | `claude plugin validate .` finds both mistakes above in one second. Without it you get an install error naming a temporary cache folder |
+| The setting is `enabledPlugins`, not `plugins` | Put `extraKnownMarketplaces` beside it, in `.claude/settings.json` — the file you commit. In personal settings it works on your machine only, and the project is back at L1 |
+| `${CLAUDE_PLUGIN_ROOT}` only works inside text | Claude Code replaces it in a command, skill or agent file. It does **not** set it for a script the command starts. A script already knows where it is saved: read `import.meta.url` |
 
-One more, and this one is not about the JSON files. **A session that is already running keeps the
-version it started with.** You fix a script, push it, update the catalog — and nothing changes
-until you run `/reload-plugins`. Also raise the version number in `plugin.json` every time you
-release. The same number means "the same plugin", and it is never downloaded again.
+One more, and it is not about JSON. **A running session keeps the version it started with.** Fix a
+script, push it, update the catalog — nothing changes until `/reload-plugins`. Also raise the version
+in `plugin.json` on every release: the same number means "the same plugin", and it is never downloaded
+again.
 
-### The order, and the two placements that look wrong
-
-The same file holds `execution_order`. It is not number order, and two placements surprise people:
-
-- **Infra (800) before Security (900).** Security reviews the deployment. You cannot threat-model a
-  deployment nobody has described yet.
-- **QA (600) last.** A real test plan needs the engineering spec, the infra plan and the security
-  fixes already written. A test plan written early only tests the happy path.
-
-### What you are about to watch
-
-```mermaid
-flowchart TB
-  subgraph IN["you write these"]
-    A["initial-plan.md"]
-    B["factory/feature.md"]
-  end
-  subgraph CTL["these control the line"]
-    C["subagent-registry.yaml<br/>who writes what"]
-    D["handoff-map.yaml<br/>who reads what, in what order"]
-  end
-  IN --> L
-  CTL --> L
-  L["eight roles, one after another"] --> DOCS["docs/ — about 30 files"]
-  DOCS --> REV["your review:<br/>seam ledger + gates"]
-  REV --> FIX["edit the factory"]
-  FIX -.->|"next run"| L
-  DOCS --> T["TASKS.md → code"]
-```
-
-Notice the dotted line. The documents are not the point — **the loop is.** That will only make
-sense after you have watched a run break, so leave it for now.
+**One thing to hold on to before the run starts:** the eight roles write about thirty documents, but
+the documents are not the point. **The loop is** — run the line, find the seams and gates, change the
+factory, run again. That will only make sense after you have watched a run break.
 
 ---
 
 ## 5. Step 1 — Consulting, and why it gets only two files
 
-You type this:
+### What a consultant actually does
 
-```
-/run-role 100-consulting
-```
+A consultant is called in by a company that wants something built. They write no code. They ask
+questions until the problem is clear, they look at what already exists on the market, they write down
+the decisions that have already been taken so nobody argues them again, and they hand over a folder.
+Somebody else builds it from that folder.
 
-### What actually happens
+Role 100 is that person. It gets two files, does one shift, and hands over four. Everything it knows
+comes from reading, asking and searching — never from building.
 
-Your main session does not do the work. It hands it over, then stops:
+You type `/ai-factory:run-role 100-consulting`. Your main session does not do the work. It starts the
+role as **a new session that remembers nothing** — no chat history, only files — hands it the two files
+on its `reads:` list, and stops when the role is done.
 
-1. It looks up the next role in `execution_order`. That is `100-consulting`.
-2. It starts that role as **a brand-new session that remembers nothing** — no chat history, no
-   earlier thinking. Only files.
-3. It gives that session **only the files on its `reads:` list** — for role 100, two of them:
-   `factory/feature.md` and `initial-plan.md`.
-4. The role writes its four files, one line goes into the log, and everything stops until you say go
-   again.
+### The four files, and what each is really for
 
-Step 3 is the first thing worth understanding.
+They land in `docs/100-consulting/`. Read them in this order.
 
-### Why it gets only two files — this is called isolation
+| File | In one sentence | The real-life version |
+| --- | --- | --- |
+| `00-context-brief.md` | everything everyone "just knows" and nobody wrote down | the notes from the first meeting |
+| `01-use-cases.md` | the jobs the app must do, ranked, each one judged | "what do you actually need it to do" |
+| `02-decisions.md` | choices already taken, and why, so no later role re-opens them | the minutes: agreed this, rejected that |
+| `03-market.md` | products that already exist, their prices, what they do badly | the competitor scan |
 
-It would be easy to give role 100 the whole repository. Do not.
-
-**Isolation** means a role reads only its declared inputs. The reason is not tidiness. A role that
-can read everything will always find something close enough, use it, and never mention it. A role
-that cannot will **stop and tell you the fact is missing.** That stop is what you are paying for.
-
-A second rule sits beside it. **Single writer:** every file has exactly one role allowed to create
-it. Otherwise the second role overwrites the first and nobody can say which version was meant.
-
-Giving each role less information sounds wrong. It is the most useful part of the design.
-
-### What Consulting writes
-
-Four files land in `docs/100-consulting/`:
-
-`00-context-brief.md` (everything everyone "just knows" but nobody wrote down) · `01-use-cases.md`
-(the jobs the app does, ranked) · `02-decisions.md` (choices already made, so no later role re-opens
-them) · `03-market.md` (real products, and what they do badly).
+None of them is a plan and none is a design. A consultant does not decide what gets built or when it
+ships — those belong to the owner, and to roles 200 and 400.
 
 **The brief has four parts, and each must be there** even if the answer is "none known":
 
@@ -526,6 +403,42 @@ them) · `03-market.md` (real products, and what they do badly).
 | **regulatory** | a plant photo shows the inside of a home. Personal data from file one |
 
 Miss the engineering part and every later role invents its own stack rules.
+
+### `01-use-cases.md` is the long one. It is doing one small thing many times.
+
+That file feels heavy because of its size, not its idea. It lists seven jobs — take a photo and get an
+assessment, turn the result into a care task, sign in, delete a photo, and so on. Then it asks **the
+same four questions about every one of them**:
+
+| The question | What it really asks |
+| --- | --- |
+| **Value** | does the user want this enough to reach for it? |
+| **Usability** | can they get it while standing in front of a plant, holding a phone in one hand? |
+| **Feasibility** | can one part-time developer actually build it? |
+| **Viability** | is it worth *running* afterwards — the money, the attention, the risk of being wrong? |
+
+Seven jobs times four questions is twenty-eight small judgements. That is the whole file. Nothing in
+it is harder than one of those rows.
+
+These four are a known set, from Marty Cagan's *Inspired*. They are chosen because a feature can die
+of any one of them, and teams normally only check the third. A job that fails a question is not
+deleted — it is marked `open` and handed to a person. UC-5 (how long a photo is kept) sat `open` on
+Viability until the owner chose 180 days.
+
+**How to read it in two minutes:** open the ranked list near the top, then read only the four gate
+rows of UC-1. That is the shape of every other one.
+
+### Why it gets only two files — this is called isolation
+
+It would be easy to give role 100 the whole repository. Do not. **Isolation** means a role reads only
+its declared inputs, and the reason is not tidiness: a role that can read everything will always find
+something close enough, use it, and never mention it. A role that cannot will **stop and tell you the
+fact is missing.** That stop is what you are paying for.
+
+A second rule sits beside it. **Single writer:** every file has exactly one role allowed to create it.
+Otherwise the second role overwrites the first and nobody can say which version was meant.
+
+Giving each role less information sounds wrong. It is the most useful part of the design.
 
 ### It is allowed on the web — most roles are not
 
@@ -539,25 +452,16 @@ Role 100 can search. Only four roles can, each for one narrow reason:
 | 900 Security | a CVE, an OWASP entry, a control definition | accept an earlier decision without re-checking it |
 
 **Every outside fact carries its source link and the date it was checked.** Anything unverified is
-labelled unverified, not left to read as fact.
+labelled unverified, not left to read as fact. And research only happens because someone asked for it:
+to make the line investigate something, name **which role**, **what question**, and **which file the
+answer lands in**. An expectation held only in your head produces nothing.
 
-Research only happens because someone asked for it. `03-market.md` exists because the slot contract
-names it. To make the line investigate something, say **which role**, **what question**, and **which
-file the answer lands in**. An expectation held only in your head produces nothing.
-
-### What to check before moving on
-
-Open `00-context-brief.md` and ask two things: are all four parts there, and **does it name the date
-the free account closes** or just say "cost matters"? The second one looks small. It is not, and
-section 11 shows why.
+**Check before moving on:** are all four parts of the brief there, and does it **name a date** where a
+constraint has one, or just say "cost matters"? A rule with no number cannot be tested later.
 
 ---
 
 ## 6. Step 2 — Product, and the first handover
-
-```
-/run-role 200-product
-```
 
 Role 200 starts, remembering nothing about role 100's session. It gets four files:
 
@@ -573,39 +477,31 @@ Role 200 starts, remembering nothing about role 100's session. It gets four file
 
 ### A handover has a name: a seam
 
-A **seam** is one file crossing from one role to the next. Role 100 gives `00-context-brief.md` to
-role 200. That is one seam. There are about 34 of them in the whole run, and every one is already
-listed in `handoff-map.yaml` under `edges:`.
+A **seam** is one file crossing from one role to the next. Role 100 gives `00-context-brief.md` to role
+200. That is one seam. There are about 34 in the whole run, all listed in `handoff-map.yaml` under
+`edges:`.
 
-The word is borrowed from sewing: a seam is where two pieces of cloth are joined. Cloth rarely tears
-in the middle. It tears at the seam. Same here — **the run almost never breaks inside a role. It
-breaks at a seam**, when the next role did not get what it needed.
+The word is borrowed from sewing: a seam is where two pieces of cloth are joined. Cloth rarely tears in
+the middle. It tears at the seam. Same here — **the run almost never breaks inside a role. It breaks at
+a seam**, when the next role did not get what it needed.
 
-Later you will give every seam one of five labels:
-
-| Label | Means |
-| --- | --- |
-| **clean** | the next role got what it needed |
-| **under-supply** | it got less than it needed |
-| **over-supply** | it got more than it needed, so the feature grew |
-| **missing** | the file was not there at all |
-| **routing** | the file went to the wrong role |
-
-Do not label anything yet. You cannot see most of them until the run is over.
+Later you give every seam one of five labels: **clean** · **under-supply** (less than it needed) ·
+**over-supply** (more than it needed, so the feature grew) · **missing** (the file was not there) ·
+**routing** (it went to the wrong role). Do not label anything yet — you cannot see most of them until
+the run is over.
 
 ### What Product writes
 
-`00-prd.md` (one page: what it must do, how success is measured) · `01-user-stories.md`
-(US-01…US-NN with pass/fail rules) · `02-traceability.md` (every story → the metric that proves it
-worked).
+`00-prd.md` (one page: what it must do, how success is measured) · `01-user-stories.md` (US-01…US-NN
+with pass/fail rules) · `02-traceability.md` (every story → the metric that proves it worked).
 
 Every story uses the **JTBD** shape, which puts the **moment** into the requirement:
 
 > When **I notice a leaf turning yellow**, I want **to photograph it and be told what to do**, so I
 > can **fix it before the plant dies**.
 
-That tells you the answer must arrive fast and be right, because the user is standing in front of
-the plant holding a dying leaf. It is a requirement on the system, not a UI detail.
+That tells you the answer must arrive fast and be right, because the user is standing in front of the
+plant holding a dying leaf. It is a requirement on the system, not a UI detail.
 
 An **AI story carries two extra fields** a normal story does not: how often it must be right, as a
 number, and what it does when it is not sure.
@@ -615,36 +511,25 @@ number, and what it does when it is not sure.
 | ✅ | "Wrong verdicts under 2 in 100 on the golden set. Answer in under 4 seconds, 9 times out of 10. Below **0.6** confidence it says 'not sure' and offers the care checklist." |
 | ❌ | "The assessment should be accurate." Three people will build three different things. |
 
-The PRD also carries a **guardrail metric** — the number that must *not* move. Photo uploads going
-up is good; the monthly model bill going up with them is what you are watching.
+The PRD also carries a **guardrail metric** — the number that must *not* move. Photo uploads going up
+is good; the monthly model bill going up with them is what you are watching.
 
 ### The first problem, and you cannot see it yet
 
-Role 200 reads the brief. The brief says **"cost matters"**. It does not say **"the free account
-closes on 14 March"**. Role 200 writes a fine PRD anyway. Nothing looks wrong and you would sign it
-off.
+The brief says **"cost matters"**. It does not say **"the free account closes on 14 March"**. Role 200
+writes a fine PRD anyway, nothing looks wrong, and you would sign it off. In section 11 it becomes
+finding number one — by then it has already changed the architecture.
 
-Hold that thought. In section 11 it becomes finding number one, and by then it will already have
-changed the architecture.
-
-### What to check before moving on
-
-- is there a **number** in every acceptance rule?
-- does the AI story say what happens when the model is **unsure**?
-
-One vague word here costs three later roles: Design cannot draw an unsure state, Architecture cannot
-budget for it, QA cannot test it.
+**Check before moving on:** is there a **number** in every acceptance rule, and does the AI story say
+what happens when the model is **unsure**? One vague word here costs three later roles: Design cannot
+draw an unsure state, Architecture cannot budget for it, QA cannot test it.
 
 ---
 
 ## 7. Step 3 — Design turns stories into screens
 
-```
-/run-role 300-design
-```
-
-Design reads the brief, the PRD and the stories. It writes four files, and **the handover is two
-text files, never a picture.**
+Design reads the brief, the PRD and the stories. It writes four files, and **the handover is two text
+files, never a picture.**
 
 | File | What is in it |
 | --- | --- |
@@ -657,33 +542,28 @@ A picture cannot be read by the next role. A text spec can, and it shows up in a
 
 ### The rule that catches the most bugs: count the states
 
-The journey map found something useful: **the worst moment is not taking the photo. It is the
-wait.** Three different waits, in fact — resizing, uploading, and the model thinking.
+The journey map found something useful: **the worst moment is not taking the photo. It is the wait.**
+Three different waits, in fact — resizing, uploading, and the model thinking.
 
-So the camera screen does not have two states. It has **ten**: empty · camera permission denied ·
-no camera, pick a file · resizing · uploading · assessing · result confident · result unsure ·
-offline · failed.
+So the camera screen does not have two states. It has **ten**: empty · camera permission denied · no
+camera, pick a file · resizing · uploading · assessing · result confident · result unsure · offline ·
+failed.
 
 | | |
 | --- | --- |
 | ✅ | the camera screen lists **10 states**, including "camera permission denied" |
 | ❌ | the camera screen shows a photo and a result. That is a demo, not something you can ship |
 
-There is one negative rule too: **the verdict never appears without its confidence.** A rule about
-what the screen must *not* do is worth more than three about what it should.
+There is one negative rule too: **the verdict never appears without its confidence.** A rule about what
+the screen must *not* do is worth more than three about what it should.
 
-### What to check before moving on
-
-Count the states on the main screen. **Under 6 means the spec is not finished** — Engineering will
-build one spinner for three different waits, and the unsure state will quietly not exist.
+**Check before moving on:** count the states on the main screen. **Under 6 means the spec is not
+finished** — Engineering will build one spinner for three different waits, and the unsure state will
+quietly not exist.
 
 ---
 
 ## 8. Step 4 — Architecture, and the first human gate
-
-```
-/run-role 400-architecture
-```
 
 This is the biggest step. It reads the brief, the PRD, the stories and both design files, and writes
 eight things.
@@ -696,18 +576,14 @@ scoring worse on another. Draw a diagram before the choice is made and you are m
 idea.
 
 For zamphora, serverless wins — and **why it wins matters.** The deciding limit came from role 100's
-brief: the free account plan. A limit written in step 1 chose the architecture in step 4. That is
-the line working.
+brief: the free account plan. A limit written in step 1 chose the architecture in step 4. That is the
+line working.
 
-### Diagrams as text, not pictures
-
-`01-context.mmd` and `02-containers.mmd` are **Mermaid** files — diagrams written as text, in the
-repo. An agent can read and update a text file. A picture in a slide deck stops matching the system
-within weeks and nobody notices.
-
-> One real bug this catches: a container diagram had a box called "queue that receives stock
-> updates" with **no arrow pointing into it.** On paper it looked wired up. Nothing was sending it
-> data. Code built from that diagram would wait forever.
+`01-context.mmd` and `02-containers.mmd` are **Mermaid** files — diagrams written as text, in the repo,
+so an agent can read and update them. A picture in a slide deck stops matching the system within weeks
+and nobody notices. One real bug this catches: a container diagram had a box called "queue that
+receives stock updates" with **no arrow pointing into it.** On paper it looked wired up. Code built
+from it would wait forever.
 
 ### ADR or NFR — the pair that gets mixed up
 
@@ -716,20 +592,17 @@ within weeks and nobody notices.
 | **ADR** | *decision* | "we use DynamoDB with a single table" |
 | **NFR** | *target* | "the assessment returns in under 4 seconds, 95% of the time" |
 
-Different files on purpose. **Every ADR ends with an Agent-Readable Summary** — a plain instruction
-with an explicit "do not", such as *"all model calls go through `LlmProvider`. Do not import the
-Anthropic SDK outside `packages/llm/src/adapters/`."* Without it an agent reads the whole record,
-agrees with it, and still writes the import, because what to actually *do* was never said.
-
-Once an ADR is accepted, **the file is never edited** — a new one replaces it and both stay, so the
-history survives.
+Different files on purpose. **Every ADR ends with an Agent-Readable Summary** — a plain instruction with an explicit "do not", such
+as *"all model calls go through `LlmProvider`. Do not import the Anthropic SDK outside
+`packages/llm/src/adapters/`."* Without it an agent reads the whole record, agrees with it, and still
+writes the import, because what to actually *do* was never said. Once an ADR is accepted, **the file is
+never edited** — a new one replaces it and both stay, so the history survives.
 
 ### A number only counts if it has three links
 
 > a written number → an automatic test that checks it → that test blocks a release if it fails
 
-Miss any one of the three and the number is a wish. `06-nfrs.md` is a table where every row carries
-all three. Here are the three rows for this feature, and what each one actually means:
+Miss one and the number is a wish. `06-nfrs.md` is a table where every row carries all three:
 
 | NFR | Target | How it is checked | Which CI job runs it |
 | --- | --- | --- | --- |
@@ -739,31 +612,23 @@ all three. Here are the three rows for this feature, and what each one actually 
 
 Three things in that table are worth unpacking, because they are the parts people skim.
 
-**`p90` means "9 times out of 10".** So `p90 < 4 s` says: 90 out of 100 assessments finish inside 4
-seconds. It is written that way instead of "average 4 seconds" because an average hides the bad
-cases — a few 20-second waits vanish into a nice-looking average, and those are exactly the users
-who give up.
+**Cost really can be a unit test.** You do not call the model. You take the prompt you send, count its
+tokens, multiply by the published price, and assert the result is under $0.012. Add three paragraphs
+to the prompt later and that test fails on the pull request, before the bill arrives. `$0.012` is not a
+guess: it comes from the free-account limit in role 100's brief, divided by the assessments you expect.
 
-**Cost really can be a unit test.** You do not call the model. You take the prompt you send, count
-its tokens, multiply by the published price per token, and assert the result is under $0.012. If
-someone later adds three paragraphs to the prompt, that test fails on their pull request — before
-the bill arrives. `$0.012` is not a guess either: it comes from the free-account limit in role 100's
-brief, divided by the number of assessments you expect.
-
-**The 40 photos have a name: a golden set.** Forty real plant photos where a human has already
-written down the right verdict. The model runs against all 40 and you count how many it got right.
-This is the only honest way to test an AI feature, because there is no "correct output" to compare a
-string against — only "right often enough". Section 10 shows how it is built.
+**The 40 photos have a name: a golden set.** Real photos where a human already wrote down the right
+verdict. This is the only honest way to test an AI feature, because there is no "correct output" to
+compare a string against — only "right often enough".
 
 **The last column is a GitHub Actions job name.** `test` runs on every pull request. `ai-eval` costs
-real money per run, so it runs less often — but it still **blocks the release**, which is the third
-link in the chain. A number checked by a job that cannot stop anything is back to being a wish.
+real money, so it runs less often — but it still **blocks the release**, which is the third link.
 
-Two of those three rows do not exist on a normal project. **AI features need a cost-per-call number
-and a how-often-is-it-right number**, and both have to be decided here, at design time, by the role
-that also chose the architecture.
+Two of those three rows do not exist on a normal project. **AI features need a cost-per-call number and
+a how-often-is-it-right number**, both decided here, at design time, by the role that also chose the
+architecture.
 
-### The timed flow, and why every step is written down
+### The timed flow, and the simplest shape that works
 
 `03-flow-plant-check.md` lists every step with a number:
 
@@ -776,25 +641,18 @@ render result                                                   40 ms
                                                      total   3360 ms
 ```
 
-3360 ms against a 4000 ms budget. **The point is that the numbers must actually add up.** A
-ten-second check that catches a design nobody totalled — one published example claimed 87 ms when
-its own steps came to 92.
+3360 ms against a 4000 ms budget. **The point is that the numbers must add up.** A ten-second check
+that catches a design nobody totalled — one published example claimed 87 ms when its own steps came
+to 92.
 
-### Pick the simplest shape that works
+Then pick the shape: **plain code (if / else) → one AI call → a fixed chain of AI calls → a
+free-roaming agent.** Stop at the first that does the job. Photo assessment is **one AI call**.
+Reaching for an agent by default is the most common mistake right now, and an agent is the hardest
+thing to test, debug and predict the cost of.
 
-> plain code (if / else) → one AI call → a fixed chain of AI calls → a free-roaming agent
-
-Stop at the first one that does the job. Photo assessment is **one AI call**. Reaching for an agent
-by default is the most common mistake right now, and an agent is the hardest thing to test, to debug
-and to predict the cost of.
-
-### The pre-mortem needs a session with nothing to defend
-
-`07-adversarial.md` is written by a **brand-new session that never saw the design being built**. It
-is asked one question: this failed badly — why?
-
-The session that built the design will defend it, exactly as a person defends their own work. A new
-session has nothing to defend. That is why the run plan says "open a fresh session here".
+Last, `07-adversarial.md` is a **pre-mortem written by a brand-new session that never saw the design
+being built**, asked one question: this failed badly — why? The session that built the design will
+defend it, exactly as a person defends their own work. A new session has nothing to defend.
 
 ### And here the line stops
 
@@ -803,27 +661,15 @@ size the storage."* Nobody ever decided this. It is not in any file, so the role
 
 **This is a human gate: a question the AI is not allowed to answer, even if it could guess well.**
 
-Why not? A photo of someone's living room is personal data. Pick 30 days and you may break a law.
-Pick 10 years and you keep something you should not. **The AI cannot see that this is a legal
-question wearing a technical costume.** So it must not choose.
+Why not? A photo of someone's living room is personal data. Pick 30 days and you may break a law. Pick
+10 years and you keep something you should not. **The AI cannot see that this is a legal question
+wearing a technical costume.** So it must not choose. The roles write. **You choose.**
 
-The roles write. **You choose.**
-
-You do not have to remember which questions are gates. They are listed once, in `handoff-map.yaml`:
-
-```yaml
-human_gate_policy:
-  stop_when:
-    - a subagent tries to accept a risk without named human approval
-    - a subagent chooses scope beyond factory/feature.md
-    - a subagent asks for secrets, credentials or production data
-    - a subagent needs a policy, compliance, budget or release decision
-    - a subagent proposes spending money or deploying anything
-    - a subagent proposes a new tool the model may call
-    - a subagent's output would contradict an accepted ADR
-```
-
-Write every gate into `factory/runs/<name>/human-gates.md`. Three things can happen:
+You do not have to remember which questions are gates. `handoff-map.yaml` lists them under
+`human_gate_policy` — accepting a risk, choosing scope beyond `feature.md`, asking for secrets or
+production data, needing a policy, compliance, budget or release decision, spending money, deploying,
+proposing a new tool the model may call, or contradicting an accepted ADR. Write every one into
+`factory/runs/<name>/human-gates.md`. Three things can happen:
 
 | What happened | Called |
 | --- | --- |
@@ -831,26 +677,23 @@ Write every gate into `factory/runs/<name>/human-gates.md`. Three things can hap
 | It stopped and waited. Nothing else got written until you answered | `hard-stop` |
 | **It never asked.** It wrote "photos are kept 30 days" as if that were a known fact | `missed` |
 
-The first two are fine. **`missed` is the one to watch for**, because nothing warns you — the
-document looks finished, the number looks agreed, and a decision was taken from you in silence.
+The first two are fine. **`missed` is the one to watch for**, because nothing warns you — the document
+looks finished, the number looks agreed, and a decision was taken from you in silence.
 
 ### Your answer has to end up in a file
 
-You decide: 90 days. You type it in the chat. The run carries on and it feels done. It is not.
-**The next role starts in a fresh session and cannot see your chat.** Tomorrow that conversation is
-gone and your decision with it.
+You decide: 90 days. You type it in the chat. The run carries on and it feels done. It is not. **The
+next role starts in a fresh session and cannot see your chat.** Tomorrow that conversation is gone and
+your decision with it.
 
 So write it into a file a role reads — here, `factory/feature.md`. Then in `human-gates.md` note
-**which file you wrote it into, and which role reads it next.** That note is the **return path**:
-proof your answer went back into the line instead of staying in a chat. Skip it and you are
-hand-feeding the line — the run looks clean and nothing was really decided.
+**which file you wrote it into, and which role reads it next.** That note is the **return path**: proof
+your answer went back into the line instead of staying in a chat. Skip it and you are hand-feeding the
+line — the run looks clean and nothing was really decided.
 
-### What to check before moving on
-
-- do the milliseconds in the timed flow **add up**?
-- does every ADR end in a **"do not"** line?
-- does every NFR row **name the test** that checks it? A row with "TBD" in the test column hands QA
-  a number it cannot check, so the number means nothing.
+**Check before moving on:** do the milliseconds add up, does every ADR end in a **"do not"** line, and
+does every NFR row **name the test** that checks it? A row with "TBD" in the test column hands QA a
+number it cannot check, so the number means nothing.
 
 ---
 
@@ -858,20 +701,13 @@ hand-feeding the line — the run looks clean and nothing was really decided.
 
 ### Engineering turns targets into types
 
-```
-/run-role 500-engineering
-```
+It reads the stories, the design spec, the architecture options, the container diagram, the NFR table
+and every ADR. It writes five files: `00-conventions.md` (naming, folders, what is banned) ·
+`01-contracts.md` (the Zod schemas — the only place a wire type is defined) · `02-web-spec.md` ·
+`03-api-spec.md` (every endpoint, its body, its errors) · `docs/context/stack.md`.
 
-It reads the stories, the design spec, the architecture options, the container diagram, the NFR
-table and every ADR. It writes five files:
-
-`00-conventions.md` (naming, folders, what is banned) · `01-contracts.md` (the Zod schemas — the
-only place a wire type is defined) · `02-web-spec.md` · `03-api-spec.md` (every endpoint, its body,
-its errors) · `docs/context/stack.md`.
-
-#### Watch one number travel through four roles
-
-This is the clearest proof that the line is doing something. Follow `0.6`:
+**Watch one number travel through four roles.** This is the clearest proof the line works. Follow
+`0.6`:
 
 | Role | What it did with the number |
 | --- | --- |
@@ -881,22 +717,12 @@ This is the clearest proof that the line is doing something. Follow `0.6`:
 | **600** QA | writes a test that sends a 0.55 answer and checks the unsure state appears |
 
 The Zod schema is the important step. **It is one definition, used by the API and by the web app.**
-Without it, the API believes 0.6 and the web app believes something the front-end developer typed
-from memory. The two numbers stop matching, and nobody notices until a user sees a confident wrong
-verdict.
+Without it, the API believes 0.6 and the web app believes something the front-end developer typed from
+memory. The two numbers stop matching, and nobody notices until a user sees a confident wrong verdict.
 
-#### Who may import what
-
-A second thing role 500 writes, and it is unrelated to the number above. The API is built in three
-layers, and each has one job:
-
-| Layer | Its one job |
-| --- | --- |
-| **controller** | speaks HTTP. Reads the request, returns the response |
-| **service** | the actual rules. "Below 0.6, say not sure" lives here |
-| **repository** | talks to the database. Nothing else |
-
-The spec writes down which layer may import which, so the layers cannot quietly merge:
+**Who may import what.** The API has three layers, each with one job: the **controller** speaks HTTP,
+the **service** holds the actual rules ("below 0.6, say not sure"), the **repository** talks to the
+database and nothing else. The spec writes down which may import which:
 
 | Layer | May import | Must not |
 | --- | --- | --- |
@@ -904,33 +730,26 @@ The spec writes down which layer may import which, so the layers cannot quietly 
 | service | repository, other services, contracts | `Request`, `Response` |
 | repository | the data client, contracts | service |
 
-The row that matters most: **a service never sees `Request` or `Response`.** If it does, your
-business rules are welded to HTTP. You can no longer test "below 0.6, say not sure" without building
-a fake HTTP request first — so the rule that matters most becomes the hardest thing to check.
-
-A table like this is only real if a **lint rule** enforces it, so the spec names the rule beside each
-row. A boundary nobody checks is a boundary that lasts about three weeks.
+The row that matters most: **a service never sees `Request` or `Response`.** If it does, your business
+rules are welded to HTTP, and you can no longer test "below 0.6, say not sure" without building a fake
+HTTP request first — so the rule that matters most becomes the hardest thing to check. A table like
+this is only real if a **lint rule** enforces it, so the spec names the rule beside each row. A
+boundary nobody checks lasts about three weeks.
 
 **Check before moving on:** is the `confidence` field in the **contract schema**, or only in the API
-spec? If the API spec describes it and the contract does not, the web app will invent its own type
-and the unsure state will never fire.
+spec? If the API spec describes it and the contract does not, the web app will invent its own type and
+the unsure state will never fire.
 
 ### Infra decides what it costs to be wrong
-
-```
-/run-role 800-infra
-```
 
 Four questions, and a plan that misses one is not a plan: **what exactly ships** · **the deployment
 written as code**, never a console click · **a pipeline with gates that fail the change, not the
 customer** · **a one-step rollback**, named and tested.
 
-On the AWS free account plan there is one thing to understand, and it changes how you think about
-cost: **it cannot send you a surprise bill. It closes the account instead**, and takes the resources
-with it. Data is kept 90 days.
-
-So here cost is not a finance problem. **It is a correctness problem.** A cost mistake does not make
-you poorer, it deletes your work.
+On the AWS free account plan one fact changes how you think about cost: **it cannot send you a
+surprise bill. It closes the account instead**, and takes the resources with it. So cost here is not a
+finance problem. **It is a correctness problem.** A cost mistake does not make you poorer, it deletes
+your work.
 
 The traps that cost money by default:
 
@@ -944,8 +763,8 @@ The traps that cost money by default:
 `02-cost-guardrails.md` turns that into numbers that stop things: 20 assessments per user per day at
 the gateway, a budget alarm at 50%, a kill-switch at 100%.
 
-**Check before moving on:** provisioned, not on-demand? No NAT Gateway? A plan that took the
-framework default for the table has already picked the billed mode.
+**Check before moving on:** provisioned, not on-demand? No NAT Gateway? A plan that took the framework
+default for the table has already picked the billed mode.
 
 ---
 
@@ -953,15 +772,11 @@ framework default for the table has already picked the billed mode.
 
 ### Security reviews something that now exists
 
-```
-/run-role 900-security
-```
-
 This is why Infra runs first. Security reads the container diagram, the contracts, the API spec, the
 environments file and the infrastructure plan — **a real described system**, not an intention.
 
-It writes `00-assets.md`, `01-threats.md`, `02-mitigations.md` and `03-evidence.md`, and **it runs
-two threat lists, because there are two different things to protect:**
+It writes `00-assets.md`, `01-threats.md`, `02-mitigations.md` and `03-evidence.md`, and **it runs two
+threat lists, because there are two different things to protect:**
 
 | List | Protects | Why separate |
 | --- | --- | --- |
@@ -978,12 +793,11 @@ the dangerous shape:
 
 What it finds on zamphora: the photo carries **EXIF GPS — the location of the user's home** · a plant
 nickname is free text reaching the model, a **prompt injection** path · the paid endpoint is a
-**denial-of-wallet** target, not breaking anything, just spending your money until the account
-closes.
+**denial-of-wallet** target, not breaking anything, just spending your money until the account closes.
 
-One more rule: **check a package is real before adding it.** Models invent plausible package names,
-the same invented name returns across sessions, and attackers register those names and wait. This
-has a name — **slopsquatting**.
+One more rule: **check a package is real before adding it.** Models invent plausible package names, the
+same invented name returns across sessions, and attackers register those names and wait. This has a
+name — **slopsquatting**.
 
 ### And here is the break
 
@@ -994,29 +808,18 @@ Role 900 writes this into `02-mitigations.md`:
 
 Read that on its own and it is fine. It found a real risk. It named a real fix. You would approve it.
 
-### QA cannot use it
-
-```
-/run-role 600-qa
-```
-
-QA writes the test plan, the test cases and the AI evaluation plan. It gets to the rate limit and
-stops.
-
-**A rate limit of what?** Ten calls a minute? A thousand a day? There is no number, so there is
-nothing to test.
+Then QA runs, gets to the rate limit, and stops. **A rate limit of what?** Ten calls a minute? A
+thousand a day? There is no number, so there is nothing to test.
 
 Neither document is broken. Security did its job. QA did its job. **The mistake is in what passed
-between them** — and reading either file will never show it, because both look finished.
-
-That is the whole problem in one example. After a run you have eight folders that all look good.
+between them** — and reading either file will never show it, because both look finished. That is the
+whole problem in one example. After a run you have eight folders that all look good.
 
 ### What QA writes anyway
 
 `00-test-plan.md` (in scope, out of scope **with a reason**, top 3 risks, entry/exit rules) ·
-`01-test-cases.md` · `02-ai-evals.md` (the golden set, the rubric, the pass bar).
-
-Two things here have no equal in a normal project.
+`01-test-cases.md` · `02-ai-evals.md` (the golden set, the rubric, the pass bar). Two things here have
+no equal in a normal project.
 
 **Force at least five negatives.** "Write tests for this" produces tests that pass, because that is
 what the words ask for. The valuable half: a photo of a wall · a photo too dark to judge · a healthy
@@ -1040,24 +843,34 @@ output. The run's value is the twenty-minute review you are about to do.
 
 ### Walk every seam
 
-Every seam is already listed in `handoff-map.yaml` under `edges:` — about 34 lines, so you do not
-have to hunt for them.
+Every seam is already listed in `handoff-map.yaml` under `edges:`, so you do not have to hunt for them.
 
-**When:** after the last role, before you build anything. **Who:** you — an AI can draft the table,
-but **you set the labels.** Only you know what you actually wanted, and an AI marking its own eight
-documents will call almost everything clean.
-
-**How:** type `/ai-factory:factory-run`, then go down the `edges:` list asking one question at each line:
+- **When:** after the last role, before you build anything.
+- **Who:** you. An AI can draft the table, but **you set the labels** — only you know what you actually
+  wanted, and an AI marking its own eight documents will call almost everything clean.
+- **How:** type `/ai-factory:factory-run`, then go down the `edges:` list asking one question at each
+  line:
 
 > Did the role on the right have what it needed from this file?
 
 Write one row per edge into `factory/runs/<name>/seam-ledger.md`. Most will say clean. **You are
 looking for three.**
 
+### Why the first seam is almost always `under-supply`
+
+Open the ledger after run 1 and the top rows look broken — six of them in a row, all `under-supply`.
+That is not six different faults.
+
+Role 100 is first, so its only supplier is the two files a person wrote by hand. Nothing was missing,
+misrouted or too long, so `under-supply` is the only label left.
+
+It says one thing: **the hand-written input is the weakest part of the run, and no role can repair
+it.** A first seam full of `clean` rows would mean the role guessed instead.
+
 ### A finding names a file and a fact
 
-- ✅ "600-qa under-supplied by 900-security on `02-mitigations.md` — the rate-limit fix has no
-  number, so no test case could be written against it."
+- ✅ "600-qa under-supplied by 900-security on `02-mitigations.md` — the rate-limit fix has no number,
+  so no test case could be written against it."
 - ❌ "the roles should communicate better."
 
 The first one names the line you go and change. The second one will still be true next run.
@@ -1068,8 +881,8 @@ You found the rate-limit problem at QA. Do not fix it at QA. Ask one question, a
 
 > **Why did that role write it that way? What did it have to work with?**
 
-Open that role's `reads:` list. Inputs fine? The fault is its own. Inputs thin too? Step back one
-more role.
+Open that role's `reads:` list. Inputs fine? The fault is its own. Inputs thin too? Step back one more
+role.
 
 ```mermaid
 flowchart RL
@@ -1079,96 +892,71 @@ flowchart RL
 ```
 
 Security had nothing to be specific about. Architecture had everything it needed and still left the
-target out. **The finding belongs to Architecture.**
+target out, so **the finding belongs to Architecture.** Fix it at QA instead and you invent a number on
+the spot — worse than no test, because from then on the number looks agreed.
 
-Fix it at QA instead and you invent a number on the spot — worse than no test, because from then on
-the number looks agreed.
+### Gate or seam? They feel identical, and you must not answer one of them
 
-### Do not answer the question yourself
-
-Now the hard part. Role 900 stopped mid-run and asked you: *"The NFR table has no calls-per-minute
-target. What should the rate limit be?"* You know it. It is 20 a day. Typing it takes five seconds.
-
-**Do not type it.**
-
-Type it and everything looks fine. Security writes a good document, QA writes a good test, every
-seam says clean. But `06-nfrs.md` is still empty, so next run it happens again — and you paid for
-eight role calls to learn nothing.
-
-Do this instead:
-
-1. Write it in the seam ledger: **under-supply at 400 Architecture**
-2. Let the run stop
-3. Put the number in `06-nfrs.md` before the next run
-
-**Role 100 is the exception.** It runs first, so nothing comes before it — **you are its input.**
-When it asks something only you know, answer. From role 200 on, the answer should already be in an
-earlier document, so a question means that document failed.
-
-### Gate or seam? They feel identical when it happens
-
-Both look the same from where you sit: a role stops and asks you something. But they need opposite
-reactions. Ask yourself one thing:
+Now the hard part. A role stops and asks you something. Both kinds look the same from where you sit,
+and they need opposite reactions. Ask one thing:
 
 > **Is there a role whose job this was?**
 
-- Role 500 asks *"what is the rate limit?"* — **yes.** Role 400 owns the NFR numbers and left it
-  empty. That is a **seam**. Do not answer. Fix the Architecture file, then let 500 read it.
-- Role 900 asks *"how long may we keep photos?"* — **no.** No role in the line owns that answer.
-  That is a **gate**. Answer it. It was always yours.
+- Role 500 asks *"what is the rate limit?"* — **yes.** Role 400 owns the NFR numbers and left it empty.
+  That is a **seam**. Do not answer. Fix the Architecture file, then let 500 read it.
+- Role 900 asks *"how long may we keep photos?"* — **no.** No role in the line owns that answer. That
+  is a **gate**. Answer it. It was always yours.
 
 The *asking* role tells you nothing. What tells you is whether some **other** role owed it that fact.
 
-In a normal company a human architect would pick the rate limit too. Here you gave that job to role
-400 on purpose, and `factory/subagent-slots/400-architecture.md` lists what it may **not** decide —
-a rate-limit number is not on that list. So the split is not important versus unimportant. It is
-**on the list or not on the list**, and the lists are written down.
+When it is a seam, the temptation is enormous. You know the rate limit. Typing it takes five seconds —
+and then everything looks fine: Security writes a good document, QA writes a good test, every seam says
+clean. But `06-nfrs.md` is still empty, so next run it happens again, and you paid for eight role calls
+to learn nothing. Instead: write **under-supply at 400 Architecture** in the ledger, let the run stop,
+and put the number in `06-nfrs.md` before the next run.
 
-One more case: if role 400 itself asks you for the rate limit, that is neither one. That is the role
-dodging its own job. Still do not answer — add a line to its contract instead.
+Two exceptions. **Role 100 is not covered by this** — it runs first, so **you are its input**; when it
+asks something only you know, answer. And if role 400 itself asks for the rate limit, that is neither
+gate nor seam but the role dodging its own job. Still do not answer — add a line to its contract.
+
+The split is not important versus unimportant. `factory/subagent-slots/400-architecture.md` lists what
+that role may **not** decide, and a rate-limit number is not on it. It is **on the list or not on the
+list**, and the lists are written down.
 
 ### What this run actually found
 
 Three findings:
 
-1. **100 → 400, under-supply.** The brief said "cost matters" but never named the date the free
-   account closes. The options table scored cost with no deadline. *(This is the thing from
-   section 5. It travelled three roles before it did any damage.)*
+1. **100 → 400, under-supply.** The brief said "cost matters" but never named the date the free account
+   closes, so the options table scored cost with no deadline. *(This is the thing from section 6. It
+   travelled three roles before it did any damage.)*
 2. **900 → 600, under-supply.** The rate-limit fix had no number — traced back to Architecture.
 3. **300 → 500, clean but late.** The offline state appeared in the design spec, but no story ever
    mentioned offline. It entered scope without passing Product.
 
 And two gates: one **recorded-open** — the photo retention period, still waiting on you — and one
-**missed**: Architecture set the 0.6 confidence threshold as if it were a technical value, when
-Product already owned it.
-
-**That missed gate is the most valuable thing in the run.** No amount of re-reading the documents
-would have found it.
+**missed**: Architecture set the 0.6 confidence threshold as if it were a technical value, when Product
+already owned it. **That missed gate is the most valuable thing in the run.** No amount of re-reading
+the documents would have found it.
 
 ### Then fix the factory, not just the one document
 
 Architecture left the rate-limit number out. You could open `06-nfrs.md`, type it, and move on.
 
-**Do not stop there.** Next run, on the next feature, Architecture leaves out a *different* number.
-You fixed one document. You did not fix the thing that writes the documents.
-
-So change the factory. One line in `factory/subagent-slots/400-architecture.md`:
+**Do not stop there.** Next run, on the next feature, Architecture leaves out a *different* number. You
+fixed one document. You did not fix the thing that writes the documents. So change the factory — one
+line in `factory/subagent-slots/400-architecture.md`:
 
 > ❌ DON'T — ship an NFR row with no number in it
 
-Now that mistake cannot happen again, on any feature.
+Now that mistake cannot happen again, on any feature. That is the loop from section 4, closing: run
+the line → find the seams and gates → one change naming one file → you approve it → edit the factory →
+the next run shows whether it worked.
 
-```mermaid
-flowchart LR
-  R["run the line"] --> E["find the seams<br/>and gates"] --> P["one change,<br/>naming one file"] --> H["you decide<br/>yes or no"] --> F["edit the factory"] --> R2["next run shows<br/>if it worked"]
-```
-
-Two things make such a change real:
-
-- **It names the file it edits.** "Improve the security prompt" is not something anyone can act on.
-  "Add a DON'T row to `factory/subagent-slots/900-security.md` forbidding a fix with no number" is.
-- **You do not know yet if it worked.** Only the next run tells you. That is why `run-record.md` has
-  a column called "Did the next run fix it?" that you fill in later.
+Two things make such a change real. **It names the file it edits** — "improve the security prompt" is
+not something anyone can act on; "add a DON'T row to `factory/subagent-slots/900-security.md`
+forbidding a fix with no number" is. And **you do not know yet if it worked** — only the next run tells
+you, which is why `run-record.md` has a column called "Did the next run fix it?".
 
 ### When is a run finished
 
@@ -1179,11 +967,9 @@ Not when the eight folders look full. A run is finished when it has:
 - **at least 1 change to the factory**, naming the file it edits
 - one row per role, with the model used and why
 
-That list sounds backwards, so read it again: **a run with no problems in it has failed.**
-
-Think about what "no problems" means. Every seam said clean because you answered each question as it
-came up. Nothing stopped. Nothing got written down. You paid for eight role calls, got eight folders
-you could have written yourself, and learned nothing about where your line is weak.
+That list sounds backwards, so read it again: **a run with no problems in it has failed.** Every seam
+said clean because you answered each question as it came up. Nothing stopped, nothing got written down,
+and you paid for eight role calls to get eight folders you could have written yourself.
 
 **A run that stopped twice and wrote down why is the good one.**
 
@@ -1193,69 +979,62 @@ you could have written yourself, and learned nothing about where your line is we
 
 ### Phase two is a different machine
 
-The run is over. The documents now turn into `TASKS.md`, and you switch from `/ai-factory:run-role` to
-`/ai-factory:next-task` — one task at a time, until there is working software.
-
-**The backlog is generated from the specs, never the other way round.** Every task points at the
-spec section it must follow. A task that cannot name its spec section is a task nobody agreed to.
+The run is over. The documents turn into `TASKS.md`, and you switch from `/ai-factory:run-role` to
+`/ai-factory:next-task` — one task at a time, until there is working software. Every task points at the
+spec section it must follow, and a task that cannot name its spec section is one nobody agreed to.
 
 ### The folder
 
 Two repositories, because the line is reusable and the product is not.
 
 ```
-ai-factory/                the line, shipped as a Claude Code plugin
-├── .claude-plugin/        plugin.json (what it is) + marketplace.json (the catalog)
-├── agents/                the role adapters (generated) + explore-subagent
-├── commands/              start, learn, factory-run, run-role, next-task, spec-check
-├── skills/                method skills: adr-writer, code-review, root-cause, spec-driven-tasks
-├── hooks/                 one script that runs before a code review
+ai-factory/                       the line, shipped as a Claude Code plugin
+├── .claude-plugin/               plugin.json + marketplace.json (the catalog)
+├── agents/                       the role adapters — generated, never hand-edited
+├── commands/                     start, learn, factory-run, run-role, next-task, spec-check
+├── skills/                       method skills: adr-writer, code-review, root-cause, tasks
+├── hooks/                        one script that runs before a code review
 ├── factory/
-│   ├── subagent-registry.yaml   who exists, what each writes
-│   ├── handoff-map.yaml         who reads what, run order, gate policy
-│   ├── subagent-slots/          the role contracts — the editable source
-│   └── runs/_templates/         seam ledger, human gates, run record
-└── scripts/               the checks the commands run
+│   ├── subagent-registry.yaml    who exists, what each writes
+│   ├── handoff-map.yaml          who reads what, run order, gate policy
+│   ├── subagent-slots/           the role contracts — the editable source
+│   └── runs/_templates/          seam ledger, human gates, run record
+└── scripts/                      the checks the commands run
 
-project/                   the product: web, API, contracts and infra together
-├── CLAUDE.md              loaded every session. Rules, routing, what to do first
-├── AGENTS.md              20 lines pointing at CLAUDE.md, for other tools
+project/                          the product: web, API, contracts and infra together
+├── CLAUDE.md                     loaded every session. Rules, routing, what to do first
+├── AGENTS.md                     20 lines pointing at CLAUDE.md, for other tools
 ├── .claude/
-│   ├── settings.json      what the agent may run, may never run, and the plugin it turns on
-│   ├── memory/            facts that survive between sessions
-│   └── skills/            the skills that name this stack
+│   ├── settings.json             what the agent may run, may never run, the plugin
+│   ├── memory/                   facts that survive between sessions
+│   └── skills/                   the skills that name this stack
 ├── factory/
-│   ├── feature.md               the one feature the line runs on
-│   ├── COST_GUARDRAILS.md       how many calls, which model, when to stop
-│   └── runs/<slug>/             this run's seam ledger, gates and record
-├── docs/                  where the roles write, one folder per role
-│   ├── ADR/               decisions, each ending in an explicit "do not"
-│   └── learn/             this note. No role may write here
-├── context/cold/          reasoning that only ever existed in a conversation
-└── .github/workflows/     CI, ready before any code exists
+│   ├── feature.md                the one feature the line runs on
+│   ├── COST_GUARDRAILS.md        how many calls, which model, when to stop
+│   └── runs/<slug>/              this run's seam ledger, gates and record
+├── docs/                         where the roles write, one folder per role
+│   ├── ADR/                      decisions, each ending in an explicit "do not"
+│   └── learn/                    this note. No role may write here
+├── context/cold/                 reasoning that only ever existed in a conversation
+└── .github/workflows/            CI, ready before any code exists
 ```
 
-`apps/`, `packages/` and `infra/` are missing on purpose. How the repository is arranged is role
-400's decision, and it writes an ADR before anything is installed.
+`apps/`, `packages/` and `infra/` are missing on purpose. How the repository is arranged is role 400's
+decision, and it writes an ADR before anything is installed.
 
 ### Two files per role, and only one is yours
 
-Each role has two files, and it matters which one you open. Both are in the `ai-factory` repository.
+Each role has two files, both in `ai-factory`. `factory/subagent-slots/900-security.md` is written
+**by you, by hand**: how the role should think — its goal, its do and do-not table, what it must
+refuse. `agents/900-security.md` is generated from it by `derive-agents.mjs`: which files to read,
+which to write.
 
-| | `factory/subagent-slots/900-security.md` | `agents/900-security.md` |
-| --- | --- | --- |
-| Who creates it | **you**, by hand | the script `derive-agents.mjs` |
-| What is inside | how the role should think: its goal, its do and do-not table, what it must refuse | which files to read, which to write |
-
-**The script is not clever.** It is 110 lines. It copies a name and description out of the slot, a
-read list out of the handoff map, and a write list out of the registry. **No AI is used.** Delete all
-eight generated files, run it again, and the same eight come back exactly.
-
-Why not write one file by hand? Because the read list is already in the handoff map. Writing it a
-second time gives you two copies of the same list, and one day you change one and forget the other.
-
-If you edit the generated file, **your change disappears the next time the script runs**, and nothing
-warns you. That is why it starts with a "do not edit" line.
+**The script is not clever.** It is 110 lines, uses **no AI**, and copies the read list out of the
+handoff map and the write list out of the registry. Delete all eight generated files, run it again,
+and the same eight come back exactly. Writing them by hand instead would mean two copies of the same
+read list, and one day you change one and forget the other. Edit a generated file and **your change
+disappears the next time the script runs**, with no warning. That is why it starts with a "do not
+edit" line.
 
 ### The commands
 
@@ -1272,14 +1051,12 @@ Every one comes from the plugin, so every one carries its name.
 
 ### The scripts underneath
 
-You never type these. The commands run them for you. They matter because each one reads the real
-state on disk instead of trusting a document. They answer four questions: which roles have run, is
-the wiring sound, what may this one role read, and do the generated agents still match the slot
-contracts.
+You never type these — the commands run them. Each reads the real state on disk instead of trusting a
+document: which roles have run, is the wiring sound, what may this role read, do the generated agents
+still match the slot contracts.
 
-The most useful one is the wiring check. It reads the two control files — the registry says who
-**writes** what, the handoff map says who **reads** what — and asks whether they agree. Five things
-can be wrong:
+The most useful is the wiring check. It reads the two control files — who **writes** what, who
+**reads** what — and asks whether they agree:
 
 | The mistake | What it costs you |
 | --- | --- |
@@ -1289,11 +1066,9 @@ can be wrong:
 | The handoff map's `edges:` arrows disagree with its own `reads:` lists | You edited one and forgot the other, so the two now describe different lines |
 | A file the run needs is not in your project | The first role stops before it writes anything |
 
-The first four mistakes are inside the plugin. The last one is inside your project. The check reads
-both repositories at the same time, so one command answers both questions.
-
-**Every one of these is cheap to fix now and expensive to find later.** Without the check you meet
-them as a role that stopped for no clear reason, halfway through a run you already paid for.
+The first four are inside the plugin, the last is inside your project, and the check reads both at
+once. **Every one is cheap to fix now and expensive to find later.** Without the check you meet them as
+a role that stopped for no clear reason, halfway through a run you already paid for.
 
 ### How a fresh session knows anything at all
 
@@ -1303,29 +1078,34 @@ them as a role that stopped for no clear reason, halfway through a run you alrea
 | **Facts** | `.claude/memory/` | who is the user, what is already decided? |
 | **State** | the files on disk | how far along is the work? |
 
-The first two load automatically. The third has **no progress file** — `/ai-factory:start` counts the documents
-on disk. A progress file would be a second copy of the truth, and two copies stop matching. Counting
-real files cannot be wrong, because the files **are** the work.
+The first two load automatically. The third has **no progress file** — `/ai-factory:start` counts the
+documents on disk. A progress file would be a second copy of the truth, and two copies stop matching.
+Counting real files cannot be wrong, because the files **are** the work.
 
 ### Your session plan
 
-One row is one sitting. Stop at the end of each and read what came out.
+**One role per sitting, then stop and read what came out.** Pairing two saves an hour and costs you the
+review, which is the part you are actually paying for.
 
 | Session | Type | Produces |
 | --- | --- | --- |
-| 1 | `/ai-factory:run-role 100-consulting`, then `200-product` | brief, market scan, PRD, stories with numbers |
-| 2 | `/ai-factory:run-role 300-design` | journey map, CONTEXT + SPEC, tokens |
-| 3 | `/ai-factory:run-role 400-architecture` | options, C4, timed flow, ADRs, NFR table |
-| 4 | **a fresh session, no history** | the pre-mortem |
-| 5 | `/ai-factory:run-role 500-engineering`, then `800-infra` | specs, deployment plan, cost limits |
-| 6 | `/ai-factory:run-role 900-security`, then `600-qa` | threats, fixes, test plan, evals |
-| 7 | `/ai-factory:factory-run` | seam ledger, gates, then `TASKS.md` |
+| 1 | `/ai-factory:run-role 100-consulting` | brief, use cases, decisions, market scan |
+| 2 | `/ai-factory:run-role 200-product` | PRD, stories with numbers, traceability |
+| 3 | `/ai-factory:run-role 300-design` | journey map, CONTEXT + SPEC, tokens |
+| 4 | `/ai-factory:run-role 400-architecture` | options, C4, timed flow, ADRs, NFR table |
+| 5 | **a fresh session, no history** | the pre-mortem |
+| 6 | `/ai-factory:run-role 500-engineering` | conventions, contracts, web and API specs |
+| 7 | `/ai-factory:run-role 800-infra` | environments, IaC plan, cost limits, CI/CD |
+| 8 | `/ai-factory:run-role 900-security` | assets, threats, mitigations, evidence |
+| 9 | `/ai-factory:run-role 600-qa` | test plan, test cases, AI evals |
+| 10 | `/ai-factory:factory-run` | seam ledger, gates, then `TASKS.md` |
 
 ---
 
 ## 13. Glossary
 
-Look a word up here instead of guessing. One plain sentence each.
+Look a word up here instead of guessing. One plain sentence each. AWS services are not here — those
+belong in the AWS study notes.
 
 ### The process
 
@@ -1341,94 +1121,50 @@ Look a word up here instead of guessing. One plain sentence each.
 | **Seam** | One file crossing from one role to the next. This is where the line usually breaks. A seam is a join, like a sewn join in cloth. |
 | **Seam ledger** | The table where you record every seam, one row each, with its label and what happened. "Ledger" is an old accounting word for a book of one-line entries. |
 | **Human gate** | A point where the line stops and a person decides. Example: accepting a risk. |
-| **Run** | One pass of the whole line over one feature. Its evidence lives in `factory/runs/<name>/`. |
-| **Hot / warm / cold** | Hot is `CLAUDE.md`, loaded always. Warm is `docs/`, loaded when needed. Cold is old notes, rarely read. |
-| **Skill** | A saved procedure for one kind of task. It must work in any repository. |
-| **Hook** | A shell command that runs automatically on an event, such as before a code review. |
-| **Command** | A saved prompt you run by typing `/name`. |
-| **MCP server** | A standard way to give an agent tools that reach outside the repo — a tracker, a database, a browser. The other blocks give it words; this gives it actions. |
 | **Return path** | Where the answer to a stopped gate is written down, and which role reads it next. An answer given only in chat does not count. |
-| **Token budget** | An upper limit written into the setup, with a rule for what happens when it is reached. A limit with no stop rule is only a wish. |
-| **Active constraint** | The note on a decision saying what could change it within 30 days. Stops an old choice becoming a rule nobody agreed to. |
+| **Run** | One pass of the whole line over one feature. Its evidence lives in `factory/runs/<name>/`. |
 
 ### The documents
 
 | Word | Plain meaning |
 | --- | --- |
 | **PRD** | Product Requirements Document. One page saying what the product must do and how success is measured. |
-| **BA** | Business Analyst. Turns a business need into requirements a developer can build. |
-| **SME** | Subject Matter Expert. The person who knows the domain. |
+| **The four risks** | Value, Usability, Feasibility, Viability — the four ways a feature can die, from Marty Cagan's *Inspired*. `01-use-cases.md` asks all four about every job, because teams normally check only Feasibility. |
+| **JTBD** | Jobs To Be Done. A story shape that puts the moment into the requirement: "when I notice X, I want Y, so I can Z". |
 | **Acceptance criterion** | The exact rule that decides if a feature is done. It must pass or fail, with no opinion. |
 | **ADR** | Architecture Decision Record. What was decided, why, what was rejected. Never edited once accepted. |
 | **NFR** | Non-Functional Requirement. A quality target with a real number: speed, cost, uptime, how often the answer is right. |
 | **C4** | A way to draw a system at four zoom levels. Only levels 1 and 2 are drawn; the code is levels 3 and 4. |
 | **Mermaid** | A way to write a diagram as text, so it lives in git and an agent can read and update it. |
-| **Delta-spec** | For a change to existing code: what is ADDED, MODIFIED and REMOVED. The REMOVED part is written even when empty. |
+| **p90** | "Nine times out of ten". Written instead of an average, because an average hides the slow cases. |
 
-### Testing and AI quality
+### Testing, AI quality and the code
 
 | Word | Plain meaning |
 | --- | --- |
+| **Eval** | A test for an AI feature. It measures how often the answer is right, not whether the code runs. |
+| **Golden set** | The examples an eval runs against — here, 40 photos where a human already wrote down the right verdict. |
 | **LLM-as-judge** | Using a model to score another model's answer against a rule, instead of checking every one by hand. |
-| **Eval** | A test for an AI feature. It measures how often the answer is right, not whether the code runs. Its examples are the **golden set** — here, 40 photos with known verdicts. |
-| **Negative case** | A test for something that should fail or be refused. A generated suite is mostly cases that pass. |
-| **Guard test** | The test added in the same pull request as a bug fix, so the bug cannot come back. |
 | **Judge calibration** | Scoring a sample by hand and comparing it with the model judge. Without it, the pass bar measures the judge. |
-
-### The code
-
-| Word | Plain meaning |
-| --- | --- |
+| **Negative case** | A test for something that should fail or be refused. A generated suite is mostly cases that pass. |
+| **Required check** | A CI job that must pass before a pull request can merge. A hook helps; only this enforces. |
 | **Zod** | A library that checks at runtime that data has the right shape. TypeScript types vanish when the code runs; Zod does not. |
 | **Contract** | A Zod schema in `packages/contracts` describing something that crosses between the browser and the API. |
 | **problem+json** | A standard shape for error responses (RFC 9457), so every error looks the same to the front end. |
 | **LlmProvider** | The one place in the code that talks to an AI model. Swapping providers means writing one new adapter. |
 
-### AWS
-
-| Word | Plain meaning |
-| --- | --- |
-| **Lambda** | Runs your code only when a request arrives. No server to keep running, no bill when idle. |
-| **Cold start** | The extra delay the first time a Lambda runs after being idle, because it must start up first. |
-| **API Gateway** | The front door that receives HTTP requests and passes them to Lambda. It can also check tokens and rate limits. |
-| **DynamoDB** | A database that is fast when you ask by key, and bad at questions you did not design for in advance. |
-| **Provisioned vs on-demand** | Two DynamoDB billing modes. The free allowance covers **provisioned** only, and on-demand is the default. |
-| **S3** | File storage. Here it holds the plant photos. |
-| **Pre-signed URL** | A short-lived link letting the browser upload one file straight to S3 without the API touching it. |
-| **CloudFront** | The cache in front of your site, close to the user. Makes the web app load fast worldwide. |
-| **Cognito** | The AWS service that handles sign-up, sign-in and tokens, so you do not write your own. |
-| **Parameter Store** | Where server secrets are kept. `SecureString` is the encrypted kind, and it is free. |
-| **KMS** | The key service that does the encrypting. AWS-managed keys are free; your own key costs $1 a month forever. |
-| **CDK** | Writing your cloud setup as TypeScript instead of clicking in the console. One command rebuilds everything. |
-| **IaC** | Infrastructure as Code. The general name for what CDK does. |
-| **NAT Gateway** | Lets private servers reach the internet. About $33 a month even at zero traffic. |
-| **CloudWatch** | Where logs, metrics and alarms live. |
-| **OIDC** | How GitHub Actions proves who it is to AWS without a stored password. Short-lived, safer. |
-
 ### Security
 
 | Word | Plain meaning |
 | --- | --- |
-| **Trust boundary** | A line where data moves from somewhere you control to somewhere you do not. Threats live on these lines. |
-| **STRIDE** | A checklist of six threat kinds used to find problems in a diagram, one boundary at a time. |
 | **OWASP LLM Top 10** | The standard list of the ten most common ways AI features get attacked. Covers one model call. |
 | **OWASP Agentic Top 10** | The 2026 list for **agents** — things with memory, tools and permission to act. Covers the factory, not just the feature. |
 | **Lethal trifecta** | Private data, untrusted outside content, and a way to send data out. Any two are usually fine; all three together are the dangerous shape. |
-| **Slopsquatting** | An attacker registers a package name that models keep inventing, and waits for someone to install it. |
 | **Prompt injection** | Text hidden in user content that tries to give the model new orders. A nickname or a note in a photo can do this. |
+| **Slopsquatting** | An attacker registers a package name that models keep inventing, and waits for someone to install it. |
 | **Denial-of-wallet** | An attack that costs you money instead of breaking anything. Here, a loop calling the paid AI endpoint. |
-| **CIA** | Confidentiality, Integrity, Availability. The three things security protects. |
-| **L×I** | Likelihood times Impact, scored 1 to 25. A simple way to rank risks. |
-| **Blast radius** | How much damage one problem causes, written as a real number. "Many users" is not a blast radius. |
-| **Least privilege** | Give each part only the access it needs. Not "be careful with the admin key" — never hand over the admin key. |
 | **Kill-switch** | A tested way to stop a feature fast. A named, reachable person, independent of the broken part. |
 | **EXIF** | Hidden data inside a photo file. It usually includes the GPS location where the photo was taken. |
-| **JWT** | A signed token proving who the user is. The signature proves who issued it, not that the contents are what you expect. |
-| **PKCE** | The safe sign-in flow for apps that cannot keep a secret, such as anything running in a browser. |
-| **JWKS** | The public keys an API downloads to check a token's signature. No shared password needed. |
-| **Required check** | A CI job that must pass before a pull request can merge. A hook helps; only this enforces. |
-| **Rollback** | Going back to the previous working version. It must be one step, and it must have been tested. |
-| **SLO** | The uptime or speed you promise, written as a number you can check. |
 
 ---
 
