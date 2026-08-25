@@ -20,8 +20,12 @@ one that noticed it. The notice point is a symptom.
 | 1 | 100-consulting | 200-product | `docs/100-consulting/00-context-brief.md` | `under-supply` | Carried the problem, the four hypotheses and the cost research, and 200 built the whole PRD from it. One gap is serious: §4 works out that an unprotected endpoint empties the credit balance, and then never names the limit that stops it. 200 had to write US-08 with the number left blank, which is its one hard stop. Two smaller things: the 30-assessments-a-month figure still rests on the old four-plant count (O-9), and hypothesis R2 was worded so that it excluded Opus 5 and showed Opus 5 at the edge in the same paragraph — repaired, see finding 12 |
 | 2 | 100-consulting | 200-product | `docs/100-consulting/01-use-cases.md` | `under-supply` | The routing worked: UC-1 says "what the list of possible verdicts is — 200 Product decides", and 200 decided it. Four numbers did not come with it. UC-1 says the flow must be "short enough to finish while standing" and hands the number to 300 Design. UC-4 says a session lasts "long enough". UC-7 says the kill-switch works without a deploy and gives no time. UC-6 hands the retry limit to 800 Infra. An acceptance criterion cannot wait for a later role, so 200 proposed 30 seconds, 30 days and 60 seconds, and marked all three as needing a person |
 | 3 | 100-consulting | 200-product | `docs/100-consulting/03-market.md` | `routing` | Row W-3 says the reasoning would make "the `unsure` and `cannot-tell` bands from D-02 easier to believe". D-02 is a heading in `docs/100-consulting/02-decisions.md`, and `handoff-map.yaml` does not give that file to 200-product. The reference cannot be followed by the role that reads it. Everything else in the file landed: all seven W-rows reached the PRD's Out list with a person named as owner, and none was pulled into scope |
-| 4 | 100-consulting | 300-design | `docs/100-consulting/00-context-brief.md` | _not yet judged_ | |
+| 4 | 100-consulting | 300-design | `docs/100-consulting/00-context-brief.md` | `clean` | **Judged 2026-08-25.** It carried the four things a design needs and could not have got anywhere else: the moment (standing, evening, one hand, poor light, §5.2), the photo as personal data (§5.4), the Anthropic image limits that become on-device checks (10 MB, 8000x8000 px, four formats, and the warning about images under 200 px, §5.3), and the rule that the output with value is the next action and not the name of the illness. Nothing in it had to be worked around |
 | 5 | 100-consulting | 400-architecture | `docs/100-consulting/00-context-brief.md` | _not yet judged_ | |
+| 6 | 200-product | 300-design | `docs/200-product/001-photo-assessment/00-prd.md` | `clean` | Every screen in `02-SPEC.md` traces to a row in §4 or a code in §5. The closed lists are what made the design testable: three bands, ten verdict codes, four `cannot-tell` reasons, four retake advice lines. A closed list can be drawn; free text cannot. §8 also arrived with all ten gates closed and the numbers filled in, so no acceptance criterion reached this role holding an `<UNSET>` marker |
+| 7 | 200-product | 300-design | `docs/200-product/001-photo-assessment/01-user-stories.md` | `under-supply` | Four gaps, all found while listing states. **The screen that creates a pot has no story**, and US-01 AC-3 tells the app to ask for one, so a new user reaches a dead end on the first screen (gate 21). **No story says how an old assessment is opened**, and US-10 AC-4 describes reading one after its photo was deleted, so a way in must exist. **No story says where the language is switched**, and US-11 requires the whole flow in both. And **US-02's malformed-answer fallback contradicts US-05 AC-2**: one says treat it as `cannot-tell`, the other says every `cannot-tell` carries one of four reasons, and none of the four fits an unreadable answer (gate 22). None of the four blocked the run |
+| 8 | run input | 300-design | `factory/feature.md` | `clean` | **The first time on this run that a role's hardest input arrived complete.** The visual identity — palette with contrast measured against both surfaces, the band shapes, the type scale, the MUST NOT list, the accessibility table — was written into the input before the role was dispatched, because gate 19 was answered first. The role therefore decided no colour and no rule. One sentence in it is stale, and it is a leftover rather than a gap: see finding 17 |
+| 9 | 400-architecture | 300-design | no file — the edge does not exist | `routing` | 300 Design runs before 400 Architecture, so **no user interface component library is named anywhere when the screens are specified**. Choosing one is accepting a dependency, which is never a role's call, so the role named none and wrote all nineteen components from nothing with full state lists. The contract allows exactly this ("or is explicitly flagged as new"). It is recorded as `routing` and not `missing` because the order of the roles is what produced it, not a lost file. See finding 16 |
 
 ## Findings
 
@@ -184,6 +188,84 @@ A finding names a file and a fact. Write at least three.
     out of date, which a chosen cap would. The work it creates is one failure state, not a budget
     system.
 
+### 300-design, 2026-08-25
+
+16. **The order of the roles decides what 300 Design is allowed to name.** `handoff-map.yaml` runs
+    300 Design before 400 Architecture, so no user interface component library exists when the
+    screens are written. Choosing one is accepting a dependency, which `CLAUDE.md` lists as never a
+    role's call. So every one of the nineteen components in
+    `docs/300-design/001-photo-assessment/02-SPEC.md` §3 is written from nothing, with its own state
+    list. **The slot contract already allows this** — its check condition says every component named
+    must exist in the chosen library "or be explicitly flagged as new" — so this is the contract
+    working, not a break. It is written down because the same question arrives again at 500
+    Engineering, and the answer there is a real decision: build all nineteen by hand, or adopt a
+    library and meet these state lists with it. Recorded as gate 24.
+
+17. **A rejected design direction left one sentence behind, and it contradicts the palette in the
+    same file.** `factory/feature.md`, "Two constraints that come from this product", says the base
+    "is chosen for outdoor legibility and because a plant photo sits well on a warm neutral", and
+    that "dark mode is a variant to be added later, not the base". The palette four sections above
+    says the page is `#14513A`, never white and never near-white. Both cannot be true. The warm
+    neutral is left over from the `#F7F4EC` warm paper attempt the owner rejected. 300 Design
+    followed the palette, because it is the explicit, measured, later decision, and recorded the
+    contradiction in `01-CONTEXT.md` §6. A second effect: a deep green page with light text is
+    already a dark design, so "dark mode later" has no meaning as written, and run 1 ships one
+    theme. **This is finding 8 in a third form** — a file became wrong in one sentence because a
+    decision next to it changed, and no role failed.
+
+18. **The owner's own accessibility table and the owner's own palette disagree by 1.2:1.** The band
+    table in `factory/feature.md` puts `--color-warn` (`#FF9478`) on `--color-raised` (`#1B6446`)
+    for the `unsure` label. The palette table on the same page measures that pair at **3.3:1**.
+    Normal text needs 4.5:1. The file also says `#FF9478` is "strong enough for a rule, an icon and
+    a label, and not for a paragraph", so the intent was right and the label is the case that slips
+    through, because a label is normal-size text. 300 Design fixed it by size rather than by colour
+    — the `unsure` label is only ever set at 28 px or larger, where the bar is 3:1 — and recorded it
+    as gate 23 rather than changing a colour the owner approved. **The general lesson: a contrast
+    number belongs to a pair of colours *and a text size*. Two of the three were written down.**
+
+19. **A closed list can be complete for the model and incomplete for the screen.**
+    `01-user-stories.md` US-02 says a malformed answer is treated as `cannot-tell`. US-05 AC-2 says
+    every `cannot-tell` shows one reason from a closed list of four: too dark · not a plant · more
+    than one plant · too small or too blurred. **None of the four describes an answer the app could
+    not read**, which is a failure of the model's output and not of the photo. The four reasons are
+    all about the photo, because that is what `cannot-tell` meant when the list was written. So the
+    screen has a state the contract has no value for. 300 Design solved it on the screen and not in
+    the contract — one plain sentence, no fifth code — and handed the choice back as gate 22. The
+    earliest role that could have carried it is 200-product, which wrote both stories.
+
+20. **Two acceptance criteria in this feature need a screen that no story defines.** US-01 AC-3
+    tells the app to ask the user to "pick or create a pot", and US-10 AC-4 describes opening an
+    assessment after its photo was deleted. Neither the create-a-pot screen nor the way back to an
+    old assessment is a story in this run. The design ends at a link in both cases, and the link has
+    no target. **The flow is not walkable end to end for a person with no pots yet.** The earliest
+    role that could have carried it is the run input: `factory/feature.md` puts "capturing or
+    choosing a photo of one plant" in scope and assumes the plant is already named, which is true of
+    the owner's own apartment and not true of a fresh account. Recorded as gate 21.
+
+21. **A stack decision was living in the rules layer, where no role can see it.** Found on
+    2026-08-25, while briefing research that gate 24 asked for. Three files in `.claude/skills/`
+    already assume **Radix primitives and Tailwind with an `@theme` token block** — the
+    accessibility skill names Radix five times and says "Radix does the hard parts"; the coding
+    standards skill says tokens come from the `@theme` block; the testing skill says never query by
+    a Tailwind class. That is a component library and a styling engine, chosen by nobody, recorded in
+    no decision file, and backed by no ADR.
+
+    **No role reads `.claude/skills/`.** It is not on any `reads:` list, and it never was. So 400
+    Architecture could pick a different library, write a correct ADR, and contradict three files that
+    load automatically every time anyone writes code. Neither side would notice, because the two
+    layers cannot see each other.
+
+    The research made it worse before it made it better: it found the assumption is **half right and
+    half out of date**. The shape holds — headless primitives plus owned components plus `@theme`
+    tokens is still correct. The primitive does not: Radix's last commit was 2026-07-31 and 95 of its
+    last 100 commits are by one author, while shadcn made Base UI its default in July 2026. So the
+    skills are steering toward a choice the evidence no longer supports, and nothing in the line
+    would have caught that.
+
+    The research is now written into `factory/feature.md` under "What the roles must investigate",
+    which **is** an input to 400. That closes this instance. The general problem is change 14 in
+    `run-record.md`.
+
 ## The honest-run declaration
 
 - Files hand-fed to a subagent outside its `reads:` list: **none.** 100-consulting read exactly
@@ -274,3 +356,54 @@ This is finding 14's fourth instance and the clearest one: a correct document be
 because its input changed, and no role failed. It is also the first time the gap was repaired instead
 of being covered by the "`factory/feature.md` wins" rule, because 300 Design reads these two files
 next and would have met `<UNSET>` in an acceptance criterion.
+
+### 300-design, 2026-08-25
+
+- Files hand-fed outside its `reads:` list: **none.** 300-design read exactly `factory/feature.md`,
+  `docs/100-consulting/00-context-brief.md`,
+  `docs/200-product/001-photo-assessment/00-prd.md` and
+  `docs/200-product/001-photo-assessment/01-user-stories.md`, plus its own slot contract and the
+  `human_gate_policy` section of `factory/handoff-map.yaml`. **It did not read the approved mockup**
+  in `factory/runs/001-photo-assessment/design-reference/`, which `factory/feature.md` says is a
+  reference and not a contract that any role reads. Everything the mockup carries was already
+  written out in words and numbers in the input.
+- It was told, in the dispatch and not in a file, how to write: B1 English, the banned-word list,
+  and the six-month test. None of those is a fact about the product. No colour, no number, no name
+  and no decision was passed by hand.
+- Slots that stopped: **none stopped dead.** 300 hit five stop-and-ask conditions and recorded all
+  five as gates 20 to 24, each with the assumption it continued on. Two of them (21 and 22) leave a
+  real hole a person has to close: the flow cannot be walked end to end by someone with no pots yet,
+  and a malformed answer has a screen state but no contract value.
+- Slots re-run: none.
+- **The first role on this run whose visual decisions were all made before it started.** Gate 19 was
+  answered on 2026-08-25, before dispatch. The result is visible in the output: `03-tokens.md` is a
+  translation of the owner's palette into names, and it adds no colour. The only values 300 chose by
+  itself are the spacing scale, the two motion durations, the two breakpoints and the two typeface
+  names, and the typefaces are recorded as gate 20 because the owner may replace either.
+
+### A whole story was written by hand into 200's files, 2026-08-25
+
+This is the largest hand edit on the run and the least defensible on the rules as written. It is
+**not** a small repair: US-15 and metric M-23 are new claims, not rephrased ones.
+
+**Why it happened.** 300 Design found that no use case and no story said how a plant gets into the
+app, so a new account could not reach a single assessment. The owner put "add a pot: a name and a
+room" in scope the same day, as gate 21. That closed the scope question and left a hole in
+`01-user-stories.md` — a file 400 Architecture, 500 Engineering and 600 QA all read. Without the
+story, three roles would have designed, built and tested around a screen that has no acceptance
+criteria.
+
+**What was written.** `01-user-stories.md` gains US-15 with eight acceptance criteria and a
+"deliberately not in this story" list. `02-traceability.md` gains M-23, a US-15 row, and a corrected
+count from fourteen stories to fifteen. Both files say plainly that US-15 came after the role ran and
+was written by hand.
+
+**What it cost to avoid.** Re-running 200-product is about 78,000 tokens to add one story to three
+files. The correction pass that should do this properly is change 4 in `run-record.md` and does not
+exist yet.
+
+**One gap was left open rather than filled.** US-15 creates a pot and never changes it: a name cannot
+be corrected and a dead plant cannot be removed. Renaming and deleting a pot are recorded in the
+"considered and not written" table, not quietly solved. That is the owner's call, and it blocks no
+story above.
+

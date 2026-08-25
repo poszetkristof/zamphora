@@ -24,17 +24,37 @@ Live canvas: <https://claude.ai/code/artifact/82b28bdb-30e0-4624-854c-3c4f95140f
 Copy this folder to the new run, replace the artboards, rebuild. Nothing else moves. A run without a
 `design-reference/` folder is simply skipped.
 
-## The next step, after 300 Design runs
+## The mockups run on the real tokens
 
-Right now these files carry raw values — `#14513A`, `padding: 26px`, `font-size: 44px`. 300 Design
-will turn those into named tokens in `docs/300-design/001-photo-assessment/03-tokens.md`.
+**Done 2026-08-25, once 300 Design produced `docs/300-design/03-tokens.md`.** The artboards no
+longer carry hex values. They use `var(--color-ground)`, `var(--text-verdict)` and so on.
 
-**When it does, change these files to use the token names instead of the raw values**, and have the
-preview page load the same token file. Then the mockup consumes the tokens rather than repeating
-them, and the two cannot drift — changing a token changes the mockup. That is the only version of
-"kept up to date" that does not depend on somebody remembering.
+There is **one** place that turns the markdown table into CSS: `scripts/design-tokens.mjs`. It
+writes `docs/300-design/tokens.css`, and that file is the only CSS copy of the palette. Everything
+else takes it:
 
-Until then, they are a snapshot, and the snapshot is honest about being one.
+- `docs/design-preview.html` carries it once, in its own `<head>`. The page chrome around the
+  mockups uses the same tokens, so the page cannot drift from the design it shows.
+- Each `.dc.html` carries a **copy** between `tokens:start` and `tokens:end`. This one is a copy and
+  not an import because the design canvas cannot resolve a stylesheet by name inside an artboard. A
+  `<link>` there fails without an error.
+
+**So the mockup cannot disagree with the spec any more.** Change a value in `03-tokens.md`, run the
+two commands, and every screen changes.
+
+Two commands, in this order:
+
+```bash
+node scripts/sync-design-tokens.mjs     # 03-tokens.md -> tokens.css -> every artboard
+node scripts/build-design-preview.mjs   # artboards    -> docs/design-preview.html
+```
+
+The sync **fails loudly** if an artboard uses a token the file does not define, so a typo cannot
+pass quietly. Never edit inside the `tokens:start` block, and never edit `tokens.css` — both are
+overwritten.
+
+One value is deliberately not a token: `#0A2318` in `CannotTell.dc.html` is a marked placeholder
+standing in for a photo too dark to judge. It is picture content, not a design colour.
 
 ## About the `.dc.html` files
 

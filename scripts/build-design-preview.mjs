@@ -9,10 +9,9 @@
 // The output is DERIVED. Edit the .dc.html artboards, then re-run this — never edit the page.
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { join } from "node:path"
+import { ROOT, tokenCss } from "./design-tokens.mjs"
 
-const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const RUNS = join(ROOT, "factory/runs")
 const OUT = join(ROOT, "docs/design-preview.html")
 
@@ -59,42 +58,48 @@ ${r.notes.map((n) => `    <div class="note">${esc(n)}</div>`).join("\n")}
   </div>
 </section>`
 
+// This page carries the tokens ONCE, for itself and for every artboard pasted into it. The chrome
+// around the mockups uses them too, so the page cannot drift from the design it is showing.
 const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>zamphora — design preview</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
+${tokenCss().css}
+
   * { box-sizing: border-box; }
-  html { background: #0B2119; }
-  body { margin: 0; padding: 40px 20px 80px; color: #DDEADF;
-         font-family: 'IBM Plex Sans','Segoe UI',system-ui,sans-serif; -webkit-font-smoothing: antialiased; }
-  a { color: #FFC94A; }
-  h1 { font-family: 'EB Garamond', Georgia, serif; font-size: 40px; font-weight: 500;
-       letter-spacing: -0.02em; color: #F3FAF2; margin: 0 0 6px; }
-  h2 { font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; font-weight: 500;
-       letter-spacing: 0.1em; text-transform: uppercase; color: #FFC94A; margin: 0 0 20px;
-       padding-bottom: 10px; border-bottom: 1px solid #2E7C5A; }
-  .lede { max-width: 64ch; line-height: 1.55; color: #BCD6C6; margin: 0 0 48px; }
+  html { background: var(--color-well); }
+  body { margin: 0; padding: 40px 20px 80px; color: var(--color-body);
+         font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+  a { color: var(--color-accent); }
+  h1 { font-family: var(--font-display); font-size: 40px; font-weight: 500;
+       letter-spacing: -0.02em; color: var(--color-verdict); margin: 0 0 6px; }
+  h2 { font-family: var(--font-body); font-size: var(--text-caption); font-weight: 500;
+       letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent);
+       margin: 0 0 20px; padding-bottom: 10px;
+       border-bottom: var(--border-hairline) solid var(--color-line); }
+  .lede { max-width: 64ch; line-height: 1.55; color: var(--color-muted); margin: 0 0 48px; }
   section { margin-bottom: 72px; }
   .grid { display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
   figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
-  figcaption { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #BCD6C6; }
-  .frame { border: 1px solid #2E7C5A; overflow: hidden; max-width: 100%; }
+  figcaption { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+               color: var(--color-muted); }
+  .frame { border: var(--border-hairline) solid var(--color-line); overflow: hidden; max-width: 100%; }
   .notes { display: flex; flex-wrap: wrap; gap: 28px; margin-top: 44px; }
-  .note { border-left: 2px solid #FFC94A; padding-left: 14px; white-space: pre-line;
-          font-size: 13px; line-height: 1.6; color: #BCD6C6; max-width: 34ch; }
+  .note { border-left: var(--border-rule) solid var(--color-accent); padding-left: 14px;
+          white-space: pre-line; font-size: var(--text-caption); line-height: 1.6;
+          color: var(--color-muted); max-width: 34ch; }
 </style>
 </head>
 <body>
 <h1>zamphora — design preview</h1>
 <p class="lede"><strong>This page is generated, and it is a record rather than a contract.</strong>
 What roles build from lives in <code>factory/feature.md</code> under "The visual identity", and in
-each run's <code>docs/300-design/&lt;slug&gt;/03-tokens.md</code>. Where this page and those files
-disagree, those files win. Rebuild with
-<code>node scripts/build-design-preview.mjs</code>. Newest run first.</p>
+<code>docs/300-design/03-tokens.md</code>. Where this page and those files disagree, those files
+win. Rebuild with <code>node scripts/build-design-preview.mjs</code>. Newest run first.</p>
 
 ${runs.map(section).join("\n\n")}
 </body>
