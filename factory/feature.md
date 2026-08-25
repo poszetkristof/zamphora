@@ -1,5 +1,14 @@
 # The one feature this run covers
 
+**Run slug:** `001-photo-assessment`
+
+That slug is the folder name for everything this run produces: `docs/<role>/001-photo-assessment/`
+and `factory/runs/001-photo-assessment/`. The number is the run order, so the folders sort the way
+the runs happened. Run 2 uses `002-<its-feature>` and cannot overwrite this one.
+
+**Change this line before starting a new run.** The roles read it from here, and the scripts resolve
+every `{feature}` path from it. One line moves the whole run.
+
 This run writes the specs for **one feature only**. Every document the eight roles write must stay
 inside what this file describes.
 

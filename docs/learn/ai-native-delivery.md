@@ -270,6 +270,13 @@ instead of deciding it again:
 | environments, CI/CD, cost limits | the contracts and endpoints it adds |
 | the design tokens | its threats and its test cases |
 
+**That table is also the folder rule, and getting it wrong is silent.** A file in the right-hand
+column goes in a run folder — `docs/200-product/001-photo-assessment/00-prd.md`, numbered so the runs
+sort in order. A file in the left-hand column stays flat and is extended. Miss this and run 2 writes
+to `docs/200-product/00-prd.md` again, overwrites run 1, and nothing warns you: the path was still
+valid, so even the wiring check passed. One line in `factory/feature.md` names the slug, and every
+`{feature}` path resolves from it.
+
 So run 2 is much cheaper. Ask one question of the new feature: **does it change the shape of the
 system** — a new data store, a new outside call, a new deployment unit, a new trust boundary? **No**
 means four roles run instead of eight (Product, Design, Engineering, QA). **Yes** means all eight, but
@@ -948,7 +955,7 @@ list**, and the lists are written down.
 
 ### What a review turns up
 
-Three findings, of the kind `factory/runs/photo-assessment/seam-ledger.md` really fills up with:
+Three findings, of the kind `factory/runs/001-photo-assessment/seam-ledger.md` really fills up with:
 
 1. **100 → 400, under-supply.** The brief said "cost matters" but never named the date the free account
    closes, so the options table scored cost with no deadline. *(This is the thing from section 5. It
