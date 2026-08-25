@@ -28,5 +28,17 @@ guessing. Record it in the seam ledger. Never fill the gap by hand to keep the r
 **One role per session, then stop.** The user reads the output before the next role starts. Do not
 chain two roles to save time.
 
+**The user drives the tooling, not the assistant.** Anything that changes the state of their machine
+or their installed tools is theirs to run: `/reload-plugins`, `claude plugin marketplace update`,
+`claude plugin install`, and every `/ai-factory:` command. Corrected on 2026-08-25 after the
+assistant refetched the marketplace on its own.
+
+**Why:** the user is learning the machine by operating it. An assistant that reaches for the controls
+takes away the repetition that builds the habit — and it hides which step actually did the work.
+
+**How to apply:** say the exact command and what it will do, then stop and let them type it. Read-only
+checks are fine to run — `git status`, `claude plugin list`, the factory scripts — because they change
+nothing. Afterwards, verify the result and say plainly whether it worked.
+
 The chat explanation is the draft. The version that survives goes into the note — see
 [[keep-learning-notes-current]] — and is written the way [[learning-style]] describes.

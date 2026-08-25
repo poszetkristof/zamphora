@@ -140,9 +140,11 @@ above is a second bill that no AWS budget alarm can ever see.
 
 The numbers above are the honest case. The dishonest case is the one that matters:
 
-**An unprotected assessment endpoint is a way to spend the owner's money.** 100,000 calls on Opus 5
-is **$2,000**. 100,000 calls is not a large number for a script. This single line is the reason
-`factory/feature.md` says every user must sign in, and the reason a per-user limit is not optional.
+**An unprotected assessment endpoint is a way to empty the credit balance.** The balance is small and
+topped up by hand (`factory/feature.md`), so at the prices above it is a few hundred calls on Opus 5
+and about a thousand on Haiku 4.5. A script reaches either in under a minute. **The loss is not a
+bill — the API stops when the balance hits zero.** The loss is the feature going dark until a person
+notices and pays. That is why `factory/feature.md` requires sign-in and a per-user limit.
 
 Two things follow from the two-bill split, and both belong to 800 Infra and 900 Security:
 
@@ -306,11 +308,9 @@ Every one of these belongs to a person or to a later role. None of them was gues
 
 | # | Question | Owner | Blocks |
 | --- | --- | --- | --- |
-| O-1 | Confirm or replace the "8 out of 10 accepted" target in hypothesis V1. It is about the user acting, not about the model being right, so `factory/feature.md`'s agreement bars do not answer it. | The owner | 600 QA, when it writes the AI evaluation |
 | O-2 | Measure the current baseline once, before building: how long does finding an answer take today, and how often does it fail? Even three written-down attempts would do. | The owner | Nothing. But without it, "the app is better" cannot be said |
 | O-6 | Does the Hungarian word `növényorvos` carry a professional meaning that this app should avoid? | The owner | Nothing. Avoid the word and the question goes away |
 | O-9 | Expected number of assessments per user per month. The 30 in section 4 came from four plants; there are now at least eight pots. | The owner | 800 Infra cost limits |
-| O-10 | How long is the **text** result of an assessment kept? `factory/feature.md` says "longer" than the photo's 180 days and names no period. | The owner — never the model | 400 Architecture, 900 Security |
 
 ### Answered since this brief was first written
 
@@ -321,6 +321,12 @@ Every one of these belongs to a person or to a later role. None of them was gues
 | O-5 | How long is a plant photo kept, and what deletes it? | **180 days**, then a **storage lifecycle rule** deletes it, not application code. The user can also delete on demand. `factory/feature.md`. This closes gate G-1 |
 | O-7 | What does "confidence" mean, and what number turns the result into "not sure"? | No number. A **band**: `likely`, `unsure`, `cannot-tell`. `factory/feature.md`, "What confidence means on this project" |
 | O-8 | Which languages ship, and in which order? | **Hungarian and English** in run 1. `factory/feature.md`, "Human decisions already made" |
+| O-1 | Confirm or replace the "8 out of 10 accepted" target in hypothesis V1. | **Kept, marked provisional**, until the first 20 real assessments replace it with a measurement. Answered 2026-08-24. `factory/feature.md` and `02-traceability.md` M-01 |
+| O-10 | How long is the **text** result of an assessment kept? | **No clock. It lives as long as the pot does.** Delete the pot and its assessments go; delete the account and everything goes. Backstop: an account idle 12 months is deleted, warned at 11. Answered 2026-08-24. `factory/feature.md`, "Human decisions already made" |
+
+Section 5.4 below still describes the EU AI Act question as unanswered. It has since been answered
+for run 1: **show the notice, take no legal advice**, and re-open it the day the app is offered to
+another person. `factory/feature.md` carries that decision.
 
 ---
 

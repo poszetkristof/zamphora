@@ -152,7 +152,7 @@ use of this feature." Two account types, `USER` and `ADMIN`, from day one.
 | Value | **pass** | Not a feature the user asks for. It is the thing that makes the other use cases safe to offer. A photo of the inside of a home that anyone can fetch is a serious problem |
 | Usability | **pass, with a condition** | Signing in is friction at the exact moment the user wants to point a camera at a leaf. The condition: the session lasts long enough that a returning user does not sign in again each time |
 | Feasibility | **open** | `factory/feature.md` lists the protocol, the flow and where tokens live as things 400 Architecture must research and decide. Not decided here |
-| Viability | **pass** | This is what stops the money problem in `00-context-brief.md` section 4. Without sign-in there is no per-user limit, and 100,000 calls on the most expensive model is $2,000 of the owner's own Anthropic credit. Nothing in AWS can see that spend or stop it, so the limit has to exist in the application |
+| Viability | **pass** | This is what stops the money problem in `00-context-brief.md` section 4. Without sign-in there is no per-user limit, and the whole Anthropic credit balance is a few hundred calls on the most expensive model. Nothing in AWS can see that spend or stop it, so the limit has to exist in the application |
 
 **The version without AI.** Sign-in has nothing to do with AI. Listed here because the four gates
 apply to it and because it ships with this feature.

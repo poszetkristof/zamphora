@@ -925,7 +925,11 @@ list**, and the lists are written down.
 
 ### What this run actually found
 
+<<<<<<< Updated upstream
 Three findings:
+=======
+Three findings, of the kind `factory/runs/001-photo-assessment/seam-ledger.md` really fills up with:
+>>>>>>> Stashed changes
 
 1. **100 → 400, under-supply.** The brief said "cost matters" but never named the date the free account
    closes, so the options table scored cost with no deadline. *(This is the thing from section 6. It
