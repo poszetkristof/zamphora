@@ -93,10 +93,10 @@ D-12.
 account.
 
 **Why.** Two reasons, both in `factory/feature.md`: the photo is personal data, and the model call
-costs money per call. `00-context-brief.md` section 4 puts a number on the second reason — 100,000
-calls on the most expensive model is $2,000. That is the owner's own Anthropic credit, on a separate
-account, so no AWS control can see the spend or stop it. Sign-in is what makes a per-user limit
-possible at all.
+costs money per call. `00-context-brief.md` section 4 sizes the second reason: the whole credit
+balance is a few hundred calls on the most expensive model. That balance is the owner's own Anthropic
+credit, on a separate account, so no AWS control can see the spend or stop it. Sign-in is what makes
+a per-user limit possible at all.
 
 **Rejected.** A "try it once without an account" path. It is good for growth and it is an open door
 to the owner's money.
@@ -275,9 +275,16 @@ for the text. That is open question O-10.
 
 Recorded so that a reader can tell the difference between "decided" and "nobody looked".
 
-- How long the **text** result of an assessment is kept. Belongs to the owner. Open question O-10.
-  The photo's 180 days is decided — see D-12.
-- Which model is used, and how sign-in works. Belongs to 400 Architecture.
-- What the list of possible verdicts is. Belongs to 200 Product.
-- Whether the EU AI Act applies to this project. A legal question. Belongs to the owner.
-- Whether any idea in `03-market.md` is ever built. Belongs to the owner.
+- ~~How long the **text** result of an assessment is kept.~~ **Answered 2026-08-24: no clock, it
+  lives as long as the pot does.** The photo's 180 days is decided — see D-12.
+- Which model is used, and how sign-in works. Belongs to 400 Architecture. Still open.
+- ~~What the list of possible verdicts is.~~ **Answered: 200 Product wrote ten codes
+  (`00-prd.md` 5.2), and the owner accepted them on 2026-08-25 with a review after the first 20 real
+  assessments.**
+- ~~Whether the EU AI Act applies to this project.~~ **Answered for run 1 on 2026-08-25: show the
+  notice, take no legal advice.** Whether the Act applies is still not judged, on purpose — it
+  changes nothing while the app has one user. **This re-opens the day the app is offered to another
+  person.**
+- Whether any idea in `03-market.md` is ever built. Belongs to the owner. **W-4, the second-opinion
+  service, was rejected outright on 2026-08-25 and may not be proposed again.** The rest are still
+  open.

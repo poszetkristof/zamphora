@@ -473,17 +473,15 @@ Role 200 starts, remembering nothing about role 100's session. It gets four file
   - docs/100-consulting/03-market.md
 ```
 
-**This is the first handover, and handovers are where this whole thing lives or dies.**
-
-### A handover has a name: a seam
+### The first handover has a name: a seam
 
 A **seam** is one file crossing from one role to the next. Role 100 gives `00-context-brief.md` to role
 200. That is one seam. There are about 34 in the whole run, all listed in `handoff-map.yaml` under
 `edges:`.
 
-The word is borrowed from sewing: a seam is where two pieces of cloth are joined. Cloth rarely tears in
-the middle. It tears at the seam. Same here — **the run almost never breaks inside a role. It breaks at
-a seam**, when the next role did not get what it needed.
+The word comes from sewing: cloth rarely tears in the middle, it tears where two pieces are joined.
+**The run almost never breaks inside a role. It breaks at a seam**, when the next role did not get
+what it needed.
 
 Later you give every seam one of five labels: **clean** · **under-supply** (less than it needed) ·
 **over-supply** (more than it needed, so the feature grew) · **missing** (the file was not there) ·
@@ -503,22 +501,46 @@ Every story uses the **JTBD** shape, which puts the **moment** into the requirem
 That tells you the answer must arrive fast and be right, because the user is standing in front of the
 plant holding a dying leaf. It is a requirement on the system, not a UI detail.
 
-An **AI story carries two extra fields** a normal story does not: how often it must be right, as a
-number, and what it does when it is not sure.
+### Why an AI story needs three extra answers
 
-| | |
-| --- | --- |
-| ✅ | "Wrong verdicts under 2 in 100 on the golden set. Answer in under 4 seconds, 9 times out of 10. Below **0.6** confidence it says 'not sure' and offers the care checklist." |
-| ❌ | "The assessment should be accurate." Three people will build three different things. |
+"The plant is saved" either happened or it did not: you tap, you check the row. **"The plant has
+spider mites" can be wrong while every line of code works.** There is no correct answer to compare it
+against, so *done* has no meaning until a person writes down what done is. An **Eval Card** is those
+three answers, and it goes into the story before anyone builds it.
 
-The PRD also carries a **guardrail metric** — the number that must *not* move. Photo uploads going up
-is good; the monthly model bill going up with them is what you are watching.
+| The question | Answered here | If nobody answers it |
+| --- | --- | --- |
+| **How often must it be right?** | a person agrees with a `likely` verdict **8 times in 10**, over the first 20 real assessments | you ship on a feeling, and QA has no pass mark |
+| **What does it do when unsure?** | show the verdict, say it may be wrong, say what a better photo looks like. No care task unless the user says yes | whoever builds the screen decides it alone |
+| **What when it cannot tell?** | show no verdict, show a reason from a fixed list, and no task can be made | the model invents a fault rather than say nothing |
 
-### The first problem, and you cannot see it yet
+**The right-hand column is the argument.** Those three get answered either way. Skip the card and the
+app shows a confident verdict every time, because that is the cheapest thing to build — which is
+exactly the failure this note opens with in section 1.
 
-The brief says **"cost matters"**. It does not say **"the free account closes on 14 March"**. Role 200
-writes a fine PRD anyway, nothing looks wrong, and you would sign it off. In section 11 it becomes
-finding number one — by then it has already changed the architecture.
+**No percentage appears anywhere in it, on purpose.** A confidence score the model writes about
+itself is not a measurement — it is the model's own opinion of its own answer, with nothing to check
+it against. Agreement with a person can be counted, so that is the bar: `likely`, `unsure`,
+`cannot-tell`.
+
+The PRD also carries a **guardrail metric**: the number that must *not* move while the success one
+goes up. Photo uploads rising is good; the model bill rising with them is what you watch. This run
+adds a second — the share of `cannot-tell`: a model hiding there is never wrong and never useful.
+
+### What the real run showed, 2026-08-24
+
+Two things role 200 did here matter more than the 14 stories it wrote.
+
+**It guessed three numbers and refused a fourth.** Nothing said how long a session lasts, how fast
+the kill-switch acts, or how long the flow may take, so it proposed 30 days, 60 seconds and 30
+seconds and marked each as needing a person. Then it reached the daily limit on assessments per user
+— all that stands between an open endpoint and an empty credit balance — proposed nothing, and
+stopped the line. **Guess what costs a re-write. Never guess what costs money.**
+
+**It broke its own rule inside its own file.** Section 8 of the PRD says build order is not decided
+here; section 3 gives every feature a run number that appears in no input. The rule was in its own
+contract and the file broke it anyway — which is why you read the output even when the contract is
+good.
 
 **Check before moving on:** is there a **number** in every acceptance rule, and does the AI story say
 what happens when the model is **unsure**? One vague word here costs three later roles: Design cannot
@@ -608,7 +630,7 @@ Miss one and the number is a wish. `06-nfrs.md` is a table where every row carri
 | --- | --- | --- | --- |
 | how long the user waits | **p90 under 4 s** | a test that runs the whole flow with a fake model and times it | `test` |
 | what one assessment costs you | **under $0.012** | count the tokens, multiply by the price, fail the test above that | `test` |
-| how often the verdict is right | **98 out of 100** | run the 40 known photos through the real model and count the wrong ones | `ai-eval` |
+| how often the verdict is right | **8 in 10**, provisional | run the 40 known photos through the real model and count how often a person agrees | `ai-eval` |
 
 Three things in that table are worth unpacking, because they are the parts people skim.
 
@@ -669,20 +691,21 @@ You do not have to remember which questions are gates. `handoff-map.yaml` lists 
 `human_gate_policy` — accepting a risk, choosing scope beyond `feature.md`, asking for secrets or
 production data, needing a policy, compliance, budget or release decision, spending money, deploying,
 proposing a new tool the model may call, or contradicting an accepted ADR. Write every one into
-`factory/runs/<name>/human-gates.md`. Three things can happen:
+`factory/runs/<name>/human-gates.md`. Four things can happen:
 
 | What happened | Called |
 | --- | --- |
 | It asked, you were away, so it carried on and wrote "assuming 90 days — **not confirmed by a human**" | `recorded-open` |
 | It stopped and waited. Nothing else got written until you answered | `hard-stop` |
+| You answered, and the answer is now in a file a role can read | `closed` |
 | **It never asked.** It wrote "photos are kept 30 days" as if that were a known fact | `missed` |
 
-The first two are fine. **`missed` is the one to watch for**, because nothing warns you — the document
-looks finished, the number looks agreed, and a decision was taken from you in silence.
+The first three are fine. **`missed` is the one to watch for**, because nothing warns you — the
+document looks finished, the number looks agreed, and a decision was taken from you in silence.
 
 ### Your answer has to end up in a file
 
-You decide: 90 days. You type it in the chat. The run carries on and it feels done. It is not. **The
+You decide: 180 days. You type it in the chat. The run carries on and it feels done. It is not. **The
 next role starts in a fresh session and cannot see your chat.** Tomorrow that conversation is gone and
 your decision with it.
 
@@ -706,22 +729,22 @@ and every ADR. It writes five files: `00-conventions.md` (naming, folders, what 
 `01-contracts.md` (the Zod schemas — the only place a wire type is defined) · `02-web-spec.md` ·
 `03-api-spec.md` (every endpoint, its body, its errors) · `docs/context/stack.md`.
 
-**Watch one number travel through four roles.** This is the clearest proof the line works. Follow
-`0.6`:
+**Watch one decision travel through four roles.** This is the clearest proof the line works. Follow
+the word `unsure`:
 
-| Role | What it did with the number |
+| Role | What it did with it |
 | --- | --- |
-| **200** Product | wrote the rule: *"below 0.6 confidence, say not sure"* |
+| **200** Product | wrote the rule: *"on `unsure`, show the verdict, say it may be wrong, write no task without a yes"* |
 | **300** Design | drew the screen for it — the unsure state |
-| **500** Engineering | made it a `confidence` field in a Zod schema in `packages/contracts` |
-| **600** QA | writes a test that sends a 0.55 answer and checks the unsure state appears |
+| **500** Engineering | made `confidence` a field with three allowed values, in a Zod schema in `packages/contracts` |
+| **600** QA | writes a test that sends an `unsure` answer and checks the unsure state appears |
 
 The Zod schema is the important step. **It is one definition, used by the API and by the web app.**
-Without it, the API believes 0.6 and the web app believes something the front-end developer typed from
-memory. The two numbers stop matching, and nobody notices until a user sees a confident wrong verdict.
+Without it the API allows three values and the web app checks for a word someone typed from memory.
+The two stop matching, and nobody notices until a user sees a confident wrong verdict.
 
 **Who may import what.** The API has three layers, each with one job: the **controller** speaks HTTP,
-the **service** holds the actual rules ("below 0.6, say not sure"), the **repository** talks to the
+the **service** holds the actual rules ("on `unsure`, write no task"), the **repository** talks to the
 database and nothing else. The spec writes down which may import which:
 
 | Layer | May import | Must not |
@@ -731,7 +754,7 @@ database and nothing else. The spec writes down which may import which:
 | repository | the data client, contracts | service |
 
 The row that matters most: **a service never sees `Request` or `Response`.** If it does, your business
-rules are welded to HTTP, and you can no longer test "below 0.6, say not sure" without building a fake
+rules are welded to HTTP, and you can no longer test "on `unsure`, write no task" without a fake
 HTTP request first — so the rule that matters most becomes the hardest thing to check. A table like
 this is only real if a **lint rule** enforces it, so the spec names the rule beside each row. A
 boundary nobody checks lasts about three weeks.
@@ -760,8 +783,8 @@ The traps that cost money by default:
 | **Secrets Manager** | $0.40 per secret | Parameter Store `SecureString`, free |
 | a **customer-managed KMS key** | $1/month forever | AWS-managed keys, free |
 
-`02-cost-guardrails.md` turns that into numbers that stop things: 20 assessments per user per day at
-the gateway, a budget alarm at 50%, a kill-switch at 100%.
+`02-cost-guardrails.md` turns that into numbers that stop things: 10 assessments per user per day, a
+budget alarm at 50%, a kill-switch at 100%. The owner set the 10, not a role — see section 6.
 
 **Check before moving on:** provisioned, not on-demand? No NAT Gateway? A plan that took the framework
 default for the table has already picked the billed mode.
@@ -825,10 +848,10 @@ no equal in a normal project.
 what the words ask for. The valuable half: a photo of a wall · a photo too dark to judge · a healthy
 plant the user thinks is sick · a model reply that does not match the schema · a model timeout.
 
-**The golden set and its judge.** 40 photos with known correct verdicts, and a pass bar of 98% taken
-straight from the NFR table. If a model scores the answers, **score a sample by hand too** and write
-down how often the two agree. Skip that and your 98% measures the judge, not the model, and you will
-not know which one is wrong.
+**The golden set and its judge.** 40 photos with known correct verdicts, and the 8-in-10 pass bar
+taken straight from the NFR table. If a model scores the answers, **score a sample by hand too** and
+write down how often the two agree. Skip that and your pass bar measures the judge, not the model,
+and you will not know which one is wrong.
 
 **Check before moving on:** five negatives present, and does a failed eval actually **block the
 release**, or is it advisory? Calling something critical and leaving it advisory is the same as not
@@ -923,21 +946,21 @@ The split is not important versus unimportant. `factory/subagent-slots/400-archi
 that role may **not** decide, and a rate-limit number is not on it. It is **on the list or not on the
 list**, and the lists are written down.
 
-### What this run actually found
+### What a review turns up
 
-Three findings:
+Three findings, of the kind `factory/runs/photo-assessment/seam-ledger.md` really fills up with:
 
 1. **100 → 400, under-supply.** The brief said "cost matters" but never named the date the free account
-   closes, so the options table scored cost with no deadline. *(This is the thing from section 6. It
+   closes, so the options table scored cost with no deadline. *(This is the thing from section 5. It
    travelled three roles before it did any damage.)*
 2. **900 → 600, under-supply.** The rate-limit fix had no number — traced back to Architecture.
 3. **300 → 500, clean but late.** The offline state appeared in the design spec, but no story ever
    mentioned offline. It entered scope without passing Product.
 
-And two gates: one **recorded-open** — the photo retention period, still waiting on you — and one
-**missed**: Architecture set the 0.6 confidence threshold as if it were a technical value, when Product
-already owned it. **That missed gate is the most valuable thing in the run.** No amount of re-reading
-the documents would have found it.
+And two gates: one **recorded-open** — whether the EU AI Act applies, still waiting on you — and one
+**missed**: Architecture decided what the app does on `cannot-tell` as if that were a technical value,
+when Product already owned it. **That missed gate is the most valuable thing in the run.** No amount
+of re-reading the documents would have found it.
 
 ### Then fix the factory, not just the one document
 
