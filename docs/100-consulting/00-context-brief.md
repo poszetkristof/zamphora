@@ -131,10 +131,11 @@ above is a second bill that no AWS budget alarm can ever see.
 > **Proved wrong if:** the Anthropic spend for this feature passes $5 before 2026-12-31.
 
 > **Hypothesis R2.** A burst month — say 500 assessments while several people try the app at once —
-> costs **under $10** on any of the three models except Opus 5.
+> costs **under $10** on Haiku 4.5 or on Sonnet 5. It does not hold on Opus 5.
 >
-> Check the table: 500 on Sonnet 5 is $4.00, 500 on Opus 5 is $10.00. So R2 holds for Haiku and
-> Sonnet and is exactly at the edge for Opus. That is a useful thing to know before choosing.
+> Check the table: 500 on Sonnet 5 is $4.00, 500 on Opus 5 is $10.00. $10.00 is not under $10, so
+> Opus 5 fails this hypothesis by the smallest margin there is. That is a useful thing to know
+> before choosing.
 
 ### The cost that is not small
 

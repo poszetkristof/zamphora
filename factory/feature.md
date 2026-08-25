@@ -88,11 +88,21 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   photos. An admin can read usage and cost figures, and can turn the AI feature off. The permission
   check ships with this feature. The admin **screens** are a later feature.
 - **A photo is kept 180 days, then deleted automatically, decided 2026-08-24.** A storage lifecycle
-  rule does the deleting, not application code, so the rule holds even when the app is broken. The
-  **text** result of an assessment is kept longer, so a plant's history survives without the
-  images. A user can also delete their own photos on demand. GDPR names no period for anything — it
-  requires the owner to choose one, justify it, and actually delete when it expires. This is that
-  number.
+  rule does the deleting, not application code, so the rule holds even when the app is broken. A
+  user can also delete their own photos on demand. GDPR names no period for anything — it requires
+  the owner to choose one, justify it, and actually delete when it expires. This is that number.
+- **The assessment text lives as long as the pot does, decided 2026-08-24.** There is no clock on
+  it. Delete a pot and its assessments go with it; delete the account and everything goes. The
+  reason it is not a number: the purpose of the text is backbone feature 4, the record of how a
+  plant is doing over time, and a history on a timer deletes the early part, which is the part worth
+  having. GDPR Article 5(1)(e) asks for no longer than the purpose needs, so ending the purpose is a
+  stronger justification than any date.
+- **An account with no sign-in for 12 months is deleted, decided 2026-08-24.** This is the backstop
+  the rule above needs, because "as long as the pot exists" otherwise means forever for somebody who
+  signs up once and never returns. **Warn by email at 11 months**, delete at 12. The warning is not
+  optional here: 12 months is short enough that a person with hardy plants could reach it without
+  neglecting anything, and deletion takes their whole history. 24 months was the other option and
+  was rejected as holding personal data longer than needed.
 - **Two languages in run 1: Hungarian and English, decided 2026-08-24.** The market scan found the
   large apps ship no Hungarian, so this is also the one place the product is not a copy of
   something that already exists.
@@ -102,7 +112,81 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   AWS — it burns Anthropic credits instead, which is still an outage when they run out. And the
   cost guardrail must count model calls in the application, because no AWS budget alarm can see
   them.
-- **What "confidence" means, decided 2026-08-24.** See the section below.
+- **The Anthropic credit is small and topped up by hand, stated by the owner 2026-08-25.** The
+  balance is $5 at the time of writing, and the owner adds more when it runs out. So the project is
+  never permanently blocked, and it is never far from empty either. This changes what the money risk
+  is. The worst case is **not** a large bill — the API stops when the balance reaches zero. The worst
+  case is that the balance reaches zero, the feature goes dark, and it stays dark until a person
+  notices and pays. At the prices in `00-context-brief.md` section 4, $5 is about 250 assessments on
+  Opus 5, 625 on Sonnet 5 or 1,250 on Haiku 4.5. **No document may describe a sum larger than the
+  balance as money the owner can lose.** A price is what calls would cost. It is not a bill.
+- **There is no total spend cap. The credit runs out and the feature stops, decided 2026-08-25.**
+  No monthly budget, no alarm at a percentage, no automatic switch-off before zero. The balance
+  reaching zero **is** the stop. This was chosen over a cap because a cap is a second number to pick,
+  to enforce and to keep correct, and it would only ever fire before the thing that already stops the
+  calls. Two things follow, and both belong to 500 Engineering and 800 Infra. **Running out of credit
+  is a normal failure state, not a crash** — it gets its own message, and the message says topping up
+  is what fixes it. And **retrying does not help**, so the retry rule in US-09 must not retry this
+  one. Nothing else in the product changes when the balance is empty: sign-in, the pots, the photos
+  and the old assessments all keep working. Only the model call stops.
+- **A user may run 10 assessments a day, decided 2026-08-24.** The check runs before the model call
+  and before any retry, so a failed call still counts. Every attempt costs money, which is the whole
+  point of the limit. Real use is expected at about 30 a month, so 10 a day is ten times headroom
+  and a bad week where several plants look unwell still fits. The reason this number exists at all:
+  an endpoint with no limit can be called by a script faster than any person, and the balance is
+  only a few hundred calls. The feature would be dead in a minute. Where the limit is enforced
+  is 400 Architecture's decision. That it is enforced is not. **10 a day is not by itself a budget
+  guard:** 10 a day for a month is 300 calls, which is $6.00 on Opus 5 and $1.20 on Haiku 4.5. What
+  keeps spend under $5 is the model choice plus a total cap, and the total cap does not exist yet.
+- **The model returns four fields, not three, decided 2026-08-24.** Verdict, confidence band, next
+  action, and **the follow-up in whole days**. The scope list below names three, and three is not
+  enough: a care task needs a date, and the date must arrive in a shape code can read rather than
+  inside a sentence. The number of days is chosen by the model, because how soon you check a plant
+  again depends on how bad it looks. The rejected option was a fixed table from verdict to interval,
+  which is cheaper and fully testable but always gives the same date for the same verdict.
+- **A user waits at most 30 seconds for a result, decided 2026-08-25.** Measured from the tap that
+  takes the photo to something on screen, so it covers the resize, the upload and the model call.
+  Past 30 seconds the app stops waiting and says it failed. 15 seconds was rejected because on a weak
+  signal the upload alone can take that long, so the app would throw away answers it had already paid
+  for. 60 seconds was rejected because a minute in front of a plant feels broken, and the user taps
+  again, which costs a second call.
+- **Two attempts per assessment, decided 2026-08-25.** One try, then one retry after a short wait,
+  and both must finish inside the 30 seconds above. It retries only what retrying can fix: a
+  timeout, a 429, a 503. It never retries a bad request, a rejected photo, or an empty credit
+  balance. Both attempts count against the 10-a-day limit. **Five tries with exponential backoff was
+  considered and rejected**, and the reason is worth keeping: the usual advice assumes a retry is
+  nearly free, but here every attempt is a paid model call, and 1+2+4+8 seconds of backoff alone
+  overruns the 30-second limit before the model has been asked five times. Five tries is the right
+  answer once the assessment runs in the background instead of in front of a waiting person, which
+  needs notifications — backbone 6, run 3.
+- **A session lasts 30 days, decided 2026-08-25.** The app is opened every few weeks, not daily, so 7
+  days was rejected: the user would meet the sign-in screen almost every visit, which is where people
+  give up. 90 days was rejected because a lost phone would stay signed in to photos of the inside of
+  a home for three months.
+- **The kill-switch takes effect within 60 seconds, decided 2026-08-25.** The on/off value may be
+  held in memory for up to a minute, so a few calls can still slip through after it is flipped.
+  Checking it on every single request was rejected as the more complicated answer: with no cached
+  value there is no obvious behaviour when that read itself fails, and someone would have to decide
+  whether it fails on or off. 5 minutes was rejected because the switch exists for when something is
+  already going wrong.
+- **The ten verdict codes ship as written, and are reviewed after the first 20 real assessments,
+  decided 2026-08-25.** No plant reference was used to build them, and that is accepted for run 1
+  because the list cannot silently fail: `other` and `nothing-wrong` mean the model is never forced
+  to invent a fault, so a missing code shows up as a pile of `other` answers, which is countable.
+  The 40-photo test set will expose the rest. Adding a plant reference before 300 Design runs was
+  rejected as a new input to the whole line rather than a fix to one list.
+- **The EU AI Act position for run 1: show the notice, take no legal advice, decided 2026-08-25.**
+  Every screen showing an assessment says it came from an AI model. That is cheap and it is safe
+  whether or not the Act applies to a personal project with one user. **This decision is scoped to
+  run 1 and must be re-opened the day the app is offered to anyone else** — that is a different
+  question with a different answer.
+- **No second opinion API. Rejected outright, not deferred, decided 2026-08-25.** `03-market.md` W-4
+  proposed `plant.health` by Kindwise to give a second verdict. The owner is not interested in it, in
+  this run or a later one. This is stronger than the "not this run" label the market scan gave it:
+  **no role may propose it again**, and no design should leave a place for it. The reasons that stand
+  in the file: it doubles the cost of every assessment, adds a second outside service that has to
+  keep working, and needs a rule for what the screen shows when two services disagree. If a second
+  opinion is ever wanted, that is a new decision by the owner, starting from nothing.
 
 ## What "confidence" means on this project
 
