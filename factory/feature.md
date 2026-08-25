@@ -42,6 +42,11 @@ to ask a basic question, a file is missing something.
 
 ## In scope
 
+- **Adding a pot: a name and a room, two fields, one screen.** Added 2026-08-25, after 300 Design
+  found that no story says how a plant gets into the app — so a new user opened it, had no pots, and
+  could do nothing. The smallest version only. Species, photo and notes belong to backbone feature 4
+  and stay out. **200 Product's story list is one story short because of this**, and the gap is
+  recorded as gate 21.
 - Capturing or choosing a photo of one plant, on a phone.
 - Storing that photo, with a retention rule.
 - One model call that assesses the plant and returns a verdict, a confidence, and a next action.
@@ -159,6 +164,27 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   overruns the 30-second limit before the model has been asked five times. Five tries is the right
   answer once the assessment runs in the background instead of in front of a waiting person, which
   needs notifications — backbone 6, run 3.
+- **An answer the app cannot read is a failure, not a verdict, decided 2026-08-25.** It is never
+  `cannot-tell`. The four `cannot-tell` reasons all mean *"I looked at your photo and could not
+  tell"*, and a broken answer means nothing was assessed at all. Mixing them would tell the user to
+  retake a photo that was fine. The user sees the failure screen instead, and no fifth reason code is
+  added. **This was checked against Anthropic's own guidance rather than decided on taste**, and the
+  guidance changes the shape of the answer:
+  - **Make it nearly impossible first.** The call uses **structured output** — `output_config.format`
+    with the response schema, or a tool with `strict: true`, `additionalProperties: false` and every
+    field in `required`. That is what guarantees the shape, and it is 400 Architecture's and 500
+    Engineering's job to use it. Handling a malformed answer well is the backstop, not the plan.
+  - **Check `stop_reason` before reading the content, always.** Three of its values are not a verdict
+    and are not the same as each other. `refusal` means a safety classifier declined — it arrives as
+    a normal success, and **retrying it is pointless**, so it joins the never-retry list beside an
+    empty credit balance. `max_tokens` means the answer was cut off mid-way; retrying without more
+    room fails identically. Only a genuine schema failure is worth the one retry.
+  - **Never match on the raw text of the answer.** Parse it. The model may escape characters
+    differently between versions, so string matching breaks silently on a model upgrade.
+
+  What the user sees is one screen for all three, because the difference does not change what they
+  can do about it. What the **log** records is which of the three happened, because that difference
+  is the whole signal for 800 Infra.
 - **A session lasts 30 days, decided 2026-08-25.** The app is opened every few weeks, not daily, so 7
   days was rejected: the user would meet the sign-in screen almost every visit, which is where people
   give up. 90 days was rejected because a lost phone would stay signed in to photos of the inside of
@@ -270,12 +296,18 @@ Measured in sRGB, WCAG 2.2, against **both** surfaces. The numbers are checked, 
 | `--color-muted` | `#BCD6C6` | secondary text | **5.98:1** AA | **4.59:1** AA |
 | `--color-accent` | `#FFC94A` | warm yellow. **The one action colour** | **6.04:1** AA | **4.63:1** AA |
 | `--color-on-accent` | `#0B2E20` | text on the yellow button — **9.61:1** AAA | — | — |
-| `--color-warn` | `#FF9478` | the `unsure` marker only. **Never body text** | 4.3:1 | 3.3:1 |
+| `--color-warn` | `#FFC2B0` | the `unsure` marker only | **6.00:1** AA | **4.60:1** AA |
 
-**Two values were rejected during the check, and both would have shipped.** `#A9C7B5` for muted
-passed on the ground and failed on the raised surface at **3.9:1** — and the raised surface is
-exactly where secondary text sits, in the `unsure` band. `#BCD6C6` passes on both. `#FF9478` is
-strong enough for a rule, an icon and a label, and not for a paragraph, so it is fenced to those.
+**Three values were rejected during the checks, and all three would have shipped.** `#A9C7B5` for
+muted passed on the ground and failed on the raised surface at **3.9:1** — and the raised surface is
+exactly where secondary text sits. `#BCD6C6` passes on both.
+
+The third was caught by 300 Design, not by me. The warn colour was `#FF9478`, fenced with the words
+"never body text" — but the `unsure` **label** is text, at 13px, and that pair measures **3.3:1**.
+The fence was the wrong shape: **a contrast number belongs to a pair of colours *and* a text size,
+and only two of the three were written down.** `#FFC2B0` replaces it and passes at any size, so
+there is no size rule left to forget. Its hue is 14°, against the yellow accent's 42°, so the two
+stay clearly different colours rather than two warm blurs.
 
 **Every new colour is measured against both surfaces before it is added.** One number is not enough.
 
@@ -287,7 +319,7 @@ colour-blind user and in bright light. Each band therefore has a shape as well a
 | Band | Colour | The shape that carries it without colour |
 | --- | --- | --- |
 | `likely` | verdict white on the ground | a filled dot before the label |
-| `unsure` | `#FF9478` on the raised band | a **2px rule above the band** and a warning triangle |
+| `unsure` | `#FFC2B0` on the raised band | a **2px rule above the band** and a warning triangle |
 | `cannot-tell` | muted only, **no accent anywhere** | no verdict at all, and the label is the only heading |
 
 `cannot-tell` also **shows the bad photo** rather than only describing it. If the reason is "too
@@ -299,12 +331,22 @@ dark", the photo on screen is too dark.
 its own voice; the pairing is what stops the design looking generated. A serif also survives long
 Hungarian words better at large sizes.
 
-- `--font-display` — a serif with real character, for the verdict and headings.
-- `--font-body` — a plain grotesque for UI text, labels and numbers.
-- **Not Inter and not Roboto** for either. Both are the default of every generated interface.
+- `--font-display` — **Fraunces**, for the verdict and headings. Chosen by the owner on 2026-08-25
+  from a side-by-side of the real screen at the real sizes.
+- `--font-body` — **IBM Plex Sans**, for UI text, labels, buttons and numbers.
 - A type scale with real jumps — **13 / 17 / 28 / 44**, not 14 / 16 / 18.
 
-300 Design names the two families and says why. The owner may replace either.
+**Rejected, and named so nobody drifts back to it: EB Garamond.** It was the display face in the
+approved mockup, and it lost the direct comparison. Also rejected for either role: **Inter and
+Roboto**, the default of every generated interface.
+
+**Fraunces was picked knowing one thing about it.** It appears on published lists of overused faces
+in generated design, next to Inter and Roboto. The owner compared both at 44px and 30px, including
+the Hungarian double acutes, and picked it anyway. That is a decision, not an oversight — do not
+re-open it, and do not "fix" it in a later run.
+
+**Both faces must draw `ő` and `ű` as double acutes, not as an umlaut.** Fraunces was checked at
+44px and passes. Any replacement face is checked the same way before it is used.
 
 ### MUST NOT — the list that keeps it from looking machine-made
 
@@ -324,13 +366,38 @@ interfaces look alike: the model falls back to the average of what it has seen.
 - **No fade-in on every element.** Motion happens where something actually changed.
 - **No hex value in `02-SPEC.md`.** Token names only. Every token is defined in `03-tokens.md`.
 
+### Accessibility that is not open to judgement
+
+Each line below is a **checklist item with a number or a testable condition**. 300 Design specs
+them, 600 QA tests them, and none of them is a matter of taste. The calls that *do* need a disabled
+person's experience rather than a checklist stay with a person, per 300's own contract.
+
+The mockup does not show any of this — it is five static screens with no interaction states. That
+absence is a gap in the picture, not permission to skip them.
+
+| Rule | The number | Why it matters here |
+| --- | --- | --- |
+| **Every interactive element has a visible focus ring** | at least 2px, and 3:1 against what sits next to it | a keyboard or switch user cannot see where they are. `outline: none` with no replacement is never allowed |
+| **Touch targets** | 44×44 px minimum, and 24px of clear space between two of them | already in 300's contract. The mockup uses 48–56px |
+| **Pinch zoom works** | no `user-scalable=no`, no `maximum-scale` | a phone-first app that blocks zoom is unusable for low vision |
+| **Text survives 200% zoom** | nothing clipped, nothing overlapping | the real risk here is a 44px serif verdict plus a long Hungarian word |
+| **Each block of text declares its language** | `lang="hu"` or `lang="en"` on the text, not only on `<html>` | a screen reader reads Hungarian with English rules otherwise, and it is unintelligible |
+| **The photo has real alternative text** | says what the user photographed, never "image" | |
+| **The verdict and its band are announced together** | one labelled group, not a decorative chip beside a heading | this is the honesty rule in another form. A screen reader that reads "Túl sok víz" without "Bizonytalan" has turned an unsure answer into a confident one |
+| **A failure is described in words** | never colour or an icon alone | applies to the daily limit, the empty balance and every model failure |
+| **Motion respects `prefers-reduced-motion`** | no exceptions | |
+
+**The band treatments in the table above already satisfy "colour is never the only signal"** — a dot,
+a rule plus a triangle, and an absence. Keep that property if any of them changes.
+
 ### Two constraints that come from this product, not from taste
 
 - **Hungarian words are long.** Every label and button must be readable at 30 characters without the
   layout breaking. Test with the Hungarian string, not the English one.
-- **The app is used in the evening, indoors, in poor light, one-handed, standing.** Dark mode is a
-  variant to be added later, not the base. The base is chosen for outdoor legibility and because a
-  plant photo sits well on a warm neutral.
+- **The app is used in the evening, indoors, in poor light, one-handed, standing.** The green ground
+  is dark enough to suit that, and a plant photo sits well on it. **There is one theme, not two.** A
+  light variant is not planned and must not be half-built: a colour with no light value is a bug
+  waiting for someone to add a light mode.
 
 ## The backbone — the features the human named
 
@@ -372,6 +439,7 @@ option it rejected. Do not treat a name below as a decision already made.
 | How sign-in works — the protocol, the flow, and where tokens live | 400 Architecture | an ADR, plus `05-patterns.md` |
 | How the two account types are enforced, and where the check runs | 400 Architecture, checked by 900 Security | an ADR, then `docs/900-security/02-mitigations.md` |
 | How the product repository is laid out, and what would justify splitting it further | 400 Architecture | `docs/ADR/0001-repository-layout.md` |
+| Which component library the web app builds on | 400 Architecture proposes, **the owner accepts** — a library is a new dependency | an ADR, plus `docs/500-engineering/00-conventions.md` |
 | Whether the product repo uses Turborepo, Nx or plain npm workspaces | 400 Architecture | the same ADR |
 
 **On the repository ADR.** Two repositories are decided; how the product one is arranged is not.
@@ -391,6 +459,48 @@ challenge:
   sells an enterprise product, Polygraph, whose only job is to hide that from agents.
 - Measured cost of the rejected option: **4 to 6 pull requests** per change that crosses the wire.
   Cloudflare published four pull requests per change before they automated it down to one.
+
+**On the component library ADR.** Research done on 2026-08-25, for the ADR to use or to challenge.
+**None of this is a decision.** The owner accepts a dependency; nobody else does.
+
+The shape is not in question. Headless primitives, Tailwind `@theme` tokens, and component code
+owned in this repo — that is what `.claude/skills/` already assumes and it holds up. **Only which
+primitive is open.** Every figure below was checked on 2026-08-25.
+
+| | Base UI | Radix | React Aria |
+| --- | --- | --- | --- |
+| Newest commit | 2026-08-25 | **2026-07-31** | 2026-08-24 |
+| Commit authors, 90 days | 6 people | **95 of the last 100 by one person** | 6+ Adobe engineers |
+| Who funds it | MUI, a company. 7 named maintainers | WorkOS. No funding or roadmap statement | Adobe |
+| Hungarian strings | none | none | **`hu-HU` ships, 37 locales** |
+| One menu, gzipped | about Radix + 10 KB | the baseline | **about 50 KB** |
+| Restyling to a fixed identity | easiest — no CSS bundled, `className` takes a function of state | nearly as good | needs a Tailwind plugin for its `data-` attributes |
+
+Four things the ADR must not skip:
+
+- **Radix is not deprecated, and the commit data is a risk signal rather than a failure.** Its
+  downloads grew through 2026, and shadcn's own changelog says *"Radix is not being deprecated… we're
+  not migrating"*. The question is who will be fixing accessibility bugs in five years.
+- **shadcn changed shape in July 2026.** It is now a distribution layer over three primitive
+  libraries, and **Base UI is the default for new projects**; Radix is still supported behind a flag.
+- **React Aria has the stronger accessibility claim and ships Hungarian**, one of the two day-one
+  languages. It was set aside on weight, which is an engineering cost, not an accessibility one. **If
+  accessibility outranks bundle size, React Aria is the defensible answer.** The ADR must say which
+  way it weighed them, not pick silently.
+- **No library ships WCAG 2.2 AA.** Base UI's own page says *"it's the developer's responsibility to
+  visually indicate focus"*. Every rule in "Accessibility that is not open to judgement" above lives
+  in the styling layer, which is this project's own in every option.
+
+**One trap, found by reading the live registry rather than the docs.** shadcn's current button ships
+`h-9` for default, `h-8` for small and `size-9` for icon — **nothing reaches the 44×44 this project
+requires**. Its focus ring is 50% opacity, which will likely miss 3:1 on `#14513A`. It uses
+`transition-all` with no reduced-motion guard, and `rounded-md` everywhere against the round-button
+rule. That is not an argument against shadcn, which exists to be edited — it means **the edit pass
+belongs in the first task, not "later"**, or the accessibility rules are broken on day one.
+
+**Two gaps left open on purpose.** No conformance report (VPAT or ACR) was found for any candidate —
+that is unknown, not absent. And the size figures are the projects' own published numbers, not a
+measurement: **build one real screen and measure it before committing.**
 - Companies that published a move from many repos to one: Block (450 services), Proton (15
   developers), Airbnb, and Uber — which runs thousands of services out of a few monorepos, so
   **splitting deployment units does not require splitting repositories**. **No first-party

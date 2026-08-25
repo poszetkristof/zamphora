@@ -7,48 +7,101 @@
 <body>
 <x-dc>
 <helmet>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
   <style>
-    body { margin: 0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-    a { color: #FFC94A; text-decoration: none; } a:hover { color: #FFD97A; }
+/* tokens:start — a copy of docs/300-design/tokens.css. Do not edit. */
+:root {
+  --color-ground: #14513A;
+  --color-well: #0B3526;
+  --color-raised: #1B6446;
+  --color-line: #2E7C5A;
+  --color-verdict: #F3FAF2;
+  --color-body: #DDEADF;
+  --color-muted: #BCD6C6;
+  --color-accent: #FFC94A;
+  --color-on-accent: #0B2E20;
+  --color-warn: #FFC2B0;
+  --focus-ring-color: var(--color-accent);
+  --focus-ring-on-accent: var(--color-verdict);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --text-caption: 13px;
+  --text-body: 17px;
+  --text-heading: 28px;
+  --text-verdict: 44px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-bold: 700;
+  --space-3xs: 4px;
+  --space-2xs: 8px;
+  --space-xs: 12px;
+  --space-s: 16px;
+  --space-m: 24px;
+  --space-l: 32px;
+  --space-xl: 48px;
+  --space-2xl: 64px;
+  --page-padding-inline: var(--space-s);
+  --page-max-width: 640px;
+  --radius-card: 2px;
+  --radius-pill: 999px;
+  --border-hairline: 1px;
+  --border-rule: 2px;
+  --shadow-sheet: 0 -8px 24px rgb(0 0 0 / 0.35);
+  --target-min: 44px;
+  --target-comfortable: 56px;
+  --target-gap: 24px;
+  --thumb-zone-bottom: var(--space-m);
+  --motion-fast: 120ms;
+  --motion-slow: 240ms;
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --z-sheet-scrim: 100;
+  --z-sheet: 110;
+  --bp-wide: 600px;
+  --bp-desk: 1024px;
+}
+/* tokens:end */
+    body { margin: 0; font-family: var(--font-body); -webkit-font-smoothing: antialiased; }
+    a { color: var(--color-accent); text-decoration: none; } a:hover { color: var(--color-accent); }
     * { box-sizing: border-box; }
   </style>
 </helmet>
 
-<div style="width: 390px; height: 844px; background: #14513A; display: flex; flex-direction: column; overflow: hidden;">
+<div style="width: 390px; height: 844px; background: var(--color-ground); display: flex; flex-direction: column; overflow: hidden;">
 
   <div style="display: flex; align-items: center; gap: 12px; padding: 14px 20px 10px 16px; min-height: 52px;">
     <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: flex-start;">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F3FAF2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-verdict)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg>
     </div>
     <div style="display: flex; flex-direction: column; gap: 1px;">
-      <div style="font-size: 17px; font-weight: 500; color: #DDEADF; letter-spacing: -0.01em;">Zamioculcas</div>
-      <div style="font-size: 13px; color: #BCD6C6;">el&#337;szoba &middot; 2026. augusztus 25.</div>
+      <div style="font-size: var(--text-body); font-weight: 500; color: var(--color-body); letter-spacing: -0.01em;">Zamioculcas</div>
+      <div style="font-size: var(--text-caption); color: var(--color-muted);">el&#337;szoba &middot; 2026. augusztus 25.</div>
     </div>
   </div>
 
   <!-- the photo really is too dark. The screen shows the problem, it does not only describe it -->
-  <div style="height: 190px; background: #0A2318; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
-    <svg width="170" height="170" viewBox="0 0 200 200" fill="none" stroke="#BCD6C6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.14">
+  <div style="height: 190px; background: #0A2318; /* placeholder: a photo too dark to judge. Not a design token. */ display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+    <svg width="170" height="170" viewBox="0 0 200 200" fill="none" stroke="var(--color-muted)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.14">
       <path d="M100 22 C138 40 168 78 163 118 C158 154 130 178 100 186 C70 178 42 154 37 118 C32 78 62 40 100 22 Z"/>
       <path d="M100 186 L100 22"/>
     </svg>
-    <div style="position: absolute; bottom: 10px; right: 12px; font-size: 12px; color: #BCD6C6; letter-spacing: 0.04em; text-transform: uppercase;">a te fot&oacute;d</div>
+    <div style="position: absolute; bottom: 10px; right: 12px; font-size: 12px; color: var(--color-muted); letter-spacing: 0.04em; text-transform: uppercase;">a te fot&oacute;d</div>
   </div>
 
   <!-- no verdict, and no colour anywhere. The absence is the signal -->
   <div style="display: flex; flex-direction: column; gap: 16px; padding: 30px 22px 0 22px;">
-    <div style="font-size: 13px; font-weight: 500; color: #BCD6C6; letter-spacing: 0.08em; text-transform: uppercase;">Nem meg&aacute;llap&iacute;that&oacute;</div>
+    <div style="font-size: var(--text-caption); font-weight: 500; color: var(--color-muted); letter-spacing: 0.08em; text-transform: uppercase;">Nem meg&aacute;llap&iacute;that&oacute;</div>
 
-    <div style="font-family: 'EB Garamond', Georgia, serif; font-size: 30px; line-height: 1.2; color: #DDEADF; letter-spacing: -0.012em; max-width: 22ch;">
+    <div style="font-family: var(--font-display); font-size: 30px; line-height: 1.2; color: var(--color-body); letter-spacing: -0.012em; max-width: 22ch;">
       A fot&oacute; t&uacute;l s&ouml;t&eacute;t ahhoz, hogy b&aacute;rmit meg&aacute;llap&iacute;tsunk.
     </div>
 
-    <div style="font-size: 17px; line-height: 1.5; color: #DDEADF; text-wrap: pretty; max-width: 32ch;">
+    <div style="font-size: var(--text-body); line-height: 1.5; color: var(--color-body); text-wrap: pretty; max-width: 32ch;">
       Nem tal&aacute;lgatunk. Pr&oacute;b&aacute;ld &uacute;jra nappali f&eacute;nyn&eacute;l, vagy vidd a n&ouml;v&eacute;nyt ablak k&ouml;zel&eacute;be.
     </div>
 
-    <div style="border-top: 1px solid #2E7C5A; padding-top: 14px; font-size: 15px; color: #BCD6C6; line-height: 1.45;">
+    <div style="border-top: 1px solid var(--color-line); padding-top: 14px; font-size: 15px; color: var(--color-muted); line-height: 1.45;">
       Ebb&#337;l nem k&eacute;sz&uuml;l eml&eacute;keztet&#337;.
     </div>
   </div>
@@ -56,12 +109,12 @@
   <div style="flex-grow: 1;"></div>
 
   <div style="display: flex; flex-direction: column; gap: 14px; padding: 0 22px 26px 22px;">
-    <button style="height: 54px; border: 1.5px solid #DDEADF; border-radius: 999px; background: transparent; color: #DDEADF; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; font-size: 17px; font-weight: 500; cursor: pointer;">
+    <button style="height: 54px; border: 1.5px solid var(--color-body); border-radius: var(--radius-pill); background: transparent; color: var(--color-body); font-family: var(--font-body); font-size: var(--text-body); font-weight: 500; cursor: pointer;">
       &Uacute;j f&eacute;nyk&eacute;p
     </button>
     <div style="display: flex; align-items: flex-start; gap: 8px;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#BCD6C6" stroke-width="1.6" stroke-linecap="round" style="margin-top: 2px; flex-shrink: 0;"><circle cx="12" cy="12" r="9"/><path d="M12 11 L12 16.5 M12 7.6 L12 8"/></svg>
-      <div style="font-size: 13px; line-height: 1.45; color: #BCD6C6;">Ezt az &eacute;rt&eacute;kel&eacute;st mesters&eacute;ges intelligencia k&eacute;sz&iacute;tette. T&eacute;vedhet.</div>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" stroke-width="1.6" stroke-linecap="round" style="margin-top: 2px; flex-shrink: 0;"><circle cx="12" cy="12" r="9"/><path d="M12 11 L12 16.5 M12 7.6 L12 8"/></svg>
+      <div style="font-size: var(--text-caption); line-height: 1.45; color: var(--color-muted);">Ezt az &eacute;rt&eacute;kel&eacute;st mesters&eacute;ges intelligencia k&eacute;sz&iacute;tette. T&eacute;vedhet.</div>
     </div>
   </div>
 

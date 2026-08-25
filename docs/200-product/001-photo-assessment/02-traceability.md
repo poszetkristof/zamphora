@@ -40,6 +40,7 @@ this role does not make it. `00-prd.md` section 8 says the same.
 | M-20 | Care tasks the user deletes within 7 days | at or under 2 in 10 | the same 8 weeks as M-01 | The other side of M-01, `00-context-brief.md` 3. Provisional with it |
 | M-21 | Automatic retries after one failed model call | at or under **1** — two attempts in total | continuous | UC-6, Viability condition. Set by the owner 2026-08-25, gate G-9. Only a timeout, a 429 or a 503 may be retried |
 | M-22 | Model calls per assessment | exactly 1 | continuous | `factory/feature.md`, In scope: "One model call" |
+| M-23 | Screens between signing in on a clean account and sending the first photo | at most **3** | every release | US-15, added 2026-08-25 from gate 21. It guards the thing the story exists for: that a new account can reach an assessment at all, and that the add-a-pot screen does not grow |
 
 **Five of the six numbers that were missing on 2026-08-24 now exist.** The owner set them on the 24th
 and the 25th: the daily limit in M-14 (10 a day), the time budget in M-12 (30 seconds), the session
@@ -70,6 +71,7 @@ accident. A test that reports one of them as the other is wrong even when it pas
 | US-12 An admin reads usage and cost | ADMIN | 5 | UC-7 | M-15 | M-05 | E-7 Admin control |
 | US-13 An admin turns the AI off, no deploy | ADMIN | 5 | UC-7 | M-10 | M-05 | E-7 Admin control |
 | US-14 A normal account is refused admin actions | ADMIN and USER | 5 | UC-4, UC-7 | M-18 | M-06 | E-4 Account and permission |
+| US-15 Add a pot | USER | 5, as the step that makes it reachable | **none — gate 21** | M-23 | M-06 | E-4 Account and permission |
 
 Two stories carry no guardrail on purpose. US-06 shows a true sentence, and US-11 translates text.
 Neither has a number that could be pushed too far in the other direction.
@@ -78,7 +80,12 @@ Neither has a number that could be pushed too far in the other direction.
 
 ### 3.1 No story without a metric
 
-Fourteen stories, fourteen outcome metrics, each story mapped to exactly one. **No orphan story.**
+Fifteen stories, fifteen outcome metrics, each story mapped to exactly one. **No orphan story.**
+
+**US-15 was added on 2026-08-25, after this role ran.** It is the only story that comes from no use
+case: 300 Design found that nothing said how a plant gets into the app, and the owner put it in
+scope as gate 21. It is written into this file by hand rather than by 200 Product, and that is
+declared in `factory/runs/001-photo-assessment/seam-ledger.md`.
 
 ### 3.2 No metric without a story
 
@@ -106,6 +113,7 @@ Fourteen stories, fourteen outcome metrics, each story mapped to exactly one. **
 | M-20 | US-03 guardrail |
 | M-21 | US-09 guardrail |
 | M-22 | US-01, US-02 guardrail |
+| M-23 | US-15 outcome |
 
 **No orphan metric.**
 

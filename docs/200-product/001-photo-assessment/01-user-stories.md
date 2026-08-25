@@ -467,6 +467,50 @@ Architecture's answer, recorded as open in `01-use-cases.md` (UC-7, Usability).
 
 ---
 
+## US-15 — Add a pot, so the app has something to assess
+
+**Account type:** USER · **Serves:** backbone 5, as the step that makes it reachable ·
+**From:** no use case — see below
+
+> **When** I open the app for the first time and it is empty, **I want** to add one plant with a
+> name I recognise, **so I can** photograph it straight away instead of being stuck on an empty
+> screen.
+
+**This story came from a gap, not from a use case.** No use case in `01-use-cases.md` and no story
+above says how a plant gets into the app, so a new account could not reach a single assessment.
+300 Design found it and refused to design the screen, because inventing scope is not its job. The
+owner put it in scope on 2026-08-25 as gate 21. **US-01 AC-3 already refers to "pick or create a
+pot", so the stories were pointing at a screen that did not exist.**
+
+**AC**
+
+1. **Given** I am signed in and have no pots, **when** I open the app, **then** it offers to add
+   one, and the offer is the main thing on the screen rather than a link in a corner.
+2. **Given** the add-a-pot screen, **when** I look at it, **then** it asks for exactly **two**
+   things: a name, and where the plant is. Nothing else is required and nothing else is shown.
+3. **Given** I type a name, **when** I save, **then** the pot is mine and appears in my list. No
+   other account can see it.
+4. **Given** a name of 1 to 60 characters, **when** I save, **then** it is accepted. An empty name
+   is refused with a message that says what to do.
+5. **Given** a name at 30 characters in Hungarian, **when** it is shown anywhere in the app, **then**
+   the layout does not break and the text is not cut off without warning.
+6. **Given** two of my pots have the same name, **when** I save the second, **then** it is accepted.
+   Two plants of the same kind in different rooms is normal, and "where the plant is" is what tells
+   them apart.
+7. **Given** I have just added a pot, **when** the save finishes, **then** I can take a photo of it
+   without going back to a menu first.
+8. **Given** a clean account, **when** I count the screens between signing in and sending my first
+   photo, **then** there are at most **three**.
+
+**Deliberately not in this story:** species, a photo of the plant, notes, watering settings, editing
+a pot and deleting a pot. Species and notes are backbone feature 4, and pulling them in here pulls
+that whole feature into run 1. **Editing and deleting a pot are a real gap** and are named in the
+table below, not hidden.
+
+**Success metric:** M-23 · **Guardrail:** M-06
+
+---
+
 ## Stories that were considered and not written
 
 Recorded so a later reader can see they were thought about.
@@ -480,3 +524,4 @@ Recorded so a later reader can see they were thought about.
 | Send a notification when the task is due | Backbone feature 6, run 3. This run only writes the task |
 | An admin screen | A later feature. The permission check and the switch ship now |
 | Export all of my data | The export half of idea W-5. Only deletion is in run 1 |
+| **Rename or delete a pot** | **A real gap, added 2026-08-25 with US-15 and left open on purpose.** US-15 lets a pot be created and never changed. A typed name cannot be corrected, and a plant that dies leaves a row that cannot be removed. The owner decides whether it enters run 1 or waits for backbone feature 4. **It is not a hard stop:** every story above works without it, and no acceptance criterion depends on it |
