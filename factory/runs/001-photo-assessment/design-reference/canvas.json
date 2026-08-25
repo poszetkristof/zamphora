@@ -1,0 +1,16 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Mobile — likely" },
+    { "file": "Unsure.dc.html", "x": 470, "y": 0, "w": 390, "h": 844, "title": "Mobile — unsure" },
+    { "file": "CannotTell.dc.html", "x": 940, "y": 0, "w": 390, "h": 844, "title": "Mobile — cannot-tell" },
+    { "file": "Tablet.dc.html", "x": 0, "y": 964, "w": 834, "h": 1112, "title": "Tablet 834" },
+    { "file": "Desktop.dc.html", "x": 914, "y": 964, "w": 1440, "h": 900, "title": "Desktop 1440" }
+  ],
+  "annotations": [
+    { "id": "approved", "x": 1410, "y": 0, "w": 320, "text": "BOTANICAL — approved 2026-08-25.\n\nHeld against five researched alternatives on the same screen (Jade Workshop, Garden Party, Matcha, Deep Seaweed, Emerald Luxe) and kept.\n\nThese exact values are written into factory/feature.md, which is what 300 Design reads. This canvas is the reference; that file is the contract." },
+    { "id": "botanical", "x": 1410, "y": 250, "w": 320, "text": "ground  #14513A  rich green, never white\nwell    #0B3526  the photo sits in a dip\nraised  #1B6446  the unsure band\nline    #2E7C5A  dividers only\nverdict #F3FAF2  8.72:1 AAA\nbody    #DDEADF  7.46:1 AAA\nmuted   #BCD6C6  5.98 / 4.59 AA on BOTH surfaces\naccent  #FFC94A  6.04:1 AA — the one action colour\nwarn    #FF9478  unsure marker only, never body text\n\nDark green #0B2E20 on the yellow button: 9.61:1 AAA." },
+    { "id": "why-yellow", "x": 1410, "y": 630, "w": 320, "text": "Why yellow and not lime.\n\nLime and chartreuse read as budget or playful. Yellow, teal and pink are what give energetic contrast against a deep green ground.\n\nYellow on green is also just what a botanical plate looks like — sunlight through leaves.\n\nGarden Party was the test of the opposite idea: a green accent and no warm colour at all. It lost because the action button then fights the verdict for attention." },
+    { "id": "rules", "x": 1410, "y": 960, "w": 320, "text": "Rules held to:\n\n· buttons 999px, cards 2px — not one radius everywhere\n· no shadows, no gradients\n· accent well under 10% of each screen\n· icons drawn, never emoji\n· no fake iOS status bar\n· hit targets 48–56px\n· the three bands read without colour: dot / rule+triangle / nothing\n· Hungarian copy, so the 30-char limit is real" }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #FFC94A; text-decoration: none; } a:hover { color: #FFD97A; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; background: #14513A; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 14px 20px 10px 16px; min-height: 52px;">
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: flex-start;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F3FAF2" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 1px;">
+      <div style="font-size: 17px; font-weight: 500; color: #DDEADF; letter-spacing: -0.01em;">Hoya</div>
+      <div style="font-size: 13px; color: #BCD6C6;">polcon &middot; 2026. augusztus 25.</div>
+    </div>
+  </div>
+
+  <div style="height: 190px; background: #0B3526; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+    <svg width="170" height="170" viewBox="0 0 200 200" fill="none" stroke="#F3FAF2" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.22">
+      <path d="M100 22 C138 40 168 78 163 118 C158 154 130 178 100 186 C70 178 42 154 37 118 C32 78 62 40 100 22 Z"/>
+      <path d="M100 186 L100 22"/>
+      <path d="M100 62 L146 52 M100 62 L54 52 M100 98 L160 92 M100 98 L40 92 M100 134 L152 138 M100 134 L48 138"/>
+    </svg>
+    <div style="position: absolute; bottom: 10px; right: 12px; font-size: 12px; color: #BCD6C6; letter-spacing: 0.04em; text-transform: uppercase;">a te fot&oacute;d</div>
+  </div>
+
+  <!-- the sand band. A rule above it, so the state reads without colour -->
+  <div style="border-top: 2px solid #FF9478; background: #1B6446; display: flex; flex-direction: column; gap: 16px; padding: 20px 22px 22px 22px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF9478" stroke-width="1.8" stroke-linecap="round"><path d="M12 3 L21.5 20 L2.5 20 Z"/><path d="M12 10 L12 14.5 M12 17.2 L12 17.6"/></svg>
+      <div style="font-size: 13px; font-weight: 500; color: #FF9478; letter-spacing: 0.08em; text-transform: uppercase;">Bizonytalan</div>
+    </div>
+
+    <div style="font-family: 'EB Garamond', Georgia, serif; font-size: 40px; line-height: 1.06; color: #DDEADF; letter-spacing: -0.015em;">K&aacute;rtev&#337;</div>
+
+    <div style="font-size: 17px; line-height: 1.5; color: #DDEADF; text-wrap: pretty; max-width: 32ch;">
+      Ez t&eacute;ves lehet. Egy k&ouml;zelebbi fot&oacute; a lev&eacute;l als&oacute; oldal&aacute;r&oacute;l, j&oacute;l megvil&aacute;g&iacute;tva, biztosabb v&aacute;laszt adna.
+    </div>
+  </div>
+
+  <div style="flex-grow: 1;"></div>
+
+  <!-- no task is written without an explicit yes, so neither button is the loud one -->
+  <div style="display: flex; flex-direction: column; gap: 12px; padding: 0 22px 26px 22px;">
+    <div style="font-size: 15px; color: #BCD6C6; line-height: 1.45;">K&eacute;sz&iacute;ts&uuml;nk m&eacute;gis eml&eacute;keztet&#337;t 3 nap m&uacute;lvra?</div>
+    <div style="display: flex; gap: 10px;">
+      <button style="flex-grow: 1; height: 52px; border: 1.5px solid #F3FAF2; border-radius: 999px; background: transparent; color: #F3FAF2; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 500; cursor: pointer;">
+        Igen, k&eacute;rem
+      </button>
+      <button style="flex-grow: 1; height: 52px; border: 1.5px solid transparent; border-radius: 999px; background: transparent; color: #BCD6C6; font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 400; cursor: pointer;">
+        Most nem
+      </button>
+    </div>
+    <div style="display: flex; align-items: flex-start; gap: 8px; padding-top: 2px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#BCD6C6" stroke-width="1.6" stroke-linecap="round" style="margin-top: 2px; flex-shrink: 0;"><circle cx="12" cy="12" r="9"/><path d="M12 11 L12 16.5 M12 7.6 L12 8"/></svg>
+      <div style="font-size: 13px; line-height: 1.45; color: #BCD6C6;">Ezt az &eacute;rt&eacute;kel&eacute;st mesters&eacute;ges intelligencia k&eacute;sz&iacute;tette. T&eacute;vedhet.</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

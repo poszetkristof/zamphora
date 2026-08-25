@@ -86,6 +86,7 @@ Do not infer the design from surrounding code; it may not exist yet.
 | Anything at all | `docs/context/stack.md` |
 | Any `.ts` / `.tsx` | `docs/500-engineering/00-conventions.md` |
 | The web app | `docs/500-engineering/02-web-spec.md` |
+| **A screen** | `docs/300-design/<slug>/02-SPEC.md` is the contract. Then open `docs/design-preview.html` to see what it should look like — the mockup is a **reference**, so where the two disagree the spec wins |
 | The API | `docs/500-engineering/03-api-spec.md` |
 | Anything crossing the wire | `docs/500-engineering/01-contracts.md` |
 | Tests | `docs/600-qa/00-test-plan.md` |

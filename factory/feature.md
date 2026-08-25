@@ -226,6 +226,112 @@ Two provisional bars, to be replaced by measurements after the first 20 real ass
 be an image the app accepts, and the user must have named the plant. Neither needs a model call to
 fail.
 
+## The visual identity — decided by the owner, 2026-08-25
+
+**300 Design does not choose this.** Its own contract says brand voice and visual identity are handed
+back to a person, so the answer is here, before the role runs. 300 turns it into `03-tokens.md` and
+uses the token names in `02-SPEC.md`.
+
+**A drawn mockup of all five screens was approved on 2026-08-25.** Its source is in
+`factory/runs/001-photo-assessment/design-reference/`, and it is a **reference, not a contract** —
+no role reads that folder. Everything in it that matters is written out below, in words and numbers.
+Where the two disagree, this file wins.
+
+### The direction: **Botanical**
+
+**A green page, never a white one.** Rich green ground, light green-white type, one warm yellow for
+actions. It should feel alive and planted, like a botanical plate — sunlight through leaves.
+
+**Why not the obvious green.** Every app in `03-market.md` is green — PictureThis, Planta, Blossom,
+Greg — and every one of them is **white with mint or emerald**. The green belongs on the page, not
+on a white page. That single inversion is what separates this from the whole category.
+
+**Why yellow and not lime.** Lime and chartreuse read as budget or playful. Yellow, teal and pink
+are what give energetic contrast against a deep green ground, and yellow on green is what a
+botanical plate already looks like.
+
+**The first attempt was rejected and the reason is worth keeping.** It was warm paper `#F7F4EC` with
+a terracotta accent — which is Claude's own palette, reproduced without noticing. A design assembled
+from what the designer looks at all day is a different flavour of the same averaging problem the
+MUST NOT list exists to stop.
+
+### The palette
+
+Measured in sRGB, WCAG 2.2, against **both** surfaces. The numbers are checked, not assumed.
+
+| Token | Value | Use | On ground | On raised |
+| --- | --- | --- | --- | --- |
+| `--color-ground` | `#14513A` | the page. **Never white, never near-white** | — | — |
+| `--color-well` | `#0B3526` | the photo sits in a dip, so it reads as its own plane | — | — |
+| `--color-raised` | `#1B6446` | the `unsure` band, and the selected row on desktop | — | — |
+| `--color-line` | `#2E7C5A` | dividers only. Never a text colour | — | — |
+| `--color-verdict` | `#F3FAF2` | the verdict, headings, icons | **8.72:1** AAA | **6.68:1** AA |
+| `--color-body` | `#DDEADF` | body text | **7.46:1** AAA | **5.72:1** AA |
+| `--color-muted` | `#BCD6C6` | secondary text | **5.98:1** AA | **4.59:1** AA |
+| `--color-accent` | `#FFC94A` | warm yellow. **The one action colour** | **6.04:1** AA | **4.63:1** AA |
+| `--color-on-accent` | `#0B2E20` | text on the yellow button — **9.61:1** AAA | — | — |
+| `--color-warn` | `#FF9478` | the `unsure` marker only. **Never body text** | 4.3:1 | 3.3:1 |
+
+**Two values were rejected during the check, and both would have shipped.** `#A9C7B5` for muted
+passed on the ground and failed on the raised surface at **3.9:1** — and the raised surface is
+exactly where secondary text sits, in the `unsure` band. `#BCD6C6` passes on both. `#FF9478` is
+strong enough for a rule, an icon and a label, and not for a paragraph, so it is fenced to those.
+
+**Every new colour is measured against both surfaces before it is added.** One number is not enough.
+
+### How the three confidence bands look
+
+They must be **visibly different without relying on colour alone**, because colour alone fails for a
+colour-blind user and in bright light. Each band therefore has a shape as well as a colour.
+
+| Band | Colour | The shape that carries it without colour |
+| --- | --- | --- |
+| `likely` | verdict white on the ground | a filled dot before the label |
+| `unsure` | `#FF9478` on the raised band | a **2px rule above the band** and a warning triangle |
+| `cannot-tell` | muted only, **no accent anywhere** | no verdict at all, and the label is the only heading |
+
+`cannot-tell` also **shows the bad photo** rather than only describing it. If the reason is "too
+dark", the photo on screen is too dark.
+
+### Typography
+
+**A serif for the verdict, a grotesque for everything else.** The verdict is the product, so it gets
+its own voice; the pairing is what stops the design looking generated. A serif also survives long
+Hungarian words better at large sizes.
+
+- `--font-display` — a serif with real character, for the verdict and headings.
+- `--font-body` — a plain grotesque for UI text, labels and numbers.
+- **Not Inter and not Roboto** for either. Both are the default of every generated interface.
+- A type scale with real jumps — **13 / 17 / 28 / 44**, not 14 / 16 / 18.
+
+300 Design names the two families and says why. The owner may replace either.
+
+### MUST NOT — the list that keeps it from looking machine-made
+
+These go into `01-CONTEXT.md` as hard constraints. They come from published analysis of why generated
+interfaces look alike: the model falls back to the average of what it has seen.
+
+- **No purple or indigo, and no gradient anywhere.** That is the default look of a generated app.
+- **No white or near-white page background, and no `#FFFFFF` anywhere.** The page is green.
+- **Not one radius everywhere.** Cards are `2px`, buttons are fully round. A single `16px` on every
+  element is the strongest tell there is.
+- **No drop shadow at 0.1 opacity on everything.** A shadow means "this floats above that". If
+  everything has one, nothing does.
+- **No centred hero with one button**, and **no row of three icon cards**.
+- **No emoji as an icon.**
+- **The accent colour covers less than 10% of any screen.** If the yellow is everywhere, it stops
+  meaning "act on this".
+- **No fade-in on every element.** Motion happens where something actually changed.
+- **No hex value in `02-SPEC.md`.** Token names only. Every token is defined in `03-tokens.md`.
+
+### Two constraints that come from this product, not from taste
+
+- **Hungarian words are long.** Every label and button must be readable at 30 characters without the
+  layout breaking. Test with the Hungarian string, not the English one.
+- **The app is used in the evening, indoors, in poor light, one-handed, standing.** Dark mode is a
+  variant to be added later, not the base. The base is chosen for outdoor legibility and because a
+  plant photo sits well on a warm neutral.
+
 ## The backbone — the features the human named
 
 These came from the person who owns the product. They are the **highest priority and the shape of
