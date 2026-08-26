@@ -1,0 +1,29 @@
+%% C4 level 1 — system context for zamphora.
+%% Written by 400 Architecture, run 1 (001-photo-assessment), 2026-08-25.
+%% Matches Option A in 00-options.md. Every box below has at least one arrow.
+%%
+%% Read this with 02-containers.mmd. This file says who talks to the product and
+%% which outside services it depends on. It says nothing about what is inside.
+
+C4Context
+    title System context — zamphora, run 1
+
+    Person(keeper, "Plant keeper", "Keeps houseplants in an apartment. Signs in. Photographs a pot that looks unwell. Reads Hungarian or English. Account type USER.")
+    Person(admin, "Admin", "Reads usage and cost figures and can switch the AI feature off. Has no screen in run 1 and calls the API directly. Account type ADMIN.")
+
+    System(zamphora, "zamphora", "Remembers what each pot needs. Assesses a photo of a sick plant and turns the next action into a dated care task.")
+
+    System_Ext(cognito, "Amazon Cognito user pool", "Holds the accounts and the passwords. Runs the sign-in pages. Issues the ID token that zamphora reads once, at sign-in.")
+    System_Ext(anthropic, "Anthropic Messages API", "Looks at one photo and returns one verdict, one confidence band, one next action and a follow-up in whole days. Paid from the owner's own Anthropic credit, not from AWS.")
+    System_Ext(mail, "Email delivery", "Sends the warning at 11 months of no sign-in, before the account is deleted at 12. NAMED IN factory/feature.md AND NOT BUILT IN RUN 1 - see seam 12 in the run ledger.")
+
+    Rel(keeper, zamphora, "Adds a pot, sends one photo, reads the result, keeps the care task", "HTTPS")
+    Rel(admin, zamphora, "Reads the figures. Switches the AI feature off and on", "HTTPS")
+
+    Rel(keeper, cognito, "Signs in on Cognito's own pages, then is sent back", "HTTPS redirect, OpenID Connect")
+    Rel(zamphora, cognito, "Swaps the one-time code for an ID token and checks its signature", "HTTPS, OpenID Connect authorization code with PKCE")
+
+    Rel(zamphora, anthropic, "Sends the resized photo and the plant name. Asks once. Retries at most once", "HTTPS, structured output")
+    Rel(zamphora, mail, "Warns an account that has not signed in for 11 months", "Not built in run 1")
+
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

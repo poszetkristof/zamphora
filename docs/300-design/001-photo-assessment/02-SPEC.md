@@ -133,10 +133,11 @@ sending it, asking the model. The current line is `--color-verdict`, the finishe
 `--color-muted`, the future lines are `--color-muted`. Each finished line gets a small tick shape,
 so progress is not only colour.
 
-**States:** `resizing` · `uploading` · `asking` · `retrying` · `finished` · `failed`.
+**States:** `resizing` · `uploading` · `asking` · `finished` · `failed`. **Five, not six.**
 
-`retrying` says plainly that the app is trying once more, and that this second try also counts
-against the daily limit (US-08 AC-5). It never pretends the first try did not happen.
+**`retrying` was removed on 2026-08-26**, when the owner dropped the retry. It said the app was
+trying once more and that the second try also counted against the daily limit. There is no second
+try now, so a state that announced one would be a lie on screen. **Do not build it.**
 
 ### 3.9 VerdictGroup
 
@@ -310,10 +311,14 @@ saying the wait cannot be stopped because the call is already paid for.
 | 1 | `resizing` | Send was tapped | Step 1 of the `StepList` is current |
 | 2 | `uploading` | The smaller copy exists | Step 2 is current |
 | 3 | `asking` | The photo reached the API | Step 3 is current |
-| 4 | `retrying` | A timeout, a 429 or a 503 on the first try | The `retrying` line. **At most one retry, two attempts in total, both inside the 30 seconds** (US-09 AC-5). It says the second try also counts against the daily limit |
 | 5 | `timed-out` | 30 seconds passed with nothing on screen | `FailureNote` in state `retry-may-work` (US-01 AC-8, US-09 AC-3). No care task is created |
 | 6 | `provider-error` | The model provider answered with an error | `FailureNote` in state `retry-may-work` (US-09 AC-3) |
-| 7 | `not-retryable` | A bad request, a rejected photo, or an empty credit balance | `FailureNote` in state `retry-will-not-work`. **These are never retried** (US-09 AC-5) |
+| 7 | `not-retryable` | A bad request, a rejected photo, or an empty credit balance | `FailureNote` in state `retry-will-not-work`. The name still matters: it tells the **person** that tapping again is pointless, which is different from a timeout, where tapping again may work |
+
+**State numbering note, 2026-08-26.** State 4 was `retrying` and it is gone with the retry. The
+remaining states keep their old numbers so that every reference elsewhere still resolves. **The two
+`retry-...` names in the `FailureNote` are about what the person should do, not about anything the
+app does automatically.**
 | 8 | `offline` | The network dropped mid-flight | `FailureNote` in state `offline`. Back on SC-1 the photo is still there (US-09 AC-2) |
 | 9 | `answered` | A well-formed answer arrived | Moves to SC-3, SC-4 or SC-5 by band |
 | 10 | `answer-unreadable` | A missing field, a verdict code outside the ten, or a band outside the three | Moves to SC-5 in state `unreadable-answer`. No verdict, no task, another photo offered. The failed answer is stored for QA (US-02 AI Eval Card) |
@@ -487,7 +492,8 @@ an engineer's judgement. Each line can be tested and failed.
 9. No photo is sent whose longer side is over 1000 px.
 10. No failure that retrying cannot fix shows a try-again button. That is: a rejected photo, the
     daily limit, the feature switched off, an empty credit balance, and a bad request.
-11. No screen starts a second automatic retry. One retry, two attempts, and that is all.
+11. No screen starts an automatic retry of any kind. **One model call per assessment, 2026-08-26.**
+    A failure shows a message and the person decides whether to tap again.
 12. No screen queues a photo to send later when the device is offline.
 
 **About the task**

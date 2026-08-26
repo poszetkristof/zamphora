@@ -1,0 +1,61 @@
+%% C4 level 2 — containers for zamphora.
+%% Written by 400 Architecture, run 1 (001-photo-assessment), 2026-08-25.
+%% This diagram IS Option A in 00-options.md. If the two disagree, 00-options.md is wrong.
+%% Every connection described in a box below has an arrow. Checking that no box is alone is not
+%% enough - a missing web->api arrow passed that check once and hid a real undecided question.
+%%
+%% Two properties this diagram is drawn to make visible:
+%%   1. The web container has NO arrow to the table and NO arrow to the bucket. It holds no
+%%      credentials. Every piece of data reaches the browser through the api. See ADR-0010.
+%%   2. Nothing reaches anthropic except the api, and it goes through one adapter. See ADR-0005.
+
+C4Container
+    title Containers — zamphora, run 1 (001-photo-assessment)
+
+    Person(keeper, "Plant keeper", "Account type USER. Phone, one hand, evening light.")
+    Person(admin, "Admin", "Account type ADMIN. No screen in run 1. Uses curl.")
+
+    Container_Boundary(product, "zamphora") {
+        Container(edge, "edge", "CloudFront, one domain", "One origin for the whole product. Sends /api/* to the api and everything else to the web. This is what removes CORS and lets the session cookie carry the __Host- prefix. ADR-0010.")
+
+        Container(web, "web", "Next.js static export, S3 + CloudFront", "The screens SC-1 to SC-7 in both languages, built ahead of time into plain files. No server and no Lambda. Holds no credentials, reads no data store, and fetches every value from the api in the browser. ADR-0010.")
+
+        Container(api, "api", "Nest.js on AWS Lambda, apps/api", "One deployable unit. Owns the session, the ownership check, the daily limit, the kill-switch and the one model call. Refuses every route that does not name its account type. ADR-0002, ADR-0004.")
+
+        Container(llm, "llm adapter", "TypeScript, packages/llm", "The only code in the repository allowed to import the Anthropic SDK. Behind the LlmProvider port, so another provider is a swap. ADR-0005.")
+
+        Container(contracts, "contracts", "Zod, packages/contracts", "Every type that crosses the wire, including the four-field assessment answer, the ten verdict codes, the three bands and the four cannot-tell reasons. Imported by package name only, never by relative path.")
+
+        ContainerDb(table, "table", "Amazon DynamoDB, one table", "Pots, assessments, care tasks, sessions, profiles, the daily attempt counter, the daily usage rollup and the kill-switch. The owner id is the partition key, so one account cannot ask for another account's rows. ADR-0002, ADR-0004.")
+
+        ContainerDb(photos, "photos", "Amazon S3, private bucket", "The resized photo, at most 1000 px on its longer side. A lifecycle rule expires it at 180 days with no application code involved. Never public, never behind a cache. ADR-0007.")
+    }
+
+    System_Ext(cognito, "Amazon Cognito user pool", "Accounts, passwords, the sign-in pages, and group membership for USER and ADMIN.")
+    System_Ext(anthropic, "Anthropic Messages API", "One vision call per assessment. Paid from the owner's own Anthropic credit.")
+    System_Ext(mail, "Email delivery", "The 11-month warning. Named in factory/feature.md, not built in run 1.")
+
+    Rel(keeper, edge, "Uses every screen", "HTTPS")
+    Rel(admin, edge, "Reads the figures, flips the switch", "HTTPS, curl")
+
+    Rel(edge, web, "Everything that is not /api/*, served from the bucket", "HTTPS")
+    Rel(edge, api, "/api/* only", "HTTPS, __Host-session cookie")
+
+    %% The arrow that was missing. The web box says it fetches every value from the api, so the
+    %% arrow has to exist. It goes back out through the edge, which is why it is drawn to edge.
+    Rel(web, edge, "Every data read and write, from the browser, on the same origin", "fetch, HTTPS, cookie sent automatically")
+
+    Rel(web, contracts, "Parses every answer with the same schema the api validated against", "pnpm workspace import")
+    Rel(api, contracts, "Validates every request and every model answer", "pnpm workspace import")
+
+    Rel(api, table, "GetItem, Query, and one atomic conditional increment for the daily limit", "AWS SDK, IAM role")
+    Rel(api, photos, "PutObject once. Signs a 5-minute read URL when a screen needs the picture", "AWS SDK, IAM role")
+    Rel(api, llm, "assess(photo, plantName, locale) - exactly one call, never retried", "LlmProvider port")
+    Rel(llm, anthropic, "POST /v1/messages with output_config.format", "HTTPS")
+
+    Rel(keeper, cognito, "Signs in on Cognito's pages", "HTTPS redirect")
+    Rel(api, cognito, "Swaps the code for an ID token and checks its signature. Reads sub and the group", "HTTPS, OIDC code + PKCE")
+
+    Rel(api, mail, "Warns at 11 months of no sign-in", "Not built in run 1")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")

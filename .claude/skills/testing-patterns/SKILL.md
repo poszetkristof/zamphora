@@ -35,7 +35,7 @@ container.querySelector(".flex.gap-2") // never
 `await` the cause, not a timer. Prefer `findBy*` over `waitFor` plus `getBy*`. For a loading state,
 hold a promise and resolve it by hand instead of racing a timer.
 
-Stub a Radix primitive only when it fights jsdom (portals, pointer capture). If the test is about
+Stub a Base UI primitive only when it fights jsdom (portals, pointer capture). If the test is about
 focus trapping it belongs in the integration tier, or is not worth writing.
 
 **Server Components** are covered by an integration test on the route. If a Server Component has

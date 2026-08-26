@@ -595,7 +595,10 @@ quietly not exist.
 ## 8. Step 4 — Architecture, and the first human gate
 
 This is the biggest step. It reads the brief, the PRD, the stories and both design files, and writes
-eight things.
+eight things. Seven are described below. The eighth is `05-patterns.md`: the shapes the system
+repeats — the data keys, how sign-in works, how failure is carried, how the counter cannot be raced.
+An ADR says *why* one thing was chosen; a pattern says *how the same problem is solved every time it
+comes up*, so nobody invents a second way in task 40.
 
 ### Options before diagrams
 
@@ -604,22 +607,54 @@ single-table against relational — scored on at least three limits, where scori
 scoring worse on another. Draw a diagram before the choice is made and you are married to your first
 idea.
 
+**A close score is a gate, not a tie-break.** On run 1 the winner beat the runner-up 16 to 15, and
+one point is not a defensible margin. The role took the winner, wrote down the single trade that
+separates them, and handed the choice to the owner as gate 26. A role that quietly breaks its own
+tie has decided what gets built.
+
 For zamphora, serverless wins — and **why it wins matters.** The deciding limit came from role 100's
 brief: the free account plan. A limit written in step 1 chose the architecture in step 4. That is the
 line working.
 
+### C4 — two diagrams, and why only two
+
+**C4** is four zoom levels of the same system: **context, containers, components, code.** You draw
+the first two and stop.
+
+| Level | Name | One box is | Drawn here? |
+| --- | --- | --- | --- |
+| 1 | Context | The whole product, plus the people and the outside services around it | Yes — `01-context.mmd` |
+| 2 | Containers | One part inside the product that runs on its own | Yes — `02-containers.mmd` |
+| 3 | Components | A module or class inside one of those parts | No |
+| 4 | Code | The classes themselves | No |
+
+**Levels 3 and 4 are the code, and the code already says what the code is.** A drawing of it is
+wrong within a week and nobody notices. Levels 1 and 2 are the part the code never says out loud.
+
+**"Container" here has nothing to do with Docker.** The test is: can this be started, stopped and
+deployed by itself? If yes, it is a level-2 box. If it belongs to somebody else and you only call it,
+it is an outside box on level 1.
+
+On run 1 that gives **6 boxes on level 1** — the plant keeper, the admin, zamphora itself, Cognito,
+the Anthropic API, email delivery. Level 2 opens zamphora up into **seven parts**: `edge`, `web`,
+`api`, `llm adapter`, `contracts`, `table`, `photos`. Only two of the six on level 1 are people, and
+that is normal: level 1 is mostly about who is outside and cannot be changed.
+
 `01-context.mmd` and `02-containers.mmd` are **Mermaid** files — diagrams written as text, in the repo,
 so an agent can read and update them. A picture in a slide deck stops matching the system within weeks
-and nobody notices. One real bug this catches: a container diagram had a box called "queue that
-receives stock updates" with **no arrow pointing into it.** On paper it looked wired up. Code built
-from it would wait forever.
+and nobody notices. The bug this catches is a **missing arrow**: on run 1, `02-containers.mmd` had a
+`web` box whose own description said it "fetches every value from the api", and no arrow from `web`
+to `api`. Every box had at least one arrow, so a shallow check passed it. The missing arrow was
+hiding an undecided question — does the browser call the API, or does the server call it and forward
+the cookie? **Check that every arrow the prose claims is actually drawn, not just that no box is
+alone.**
 
 ### ADR or NFR — the pair that gets mixed up
 
 | | Is a… | Example |
 | --- | --- | --- |
 | **ADR** | *decision* | "we use DynamoDB with a single table" |
-| **NFR** | *target* | "the assessment returns in under 4 seconds, 95% of the time" |
+| **NFR** | *target* | "the result is on screen inside 30 seconds, 95% of the time" |
 
 Different files on purpose. **Every ADR ends with an Agent-Readable Summary** — a plain instruction with an explicit "do not", such
 as *"all model calls go through `LlmProvider`. Do not import the Anthropic SDK outside
@@ -635,23 +670,24 @@ Miss one and the number is a wish. `06-nfrs.md` is a table where every row carri
 
 | NFR | Target | How it is checked | Which CI job runs it |
 | --- | --- | --- | --- |
-| how long the user waits | **p90 under 4 s** | a test that runs the whole flow with a fake model and times it | `test` |
-| what one assessment costs you | **under $0.012** | count the tokens, multiply by the price, fail the test above that | `test` |
-| how often the verdict is right | **8 in 10**, provisional | run the 40 known photos through the real model and count how often a person agrees | `ai-eval` |
+| NFR-01 how long the user waits | **p95 under 30,000 ms** | Playwright runs the whole flow on a throttled connection, with the model replaced by a stub that sleeps for the budgeted 8,000 ms | `perf-flow` |
+| NFR-10 what one assessment costs | **≤ $0.0040** on Haiku 4.5 | the cost is read from the `usage` block the API returns, never estimated, and asserted against the published prices | `test` |
+| NFR-20 how often the verdict is right | **≥ 8 in 10**, provisional | run the 40 known photos through the real model and count how often a person agrees | `ai-eval` |
 
 Three things in that table are worth unpacking, because they are the parts people skim.
 
 **Cost really can be a unit test.** You do not call the model. You take the prompt you send, count its
-tokens, multiply by the published price, and assert the result is under $0.012. Add three paragraphs
-to the prompt later and that test fails on the pull request, before the bill arrives. `$0.012` is not a
-guess: it comes from the free-account limit in role 100's brief, divided by the assessments you expect.
+tokens, multiply by the published price, and assert the result is under the ceiling. Add three
+paragraphs to the prompt later and that test fails on the pull request, before the bill arrives.
 
 **The 40 photos have a name: a golden set.** Real photos where a human already wrote down the right
-verdict. This is the only honest way to test an AI feature, because there is no "correct output" to
-compare a string against — only "right often enough".
+verdict — the only honest way to test an AI feature, because there is no "correct output" to compare
+a string against, only "right often enough".
 
 **The last column is a GitHub Actions job name.** `test` runs on every pull request. `ai-eval` costs
-real money, so it runs less often — but it still **blocks the release**, which is the third link.
+real money — 40 photos at $0.0040 is $0.16 a run, and nightly would be about $4.80 a month against a
+$5.00 credit balance — so it runs on demand only. It still **blocks the release**, which is the third
+link. A test that empties the balance it is testing is not a test.
 
 Two of those three rows do not exist on a normal project. **AI features need a cost-per-call number and
 a how-often-is-it-right number**, both decided here, at design time, by the role that also chose the
@@ -659,20 +695,47 @@ architecture.
 
 ### The timed flow, and the simplest shape that works
 
-`03-flow-plant-check.md` lists every step with a number:
+`001-photo-assessment/03-flow.md` lists all fifteen steps with a number, in two columns — the run
+most people get, and the run the design has to survive:
 
 ```
-tap capture            →  client resize to 1568px long edge    180 ms
-request pre-signed URL →  API Gateway + Lambda                  90 ms
-upload to S3           →  direct from browser                  650 ms
-POST /assess           →  Lambda → LlmProvider → model        2400 ms
-render result                                                   40 ms
-                                                     total   3360 ms
+typical   8,191 ms   warm function, decent signal
+budget   15,245 ms   cold function, weak signal, first call of the day
+                     against a 30,000 ms promise
 ```
 
-3360 ms against a 4000 ms budget. **The point is that the numbers must add up.** A ten-second check
-that catches a design nobody totalled — one published example claimed 87 ms when its own steps came
-to 92.
+**The point is that the numbers must add up.** A ten-second check that catches a design nobody
+totalled — one published example claimed 87 ms when its own steps came to 92.
+
+**A third row used to sit under those two: a retry at 25,230 ms.** The owner deleted the retry on
+2026-08-26 once the pre-mortem showed it broke the cost ceiling and squeezed the time budget. **The
+table is the thing that made that visible** — the retry was not obviously wrong until somebody added
+it up next to the ceiling it had to fit under.
+
+### The budget also has to fit under the platform's own ceiling
+
+This is the finding of run 1, and it hides because both numbers are the same. The owner promised the
+user 30 seconds. An API Gateway HTTP API **cuts any request off at 30 seconds, and that limit cannot
+be raised.** When it fires, the person sees a 504 that no part of the product wrote — which breaks
+the story saying every failure message ends in one of two chosen sentences.
+
+The fix is three deadlines in order, each one a constant in the code:
+
+| Layer | Deadline | What the user sees if it fires |
+| --- | --- | --- |
+| The application | 20,000 ms | Its own failure message |
+| The function | 22,000 ms | Nothing. This is the net under the net |
+| The gateway | 30,000 ms | A 504 nobody wrote. Must never be reached |
+
+**A target number is not finished until it has been checked against the platform's own limit.** Ask
+it of every budget: what cuts this off first, and who writes the message when it does?
+
+**And a deadline is a permission, not a prediction.** The first version of this stack was checked
+against the run the design *expects*, which left 4,770 ms of apparent headroom. Checked against the
+run the design *permits* — the app using its whole 24,000 ms — the headroom was 480 ms. Worse, the
+800 ms cold start had been subtracted inside the app's own deadline, and the code that starts that
+clock cannot run until the cold start has finished. **Anything that happens before your code runs is
+budgeted outside your deadline, not inside it.**
 
 Then pick the shape: **plain code (if / else) → one AI call → a fixed chain of AI calls → a
 free-roaming agent.** Stop at the first that does the job. Photo assessment is **one AI call**.
@@ -682,6 +745,14 @@ thing to test, debug and predict the cost of.
 Last, `07-adversarial.md` is a **pre-mortem written by a brand-new session that never saw the design
 being built**, asked one question: this failed badly — why? The session that built the design will
 defend it, exactly as a person defends their own work. A new session has nothing to defend.
+
+**On run 1 it paid for itself.** It found three real defects in a pack that had already been checked
+by hand: the most frequent read in the product cannot be done in one call, because the key it needs
+sits inside the item it has not read yet; the headroom in the timed flow was measured on the friendly
+run and not on the run the design permits; and one requirement caps the cost of an assessment at a
+figure that a second attempt — allowed by the requirement printed next to it — goes past. **Run the
+pre-mortem before the next role reads those files, not after.** A wrong document that has already
+been read has spread.
 
 ### And here the line stops
 
@@ -1164,7 +1235,8 @@ belong in the AWS study notes.
 | **Acceptance criterion** | The exact rule that decides if a feature is done. It must pass or fail, with no opinion. |
 | **ADR** | Architecture Decision Record. What was decided, why, what was rejected. Never edited once accepted. |
 | **NFR** | Non-Functional Requirement. A quality target with a real number: speed, cost, uptime, how often the answer is right. |
-| **C4** | A way to draw a system at four zoom levels. Only levels 1 and 2 are drawn; the code is levels 3 and 4. |
+| **C4** | Four zoom levels of one system: **c**ontext, **c**ontainers, **c**omponents, **c**ode. Only 1 and 2 are drawn. Levels 3 and 4 are the code, which says what it is by itself. See section 8. |
+| **Container (C4)** | Not Docker. Any part of the product that runs on its own — here `web`, `api`, `table`, `photos`. |
 | **Mermaid** | A way to write a diagram as text, so it lives in git and an agent can read and update it. |
 | **p90** | "Nine times out of ten". Written instead of an average, because an average hides the slow cases. |
 

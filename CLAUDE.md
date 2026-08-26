@@ -35,7 +35,8 @@ docs/            The specs, one folder per role. docs/context/stack.md first
 docs/ADR/        Decisions. Each ends in an instruction you must follow
 factory/         feature.md (this run's one feature) and the cost limits. The line itself is
                  the ai-factory plugin, in its own repo
-docs/learn/       One note explaining the whole method. Keep it current
+docs/learn/       Two notes. ai-native-delivery.md is the method; monorepo-architecture.md is the
+                 repository shape. Keep both current
 apps/            web (Next.js) and api (Nest.js)
 packages/        contracts (Zod) and anything else shared
 infra/           CDK
@@ -134,7 +135,7 @@ accounting one. Everything is in CDK, in git, so a lost account is one deploy fr
 ## Commands
 
 ```bash
-npm run dev / build / test / lint / format / type-check
+pnpm dev / build / test / lint / format / type-check
 ```
 
 The factory scripts moved into the plugin. Reach them through the commands, not by path:
@@ -152,5 +153,5 @@ Before saying a change is done, run each of these and **check its exit code** â€
 green from the tail of the combined output:
 
 ```bash
-npm run format:check && npm run lint && npm run type-check && npm run test
+pnpm format:check && pnpm lint && pnpm type-check && pnpm test
 ```

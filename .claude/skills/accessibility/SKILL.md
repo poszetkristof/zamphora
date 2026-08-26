@@ -1,11 +1,17 @@
 ---
 name: accessibility
-description: Accessibility rules for this repo — semantic HTML first, Radix owns focus and keyboard behaviour, forms and lists have specific requirements, touch targets are a real constraint. Load when writing or reviewing JSX, forms, dialogs, lists or ARIA.
+description: Accessibility rules for this repo — semantic HTML first, Base UI owns focus and keyboard behaviour, forms and lists have specific requirements, touch targets are a real constraint. Load when writing or reviewing JSX, forms, dialogs, lists or ARIA.
 ---
 
 # Accessibility
 
-Target: WCAG 2.2 AA. Radix does the hard parts. The failures that remain are ours.
+Target: WCAG 2.2 AA. **Base UI** does the hard parts. The failures that remain are ours.
+
+**Components come from shadcn/ui, which uses Base UI underneath** (ADR-0011, accepted 2026-08-26).
+shadcn copies a styled file into `apps/web`; Base UI is the dependency inside it. **Every copied
+component needs an edit pass before it ships** — shadcn's defaults miss three rules on this list:
+tap targets arrive at 32 to 36 px instead of 44, the focus ring is 50% opacity instead of 3:1, and
+transitions have no `prefers-reduced-motion` guard.
 
 Automated checks catch about a third of real problems. Before calling a component accessible, tab
 through it: can you reach everything, tell where you are, and get out of the dialog?
@@ -21,10 +27,10 @@ focus ring). If your fix moves things on screen, that is a design change and nee
 - Works at 320px wide and at 200% zoom, with no sideways scrolling.
 - Primary actions sit in the lower half of the screen, where a thumb reaches.
 
-## Do not rebuild what Radix gives you
+## Do not rebuild what Base UI gives you
 
 Focus trapping, roving tabindex, `aria-expanded`, `Escape`, portal focus return, listbox typeahead —
-all handled. Hand-written focus traps are where accessibility bugs come from. If a Radix primitive
+all handled. Hand-written focus traps are where accessibility bugs come from. If a Base UI primitive
 lacks a prop you need, **edit the generated component in `components/ui/`** — we own that code.
 
 ## Semantic HTML first
@@ -65,7 +71,7 @@ photo from 3 May, showing yellowing leaves" — not "plant photo".
 
 ## Dialogs
 
-Radix handles the trap, `Escape` and focus return. Still yours: a real title wired as the accessible
+Base UI handles the trap, `Escape` and focus return. Still yours: a real title wired as the accessible
 name, a button trigger so focus has somewhere to return, and **no stacked dialogs** — if you need a
 second one the flow is wrong. On a phone a full-screen sheet is usually right, and it still needs
 the dialog role.
