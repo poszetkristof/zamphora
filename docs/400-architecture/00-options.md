@@ -24,7 +24,7 @@ question this feature asks of stored data. It is a short list, and its shortness
 | --- | --- | --- | --- |
 | Q-1 | Which pots does this user own? | Every time the assess screen opens | US-01, US-15 |
 | Q-2 | One pot by its id, owned by this user | Every assessment | US-01 |
-| Q-3 | How many model attempts has this user made today? | Before every model call **and** before every retry | US-08 |
+| Q-3 | How many model attempts has this user made today? | Before every model call. There is no retry, so that is once per assessment (2026-08-26) | US-08 |
 | Q-4 | Is the AI feature switched on? | Before every model call | US-13 |
 | Q-5 | Write one finished assessment for one pot | Once per assessment | US-02, US-05 |
 | Q-6 | Read the assessments of one pot, newest first | Not in run 1. Backbone 4 reads it | US-10 AC-4 |

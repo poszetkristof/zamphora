@@ -46,7 +46,12 @@ remember to write.
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` | The pot, the assessment it came from, the action text |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` | One number |
 | A day's usage | `USAGE` | `<yyyy-mm-dd>` | Assessments started, model calls made, cost in millionths of a dollar |
-| The kill-switch | `CONFIG` | `AI_ENABLED` | On or off, who changed it, when |
+| The kill-switch | `CONFIG` | `AI_ENABLED` | On or off. **One field only** — see the note under this table |
+
+**The kill-switch row holds one field, and this changed on 2026-08-26.** It used to hold who flipped
+it and when. The owner removed the admin route (gate 30), so nothing in the application ever writes
+that row — the developer edits it in the AWS website, and AWS keeps its own record of who did that.
+ADR-0009 says plainly: **do not add `changedBy` or `changedAt`.**
 
 **The same thing as a picture.** One table, and the partition key is what separates one person's
 data from everyone else's. Everything a person owns sits under one key, so one `Query` gets it.
@@ -295,12 +300,16 @@ Four properties fall out of this and each one is an acceptance criterion:
 - **The date is in the key**, so yesterday's counter is never read and never needs clearing. The TTL
   on the item exists only to stop the table growing, and nothing depends on it firing on time.
 
-**One consequence, written down because it is easy to meet by surprise.** The counter counts model
-model calls. With no retry, one assessment is one call, so ten a day means ten assessments, not
-ten. That is exactly what `factory/feature.md` asks for — *"Every attempt costs money, which is the
-whole point of the limit"* — and it means the limit message can appear on the retry of an
-assessment that had already started. `02-SPEC.md` SC-2 state 4 already says the retry line tells the
-person the second try counts too.
+**One consequence, written down because it is easy to meet by surprise.** The counter counts **model
+calls**, not finished assessments. With no retry, one assessment is exactly one call, so ten a day
+means ten assessments. That is what `factory/feature.md` asks for — *"Every attempt costs money,
+which is the whole point of the limit"*.
+
+**This paragraph used to say more, and the retry reversal of 2026-08-26 removed the reason for it.**
+While a retry existed, one assessment could cost two calls, so ten a day could mean five
+assessments, and the screen had a line warning that the second try counted too. That line and the
+state it lived in are both gone. The counter still counts calls rather than assessments, because the
+day a retry comes back the limit must not silently double.
 
 **The day is a UTC calendar day.** The message that says when the limit resets shows that moment in
 the reader's own time. **Do not** compute the day from a timezone sent by the browser: two
@@ -340,12 +349,16 @@ Every failure in this feature is one of a closed list, and each name carries two
 needs: whether trying again helps, and whether it may be retried automatically. The two are not the
 same. "The person may tap again" and "the code retries by itself" are different permissions.
 
+**The middle column changed on 2026-08-26 and used to say "yes, once" on four rows.** The owner
+removed every automatic retry. **Nothing in run 1 retries itself.** "The person may tap again" is
+still a real difference from "the code retries by itself", and now only the first one happens.
+
 | Name | Auto retry? | The sentence the screen ends with |
 | --- | --- | --- |
-| `provider-timeout` | yes, once | trying again may work |
-| `provider-throttled` (429) | yes, once | trying again may work |
-| `provider-unavailable` (503) | yes, once | trying again may work |
-| `answer-unreadable` | yes, once | trying again may work |
+| `provider-timeout` | **no — nothing retries in run 1** | trying again may work |
+| `provider-throttled` (429) | **no — nothing retries in run 1** | trying again may work |
+| `provider-unavailable` (503) | **no — nothing retries in run 1** | trying again may work |
+| `answer-unreadable` | **no — nothing retries in run 1** | trying again may work |
 | `provider-refused` (`stop_reason: refusal`) | **no** | trying again will not work now |
 | `answer-truncated` (`stop_reason: max_tokens`) | **no** | trying again will not work now |
 | `provider-bad-request` | **no** | trying again will not work now |

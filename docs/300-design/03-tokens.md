@@ -47,9 +47,12 @@ same text colour is used on the page and on the raised surface.
 
 **Two rules that keep this table true.**
 
-- **`--color-warn` is only used at `--text-heading` size or larger, or as a shape.** 3.3:1 on the
-  raised surface is enough for large text and for a graphic, and it is not enough for normal text,
-  which needs 4.5:1. The `unsure` band is drawn on the raised surface, so this is not a rare case.
+- **`--color-warn` has no size rule any more, and that is deliberate.** It used to be limited to
+  `--text-heading` size or larger, because the first value `#FF9478` measured only 3.3:1 on the
+  raised surface — enough for large text, not enough for normal text, which needs 4.5:1. **Gate 23
+  fixed it in the colour instead of in a rule** (owner, 2026-08-25): `#FFC2B0` measures 6.00:1 on the
+  ground and 4.60:1 on the raised surface, so it passes AA at any text size. There is no rule left to
+  forget. `02-SPEC.md` §3.7 and §3.12 say the same.
 - **Every new colour is measured against both `--color-ground` and `--color-raised` before it is
   added.** One number is not enough. Two proposed values were caught this way and replaced before
   the palette was approved.

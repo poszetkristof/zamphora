@@ -7,8 +7,8 @@ Every row below has four things: a number, the window it is measured over, how i
 the job that runs the test. A row missing any of the four is not a requirement, it is a wish.
 
 **Two of these budgets are the ones this project cannot skip**, because both can kill it rather than
-slow it down: what one model call costs (NFR-10 to NFR-13), and how often the answer is right
-(NFR-14 to NFR-16). On an account that closes instead of billing, cost is a correctness property.
+slow it down: what the model costs (NFR-10 to NFR-14), and how often the answer is right (NFR-20 to
+NFR-23). On an account that closes instead of billing, cost is a correctness property.
 
 **`M-nn` in the last column is the metric id in `docs/200-product/001-photo-assessment/02-traceability.md`.**
 Where a row has no `M-nn`, this document is the only place the number exists.
@@ -150,7 +150,7 @@ what it actually was.
 | Number | Row | Why it is a guess | What replaces it |
 | --- | --- | --- | --- |
 | 8,000 ms for the model call | NFR-01, NFR-03 | No source at all | The first real call |
-| 9,000 ms attempt timeout | NFR-03 | Derived from the 8,000 ms guess plus room | Re-derived once the real latency is known |
+| 18,000 ms model timeout | NFR-03 | What is left of the 20,000 ms deadline after the other steps. The 8,000 ms guess sets how much slack that leaves, not the number itself | Re-derived once the real latency is known. **This row said 9,000 ms until 2026-08-26** — that belonged to the two-attempt rule the owner dropped |
 | 800 ms cold start | NFR-06 | Secondary sources, not this app | The `InitDuration` metric |
 | 1 in 100 unreadable answers | NFR-23 | Nobody has run one call yet | The first 100 attempts |
 | 170 KB for SC-1 | NFR-50 | No screen has been built | The measurement of the real screen |

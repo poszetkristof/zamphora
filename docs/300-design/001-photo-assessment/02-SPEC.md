@@ -470,7 +470,7 @@ message not in this table has not been designed.
 | Upload failed | Trying again may work | Yes. The photo is still there | US-09 AC-2 |
 | Network dropped | Trying again may work | Yes. The photo is still there | US-09 AC-2 |
 | Timed out at 30 seconds | Trying again may work | Yes | US-01 AC-8, US-09 AC-3 |
-| Provider error, a 429 or a 503 | Trying again may work | Yes, after the one automatic retry | US-09 AC-3, AC-5 |
+| Provider error, a 429 or a 503 | Trying again may work | Yes, and the person does it — **there is no automatic retry**, 2026-08-26 | US-09 AC-3, AC-5 |
 | Bad request to the provider | Trying again will not work now | No | US-09 AC-5 |
 | Answer could not be read | Trying again may work | Yes, as "send another photo" on SC-5 | US-02 AI Eval Card |
 | Daily limit of 10 reached | Trying again will not work now | No. It says when it resets | US-08 AC-1, AC-2 |

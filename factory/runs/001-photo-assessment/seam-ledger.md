@@ -616,3 +616,61 @@ story above.
   options one point apart — is a condition this role's own contract names as a stop, and it is
   recorded rather than settled.
 - Slots re-run: none.
+
+---
+
+## 500-engineering, 2026-08-26
+
+The first role that reads four earlier roles at once. It reported **10 stop-and-asks** and **7 places
+where its own inputs disagreed with each other** — more than any role so far. That count is the
+finding, not a complaint: a role this far down the line is where earlier drift becomes visible.
+
+### Finding 31 — the handoff map starves 500 of two files it needs
+
+**The most useful finding of the run, because it is about the line and not about this project.**
+Two files 500-engineering must read are not in its declared inputs:
+
+1. **`docs/200-product/001-photo-assessment/00-prd.md`.** Section 5.2 holds **the ten verdict
+   codes** — the closed list the whole product turns on. 500 declares `01-user-stories.md` and not
+   `00-prd.md`, so it could not see them. It did the right thing: `VERDICT_CODES` in
+   `01-contracts.md` §3 holds only the two codes named in `factory/feature.md`, plus an explicit
+   `<UNSET>` marker, and it refused to invent the other eight. **The build cannot start until those
+   eight are copied across.**
+2. **`docs/400-architecture/05-patterns.md`.** Four ADRs cite it as the authority for the DynamoDB
+   key shapes, the cookie attributes, the answer schema and the failure-name list. 500 declares
+   `00-options.md`, `02-containers.mmd` and `06-nfrs.md`, and not this one. It rebuilt all four from
+   the ADRs and the stories and said so. **Those four rebuilds have not been checked against the
+   real file.**
+
+**Label: `under-supply`, and the earliest role that could have carried it is the line itself.** The
+map in `ai-factory` decides what each role may read. Neither file is new; both existed before 500
+ran. This is a wiring bug, and it is change 18 in `run-record.md`.
+
+### Finding 32 — six stale sentences survived two sweeps, and a fresh role found them
+
+The owner reversed the retry on 2026-08-26 and changed the warn colour on 2026-08-25. Both changes
+were swept for. Six sentences still carried the old values, and **500-engineering found them by
+reading the files cold**:
+
+| Where | Said | Should say |
+| --- | --- | --- |
+| `06-nfrs.md` §8 | 9,000 ms attempt timeout | 18,000 ms, the number NFR-03 already gave |
+| `02-SPEC.md` §6 | "Yes, after the one automatic retry" | The person retries; nothing automatic does |
+| `00-options.md` §1 Q-3 | "before every model call **and** before every retry" | Once per assessment |
+| `03-tokens.md` §1.2 | `--color-warn` limited to heading size, citing 3.3:1 | No size rule — gate 23 fixed it in the colour, 6.00:1 and 4.60:1 |
+| `01-context.mmd` | "Retries at most once" | Asks exactly once, never retries |
+| ADR-0003 ×2 | "gate 31" for the sign-in question | Gate 32 |
+
+All six are fixed. **The lesson is the same one as finding 14 and it is now seven layers deep:** a
+number that appears in six files will survive a search for the number, because the sixth copy is
+written in words rather than digits. A fresh reader catches what a search does not.
+
+### Finding 33 — a static export makes one design assumption impossible, and the role caught it
+
+`02-SPEC.md` treats SC-2 to SC-7 as screens. ADR-0010 made `apps/web` a static export on 2026-08-26,
+and a static export must list every dynamic path at build time. No assessment id exists then. So the
+assessment id moves to the query string and **SC-2 becomes a state of the assess route rather than a
+route of its own**. No state is lost and no screen changes. Written up in `02-web-spec.md` §2.
+
+**Label: `clean`.** This is the handoff working: an architecture decision reached a design assumption
+through a role that read both, one day after the decision was made.
