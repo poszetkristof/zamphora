@@ -8,10 +8,16 @@ metadata:
 **The notes that explain how this repo works.** Read these before trying to explain the process to
 the user, and keep them in step when the factory changes:
 
-- `docs/learn/ai-native-delivery.md` — **inside this repo**, one note. Part one is the idea.
-  Part two walks one whole run, from an empty folder to finished specs, and explains each term at
-  the moment the run needs it. Then a glossary. Add to the right section, never start a second
-  file. `/ai-factory:learn` prints its sections first.
+- `docs/learn/ai-native-delivery.md` — **the process**: how the factory line works. Part one is the
+  idea. Part two walks one whole run, from an empty folder to finished specs, and explains each term
+  at the moment the run needs it. Then a glossary. Add to the right section, never start a second
+  file about the process. `/ai-factory:learn` prints its sections first.
+- `docs/learn/monorepo-architecture.md` — **the repository shape**: workspaces, why pnpm, the
+  catalog, Turborepo against Nx and when to add one, the layout, clean architecture inside
+  `apps/api`, where shared code goes, and every trigger on one screen. Written 2026-08-26 with
+  checked versions, so re-check the version numbers before trusting them.
+- **Two notes, two subjects.** The first is about the method, the second about the code's shape. A
+  third file needs a third subject that is neither.
 - That note is also the user's **approved model for how learning material should read**: teach as
   a walkthrough, name the actor in every example, say each thing once, and tell the reader which
   parts are lookup rather than learning.

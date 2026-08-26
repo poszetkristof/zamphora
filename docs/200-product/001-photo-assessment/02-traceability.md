@@ -38,13 +38,13 @@ this role does not make it. `00-prd.md` section 8 says the same.
 | M-18 | Admin-only actions that succeed for a USER account | 0 | every release | `factory/feature.md`, two account types from day one |
 | M-19 | Share of results in the `cannot-tell` band | at or under 3 in 10 | across 20 assessments | `factory/feature.md` says a model hiding behind `cannot-tell` is failing. **The 3 in 10 is a proposal by this role. The owner sets it** |
 | M-20 | Care tasks the user deletes within 7 days | at or under 2 in 10 | the same 8 weeks as M-01 | The other side of M-01, `00-context-brief.md` 3. Provisional with it |
-| M-21 | Automatic retries after one failed model call | at or under **1** — two attempts in total | continuous | UC-6, Viability condition. Set by the owner 2026-08-25, gate G-9. Only a timeout, a 429 or a 503 may be retried |
+| M-21 | Automatic retries after a failed model call | **0** | continuous | UC-6, Viability condition. **Reversed by the owner 2026-08-26.** Was "at or under 1 — two attempts in total" (gate G-9, 2026-08-25). Two attempts cost about $0.0070 against a $0.0040 ceiling, and squeezed the time budget. Nothing is retried in run 1 |
 | M-22 | Model calls per assessment | exactly 1 | continuous | `factory/feature.md`, In scope: "One model call" |
 | M-23 | Screens between signing in on a clean account and sending the first photo | at most **3** | every release | US-15, added 2026-08-25 from gate 21. It guards the thing the story exists for: that a new account can reach an assessment at all, and that the add-a-pot screen does not grow |
 
 **Five of the six numbers that were missing on 2026-08-24 now exist.** The owner set them on the 24th
 and the 25th: the daily limit in M-14 (10 a day), the time budget in M-12 (30 seconds), the session
-window in M-13 (30 days), the retry limit in M-21 (one retry), and the retention of the assessment
+window in M-13 (30 days), the retry limit in M-21 (now zero), and the retention of the assessment
 text behind US-10 (no clock — it lives as long as the pot). **One is still missing:** how far back
 the admin figures in US-12 reach, AC-4. 180 days is proposed there, to match the photo retention.
 **Do not guess that one in code.**
@@ -158,14 +158,14 @@ All ten were open when this file was written on 2026-08-24. All ten are closed. 
 | Gate | The question | The answer | When |
 | --- | --- | --- | --- |
 | G-1 | The fourth response field | Yes — the follow-up in whole days | 2026-08-24 |
-| G-2 | The per-user daily limit | 10 a day, checked before the model call and before any retry | 2026-08-24 |
+| G-2 | The per-user daily limit | 10 a day, checked before the model call. With no retry, 10 calls means 10 assessments | 2026-08-24 |
 | G-3 | How long the assessment text is kept | No clock. It lives as long as the pot. An account idle 12 months is deleted, warned at 11 | 2026-08-24 |
 | G-4 | Confirm or replace the 8 in 10 in M-01 | Kept, marked provisional until 20 real assessments replace it | 2026-08-24 |
 | G-5 | The time budget in M-12 | 30 seconds, tap to something on screen | 2026-08-25 |
 | G-6 | A plant person checks the ten verdict codes | Ship the ten, review after the first 20 real assessments. A rising share of `other` is the signal | 2026-08-25 |
 | G-7 | The session window in M-13 | 30 days | 2026-08-25 |
 | G-8 | How fast the kill-switch must take effect, in M-10 | 60 seconds | 2026-08-25 |
-| G-9 | The retry limit in M-21 | One retry, two attempts in total, inside the 30 seconds of G-5 | 2026-08-25 |
+| G-9 | The retry limit in M-21 | **Reversed 2026-08-26: no retry, one call per assessment.** Was: one retry, two attempts in total | 2026-08-25, reversed 2026-08-26 |
 | G-10 | Whether the EU AI Act applies here | Left unanswered on purpose. US-06 shows the notice either way. **Re-opens the day the app is offered to another person** | 2026-08-25 |
 
 Two more decisions arrived with them and no gate had asked for either. There is **no total cap on

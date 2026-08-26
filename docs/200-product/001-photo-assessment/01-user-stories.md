@@ -283,8 +283,10 @@ decision**, named as open in `factory/feature.md`. This story says what must be 
    made and no money was spent.
 4. **Given** I am below the limit, **when** I send a photo, **then** no message about the limit is
    shown.
-5. **Given** any automatic retry from US-09, **when** the count is taken, **then** the retry counts
-   against the same daily limit.
+5. **Given** any failure of the model call, **when** the count is taken, **then** the failed call
+   still counts against the daily limit, because the count happens before the call is made.
+   *(Reworded 2026-08-26. It said "any automatic retry from US-09 counts against the same limit".
+   There is no retry now, so the rule that remains is the one about a failed call.)*
 
 **This story cannot be tested until the number exists.** Gate G-2 is a hard stop. The limit is the
 only thing between the assessment endpoint and the owner's Anthropic credit, and no AWS alarm can
@@ -313,10 +315,12 @@ see that spend, because the model bill is not an AWS bill.
    created.
 4. **Given** an admin turned the feature off (US-13), **when** I send a photo, **then** the message
    says the feature is off and that trying again will not work now.
-5. **Given** any failure, **when** the retries are counted, **then** the app made at most
-   **one** automatic retry for that assessment — two attempts in total, both inside the 30 seconds of
-   G-5 (G-9, set by the owner 2026-08-25). Only a timeout, a 429 or a 503 may be retried. A rejected
-   photo, a bad request and an empty credit balance are never retried.
+5. **Given** any failure, **when** the calls are counted, **then** the app made **exactly one**
+   model call for that assessment. **Nothing is retried** — not a timeout, not a 429, not a 503.
+   *(Reversed by the owner on 2026-08-26. G-9 originally allowed one retry, two attempts in total.
+   Two attempts cost about $0.0070 against a $0.0040 ceiling, and each attempt had to fail early
+   enough to leave room for the other. A retry returns in run 3, when the work happens in the
+   background.)*
 6. **Given** any failure, **when** the record is stored, **then** it is stored with the reason, so
    the count in M-08 can be taken.
 

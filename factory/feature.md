@@ -213,6 +213,49 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   in the file: it doubles the cost of every assessment, adds a second outside service that has to
   keep working, and needs a rule for what the screen shows when two services disagree. If a second
   opinion is ever wanted, that is a new decision by the owner, starting from nothing.
+- **Option A is the architecture. Option D is rejected, decided 2026-08-26.** `00-options.md` scored
+  four whole-system shapes and Option A won 16 to Option D's 15. One point is too close for a role to
+  settle, so it was recorded as gate 26 and left to the owner. **The owner rejects Option D: there
+  will be a separate API. Next.js does not do everything.** That keeps Nest.js, which this file
+  already names, and it keeps the border that the six split-readiness rules need. No role may
+  re-open this. The two shapes that scored 13 and 12 were already out.
+- **No retry. One model call per assessment, decided 2026-08-26.** This reverses the two-attempt
+  rule taken on 2026-08-25. Two attempts broke two numbers at once: one call costs about $0.0035 and
+  two cost about $0.0070 against a $0.0040 ceiling, and a first call that times out has to fail early
+  enough to leave room for a second, so neither call gets the whole time budget. Dropping it also
+  means the daily limit of 10 gives 10 real assessments instead of 5 assessments and 5 retries. **A
+  failure now shows a screen and the person taps again.** A retry becomes right in run 3, when the
+  assessment runs in the background.
+- **`apps/web` is a static export, decided 2026-08-26.** Next.js `output: 'export'` into a folder of
+  plain files, in a private bucket, served through the same CloudFront distribution. **No Node server
+  and no second Lambda for the web.** This follows from ADR-0010, which already says the web holds no
+  credentials, never reads the session and always paints a skeleton first — that is a static site.
+  Two costs: `next/image` with the default loader stops working, and choosing Hungarian or English on
+  the first visit needs a CloudFront function or a line of client-side code. Both are named in
+  ADR-0010.
+- **Components come from shadcn/ui, which uses Base UI underneath, decided 2026-08-26.** This closes
+  gate 24. shadcn is not a dependency — it copies a finished, styled component file into `apps/web`,
+  and that file is then edited. Base UI is the real dependency and provides the behaviour: focus
+  traps, keyboard handling, screen-reader wiring. Since July 2026 Base UI is what shadcn uses for a
+  new project. **The reason shadcn is part of the decision:** the owner wants hand-written CSS kept
+  to a minimum, and Base UI on its own ships no styles at all. Rejected: React Aria on weight, Radix
+  because 95 of its last 100 commits came from one person, and writing all nineteen components by
+  hand. **Every copied component needs an edit pass before it ships** — shadcn's defaults miss the
+  44 px tap targets, the 3:1 focus ring and the reduced-motion guard this project requires.
+- **pnpm 11 and Turborepo, with package scope `@zamphora/*`, decided 2026-08-26.** This replaces
+  "plain npm workspaces" from ADR-0001 and is written up as ADR-0012. The reason is inside ADR-0001:
+  its rule 3 says never rely on hoisting, and npm workspaces cannot enforce that, while pnpm enforces
+  it by default. Turborepo fills a slot that was empty — it is a task runner, not a competitor to
+  pnpm. **Nx is rejected and stays rejected.** Three things travel with this: `typescript` is pinned
+  to **6.0.3** because typescript-eslint cannot run on TypeScript 7 yet, `bundling.nodeModules` must
+  not be used in CDK, and everything needs Node 22 or newer.
+- **DynamoDB runs in provisioned capacity mode, fixed at 25 write and 25 read units, decided
+  2026-08-26.** The always-free amount covers provisioned capacity only; an on demand table spends
+  credit on its first read, and this account closes when the credit is gone. AWS's own guidance
+  prefers on demand for most work, so this is a free-plan decision and is written down as one in
+  ADR-0002. Auto scaling stays off, because it would raise the numbers past the free line without
+  asking. A relational store is not an option on this plan at all: RDS was a twelve-month trial,
+  Aurora had no free offer, and trials are switched off on the free account plan.
 
 ## What "confidence" means on this project
 

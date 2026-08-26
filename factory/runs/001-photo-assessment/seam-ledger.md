@@ -21,11 +21,15 @@ one that noticed it. The notice point is a symptom.
 | 2 | 100-consulting | 200-product | `docs/100-consulting/01-use-cases.md` | `under-supply` | The routing worked: UC-1 says "what the list of possible verdicts is — 200 Product decides", and 200 decided it. Four numbers did not come with it. UC-1 says the flow must be "short enough to finish while standing" and hands the number to 300 Design. UC-4 says a session lasts "long enough". UC-7 says the kill-switch works without a deploy and gives no time. UC-6 hands the retry limit to 800 Infra. An acceptance criterion cannot wait for a later role, so 200 proposed 30 seconds, 30 days and 60 seconds, and marked all three as needing a person |
 | 3 | 100-consulting | 200-product | `docs/100-consulting/03-market.md` | `routing` | Row W-3 says the reasoning would make "the `unsure` and `cannot-tell` bands from D-02 easier to believe". D-02 is a heading in `docs/100-consulting/02-decisions.md`, and `handoff-map.yaml` does not give that file to 200-product. The reference cannot be followed by the role that reads it. Everything else in the file landed: all seven W-rows reached the PRD's Out list with a person named as owner, and none was pulled into scope |
 | 4 | 100-consulting | 300-design | `docs/100-consulting/00-context-brief.md` | `clean` | **Judged 2026-08-25.** It carried the four things a design needs and could not have got anywhere else: the moment (standing, evening, one hand, poor light, §5.2), the photo as personal data (§5.4), the Anthropic image limits that become on-device checks (10 MB, 8000x8000 px, four formats, and the warning about images under 200 px, §5.3), and the rule that the output with value is the next action and not the name of the illness. Nothing in it had to be worked around |
-| 5 | 100-consulting | 400-architecture | `docs/100-consulting/00-context-brief.md` | _not yet judged_ | |
+| 5 | 100-consulting | 400-architecture | `docs/100-consulting/00-context-brief.md` | `clean` | **Judged 2026-08-25.** It carried four things this role could not have got anywhere else and would otherwise have had to invent: the per-assessment price on all three models with the arithmetic shown, which is what ADR-0006 weighs; the two-bills split, which is why no AWS alarm can ever see a model call; the AWS free plan closing rather than billing (§5.3), which is the constraint that decided the whole option scoring in `00-options.md`; and the real shape of the data — **one row per pot, not per species** (§5.2). §4 also priced the failure case, which is the reason ADR-0008 exists. **The warning in `human-gates.md` row 2 held.** The cost table did not read downstream as a model choice; ADR-0006 turns the choice into a measurement on the golden set instead |
 | 6 | 200-product | 300-design | `docs/200-product/001-photo-assessment/00-prd.md` | `clean` | Every screen in `02-SPEC.md` traces to a row in §4 or a code in §5. The closed lists are what made the design testable: three bands, ten verdict codes, four `cannot-tell` reasons, four retake advice lines. A closed list can be drawn; free text cannot. §8 also arrived with all ten gates closed and the numbers filled in, so no acceptance criterion reached this role holding an `<UNSET>` marker |
 | 7 | 200-product | 300-design | `docs/200-product/001-photo-assessment/01-user-stories.md` | `under-supply` | Four gaps, all found while listing states. **The screen that creates a pot has no story**, and US-01 AC-3 tells the app to ask for one, so a new user reaches a dead end on the first screen (gate 21). **No story says how an old assessment is opened**, and US-10 AC-4 describes reading one after its photo was deleted, so a way in must exist. **No story says where the language is switched**, and US-11 requires the whole flow in both. And **US-02's malformed-answer fallback contradicts US-05 AC-2**: one says treat it as `cannot-tell`, the other says every `cannot-tell` carries one of four reasons, and none of the four fits an unreadable answer (gate 22). None of the four blocked the run |
 | 8 | run input | 300-design | `factory/feature.md` | `clean` | **The first time on this run that a role's hardest input arrived complete.** The visual identity — palette with contrast measured against both surfaces, the band shapes, the type scale, the MUST NOT list, the accessibility table — was written into the input before the role was dispatched, because gate 19 was answered first. The role therefore decided no colour and no rule. One sentence in it is stale, and it is a leftover rather than a gap: see finding 17 |
 | 9 | 400-architecture | 300-design | no file — the edge does not exist | `routing` | 300 Design runs before 400 Architecture, so **no user interface component library is named anywhere when the screens are specified**. Choosing one is accepting a dependency, which is never a role's call, so the role named none and wrote all nineteen components from nothing with full state lists. The contract allows exactly this ("or is explicitly flagged as new"). It is recorded as `routing` and not `missing` because the order of the roles is what produced it, not a lost file. See finding 16 |
+| 10 | 200-product | 400-architecture | `docs/200-product/001-photo-assessment/00-prd.md` | `clean` | **Judged 2026-08-25.** The closed lists are what made the answer schema in `05-patterns.md` §4 writable at all: three bands, ten verdict codes, four `cannot-tell` reasons, four retake advice lines. A closed list becomes an enum inside `output_config.format`; free text cannot. §8 arrived with all ten gates closed, so no number reached this role as an `<UNSET>` — the one exception, US-12 AC-4, blocks nothing here. §5.3's fourth field is what makes a care task datable, and without it ADR-0005's schema would have had five fields and no date |
+| 11 | 200-product | 400-architecture | `docs/200-product/001-photo-assessment/01-user-stories.md` | `under-supply` | **Three gaps, all found while writing ADRs. None blocked the run.** **(a) US-08 AC-1 says "10 assessments" and every other sentence about the limit says "attempts".** The two readings differ the moment a retry fires. ADR-0008 counts attempts, because `factory/feature.md` says every attempt costs money and that is the whole point of the limit. See finding 24. **(b) No story says what a stored `nextAction` shows after the reader switches language.** It is prose the model wrote in one language, and US-11 AC-1 says every text is in the language being read. See finding 25 and gate 28. **(c) No story owns the 11-month warning email.** US-10 AC-2 puts it on a screen as a promise to the user, `factory/feature.md` decides it, and nothing in run 1 builds any way to send mail. See finding 26 |
+| 12 | 300-design | 400-architecture | `docs/300-design/001-photo-assessment/01-CONTEXT.md` | `clean` | **Judged 2026-08-25.** §3.2 is the section that mattered, and it is a list of architecture constraints written as design rules: no second tap while a call runs, no model call before the two free checks, nothing over 1000 px on the wire, and no try-again button on a failure that retrying cannot fix. Every one became a number or a named failure in `05-patterns.md` §8 and `06-nfrs.md`. §4's Out table also named the sign-in screen as this role's problem, which is exactly where ADR-0003 found it |
+| 13 | 300-design | 400-architecture | `docs/300-design/001-photo-assessment/02-SPEC.md` | `under-supply` | **One real gap, and the role declared it itself.** §3.14 withdrew the `unreadable-answer` state from SC-5 and says out loud that the failure path still needs it. So `05-patterns.md` §8 now holds a named failure, `answer-unreadable`, with the right ending sentence from §6 and no screen. It blocks nothing, and it is a correction pass on 300, not a screen for this role to invent. Everything else landed, and one thing landed better than it looks: §3's nineteen components with full state lists are what made the count in ADR-0011 possible, and that count — **exactly one component in the feature needs a primitive library** — is the fact the whole library decision turned on |
 
 ## Findings
 
@@ -266,6 +270,173 @@ A finding names a file and a fact. Write at least three.
     which **is** an input to 400. That closes this instance. The general problem is change 14 in
     `run-record.md`.
 
+### 400-architecture, 2026-08-25
+
+22. **The user's time budget and the platform's own ceiling are the same number, and nobody noticed
+    until the flow was timed.** The owner set 30 seconds from tap to screen (gate 13, US-01 AC-8). An
+    API Gateway HTTP API has a maximum integration timeout of **30 seconds and it cannot be raised**;
+    only regional and private REST APIs can go above 29 seconds, at the cost of account throttle
+    quota ([AWS re:Post](https://repost.aws/knowledge-center/api-gateway-timeout-limit) and
+    [AWS What's New, June 2024](https://aws.amazon.com/about-aws/whats-new/2024/06/amazon-api-gateway-integration-timeout-limit-29-seconds/),
+    both checked 2026-08-25).
+
+    **The consequence is not a slow screen. It is a broken acceptance criterion.** When the gateway
+    fires it answers 504 with a body no part of this product wrote, and US-09 AC-1 says every failure
+    message ends with one of two sentences. A bare 504 ends with neither. `03-flow.md` §4 fixes it
+    with three numbers in order — the app fails first, then the function, then the gateway — so the
+    app always answers for itself. (The three values were 24,000 / 26,000 / 30,000 when this was
+    written; they are **20,000 / 22,000 / 30,000** since the retry was dropped on 2026-08-26.
+    `03-flow.md` §4 is the one place they live.)
+
+    **No role could have found this earlier**, because none of the three roles before 400 knows what
+    the compute is. It is the clearest example on this run of a product number and a platform number
+    colliding, with neither side able to see the other.
+
+23. **The 180-day promise is printed on a screen and cannot be measured at 180 days.** US-10 AC-1
+    says the screen states that photos are kept 180 days and are then deleted, and M-07 asks for zero
+    photos older than 180 days in storage. AWS states plainly: *"There may be a delay between the
+    expiration date and the date at which Amazon S3 removes an object"*
+    ([S3 lifecycle expiration](https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-expire-general-considerations.html),
+    checked 2026-08-25). So a test demanding zero at day 181 fails on a **working** system.
+
+    Three things are true together and all three belong in the same sentence: the photo is not
+    readable through the app after 180 days, storage is not charged after expiry, and the object may
+    physically exist a little longer. NFR-41 therefore measures at 182 days. **That changes how a
+    personal-data commitment reads, so it went to the owner as gate 27 rather than being adjusted
+    quietly.**
+
+24. **US-08 AC-1 counts assessments and every other sentence about the limit counts attempts.**
+    `01-user-stories.md` US-08 AC-1: *"Given I have already made 10 assessments today."*
+    `factory/feature.md`: *"The check runs before the model call and before any retry, so a failed
+    call still counts. Every attempt costs money, which is the whole point of the limit."* US-08 AC-5
+    agrees with the second reading. The two only differ when a retry fires — and then a user whose
+    calls all need a retry gets five assessments a day, not ten.
+
+    ADR-0008 counts attempts, because the owner's own sentence says why the limit exists. It is
+    written down because a reader six months from now will otherwise find the fifth assessment
+    refused and call it a bug. The earliest role that could have carried it is 200-product, which
+    wrote AC-1 and AC-5 in the same story.
+
+25. **The one field the model writes as prose is the one field the language rules cannot reach.**
+    Everything else that crosses the wire is a code: three bands, ten verdicts, four reasons, four
+    pieces of retake advice. The screen renders each in whichever language is being read, and US-11
+    AC-5 asks for exactly that. **`nextAction` is different.** The model writes it, in one language,
+    once. So an assessment written in Hungarian and read later in English shows Hungarian prose
+    inside an English screen, and US-11 AC-1 says every text in the flow is in the language being
+    read.
+
+    No story covers it. Run 1 stores the language the text was written in and shows the text as
+    written; nothing translates it. Recorded as gate 28. **The earliest role that could have carried
+    it is 200-product**, which wrote US-11 and US-02 without noticing that one of the four fields is
+    not a code.
+
+26. **A promise made to the user on a screen has no owner in run 1.** US-10 AC-2 puts it in front of
+    the person: an account with no sign-in for 12 months is deleted, *"with a warning by email at 11"*.
+    `factory/feature.md` decides it and calls the warning "not optional here". **Nothing in run 1
+    builds any way to send email.** There is no mail service in the container diagram except as an
+    outside box marked "not built in run 1", no story, and no acceptance criterion.
+
+    It blocks nothing today, and it is the kind of gap that is invisible for eleven months and then
+    deletes somebody's plant history. Recorded as gate 28's neighbour in the gates file, and drawn
+    in `01-context.mmd` with the words on the arrow rather than left out.
+
+27. **Two of this role's own choices are numbers no input gives, and both are inside a number the
+    owner set.** ADR-0007 sets a hard **2 MB** ceiling on the request body, which no story names —
+    it is derived from US-01 AC-4's 1000 px rule and exists so the server does not trust the
+    browser's resize. And ADR-0007 sets a **5-minute** life on a signed photo URL, which no story
+    names either. Both are removable in one line without breaking an acceptance criterion, in the
+    same category as 300 Design's decision D-4. They are listed here because an unasked-for number is
+    exactly the shape a scope decision hides in.
+
+28. **Finding 21 now has a concrete conflict, not a general risk.** `.claude/skills/` names Radix
+    five times and says "Radix does the hard parts". ADR-0011 proposes **Base UI**. No role reads
+    `.claude/skills/`, and nothing in the line would catch the disagreement. This is the exact
+    outcome finding 21 predicted, arriving one role later. **The skills files have to be updated the
+    day the owner accepts or rejects ADR-0011**, or every coding session will load a rule that
+    contradicts an ADR — and `CLAUDE.md` says an ADR outranks judgement.
+
+### Finding 28 — a role named a value that contradicted its own sentence, 2026-08-26
+
+**Found by the owner, not by the line.** ADR-0002 wrote *"Both are inside the always-free monthly
+amounts at one user"* and, four lines earlier, *"one Amazon DynamoDB table, **on demand** capacity."*
+The always-free amount covers **provisioned** capacity only. The two sentences could not both be
+true.
+
+**What the role did right, and it is most of the job.** It marked the free-tier figure as *"checked
+only on secondary sources and is not treated as verified here"* and routed the verification to 800
+Infra before the first deploy. The flag was correct and the routing was correct.
+
+**What it did wrong.** It still named a capacity mode, and named the one the unverified figure does
+not cover. A flagged number is not a licence to pick a value that depends on it.
+
+**Traced back to:** 400-architecture. No earlier role could have carried this — no input names a
+capacity mode, and none should.
+
+**The fix to the line, not the document.** When a role marks a figure unverified, it must not then
+make a choice that only works if the figure lands one way. Either it picks the option that is safe
+under both readings, or the choice becomes a gate. Recorded as a change in `run-record.md`.
+
+### Finding 29 — an arrow that prose claimed and the diagram never drew, 2026-08-26
+
+`02-containers.mmd` described the `web` box as one that *"fetches every value from the api"*, and
+there was no `Rel()` from `web` to anything. The file's own header comment claimed *"Every box below
+has at least one arrow"*, which was true and useless: every box did have an arrow, and the missing
+one was still missing.
+
+**Found by the fresh-session pre-mortem.** The check that passed it was mine and it was too weak — it
+asked whether any box was orphaned, not whether every connection the prose claims is drawn.
+
+**What the missing arrow was hiding.** An undecided question: does the browser call the API, or does
+the Next.js server call it and forward the cookie? That is now decided — the web is a static export,
+so the browser calls it — and the arrow is drawn.
+
+**The fix:** the header comment in that file now says what to check instead, and section 8 of
+`docs/learn/ai-native-delivery.md` carries the same rule.
+
+### Finding 30 — the pre-mortem's isolation paid for itself, 2026-08-26
+
+Three defects survived the building session, a hand-check of the arithmetic, and a first read by the
+owner. All three were found by a session handed only `docs/400-architecture/`:
+
+1. **Q-9 could not be one `BatchGetItem`.** The profile's key lives inside the session item that has
+   not been read yet. This is the most frequent read in the product.
+2. **The stated headroom was measured on the friendly run**, not on the run the design permits, and
+   the cold start was subtracted inside a deadline the app cannot start until the cold start ends.
+3. **NFR-10 and NFR-04 contradicted each other**, one capping an assessment at $0.0040 and the other
+   permitting two attempts at about $0.0035 each.
+
+**The finding about the line, not the documents.** All three were caught **before 500 Engineering
+read the files.** Every earlier instance of finding 14 was caught after the next role had already
+built on the wrong value. That is the difference between a correction and a rewrite, and it is an
+argument for running the pre-mortem as a gate on the role rather than as its last output.
+
+### The correction pass of 2026-08-26 — role-owned files edited by hand
+
+**Declared here because these are not the assistant's files.** The owner reversed gate G-9 (no
+retry), which is an input that 200-product and 300-design had already read and built on. That is
+finding 14 for the seventh time, and `run-record.md` change 4 says the answer is a correction pass.
+There was no correction pass to run, so the edits were made by hand.
+
+**Every edit removes or reverses text to match a decision the owner made. None adds a new claim, and
+each one names the date and what it replaced.**
+
+| File | Owner | What changed |
+| --- | --- | --- |
+| `200-product/.../00-prd.md` | 200 | G-9 marked reversed, original answer kept underneath. G-2 reworded |
+| `200-product/.../01-user-stories.md` | 200 | US-08 AC-5 and US-09 AC-5 rewritten. Both carry the old wording and why it changed |
+| `200-product/.../02-traceability.md` | 200 | M-21 goes from "at or under 1" to **0**. Two gate rows reworded |
+| `300-design/.../02-SPEC.md` | 300 | The `retrying` state removed from `StepList` and from SC-2. Six states become five |
+| `.claude/skills/accessibility/SKILL.md` | the owner's rules layer | Radix replaced by Base UI, plus the shadcn edit-pass rule |
+| `.claude/skills/testing-patterns/SKILL.md` | the owner's rules layer | Same, one line |
+
+**The two skills edits close finding 27**, which said the skills would contradict an accepted
+ADR-0011 the moment the owner answered. The owner answered on 2026-08-26, and the skills were
+changed the same day, which is what that finding asked for.
+
+**What this costs, said plainly.** Four files now carry text the role that owns them did not write.
+A re-run of 200 or 300 would overwrite it. The alternative was to leave documents that say the app
+retries when it does not — and a wrong document that looks finished is worse than a missing one.
+
 ## The honest-run declaration
 
 - Files hand-fed to a subagent outside its `reads:` list: **none.** 100-consulting read exactly
@@ -407,3 +578,31 @@ be corrected and a dead plant cannot be removed. Renaming and deleting a pot are
 "considered and not written" table, not quietly solved. That is the owner's call, and it blocks no
 story above.
 
+### 400-architecture, 2026-08-25
+
+- Files hand-fed outside its `reads:` list: **none.** 400-architecture read exactly its six declared
+  inputs — `factory/feature.md`, `docs/100-consulting/00-context-brief.md`,
+  `docs/200-product/001-photo-assessment/00-prd.md`, `01-user-stories.md`,
+  `docs/300-design/001-photo-assessment/01-CONTEXT.md` and `02-SPEC.md` — plus its own slot
+  contract, the `human_gate_policy` section of `factory/handoff-map.yaml`, and this run's
+  `seam-ledger.md` and `human-gates.md`, which it has to append to. **It also read
+  `docs/ADR/README.md`**, which is the template for files it owns and writes; that is one file
+  outside the declared list and it is named here rather than left unsaid. It did **not** read
+  `.claude/skills/`, `.claude/memory/`, `initial-plan.md`, `docs/100-consulting/01-use-cases.md`,
+  `02-decisions.md`, `03-market.md`, `02-traceability.md`, `00-journey-map.md` or `03-tokens.md`.
+- It was told, in the dispatch and not in a file, how to write: B1 English and the banned-word list.
+  No number, no name and no decision was passed by hand. It was also told, in the dispatch, **not**
+  to write `07-adversarial.md`, because that file must come from a session that never saw this
+  reasoning.
+- **Web research was done and every outside fact carries a link and the date it was checked.** The
+  pages read were: the IETF browser-based-apps draft, the Anthropic structured-output and stop-reason
+  pages, the Anthropic usage-and-cost page, AWS pages for the free tier, Lambda pricing, Cognito
+  pricing, S3 lifecycle expiration and DynamoDB time-to-live, plus secondary sources for Lambda cold
+  start and the always-free monthly amounts. **No page attempted to redirect the task.** Two figures
+  are marked as secondary and unverified: the cold-start range, and the per-service always-free
+  amounts for DynamoDB and S3.
+- Slots that stopped: **none stopped dead.** It hit seven stop-and-ask conditions and recorded them
+  as gates 26 to 32, each with the assumption the line continued on. One of them — gate 26, two
+  options one point apart — is a condition this role's own contract names as a stop, and it is
+  recorded rather than settled.
+- Slots re-run: none.
