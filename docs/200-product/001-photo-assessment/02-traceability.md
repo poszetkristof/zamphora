@@ -27,15 +27,15 @@ this role does not make it. `00-prd.md` section 8 says the same.
 | M-07 | Photos in storage older than 180 days | 0 | checked every month | `factory/feature.md`, the retention decision of 2026-08-24 |
 | M-08 | Failed assessments whose message does not say whether trying again helps | 0 | every release | UC-6, Usability condition |
 | M-09 | Texts that exist in one language and are missing in the other | 0 | every release | `factory/feature.md`, Hungarian and English in run 1 |
-| M-10 | Model calls started after the admin switch was turned off, later than the propagation window | 0 | every release, and in the log | UC-7 |
+| M-10 | Model calls started after the kill-switch was turned off, later than the propagation window | 0 | every release, and in the log | UC-7. Still measured in run 1: the switch ships even though the admin route does not (gate 30) |
 | M-11 | Assessment results shown without the AI notice | 0 | every release | `00-context-brief.md` 5.4, EU AI Act Article 50(1) |
 | M-12 | Time from tapping send to a result or a message | at or under **30 seconds** | 9 of 10 assessments, first 8 weeks | UC-1, Usability condition. Number set by the owner 2026-08-25, gate G-5 |
 | M-13 | Times a returning user is asked to sign in again inside the session window | 0 | first 8 weeks | UC-4, Usability condition. Window is **30 days**, set by the owner 2026-08-25, gate G-7 |
 | M-14 | Model calls made for a user who was already at the daily limit | 0 | continuous | `00-context-brief.md` 4, "the cost that is not small". Limit is **10 a day**, set by the owner 2026-08-24, gate G-2 |
-| M-15 | Difference between the model call count an admin reads and the provider's own count, for a finished day | 0 | every release | UC-7 |
+| M-15 | Difference between the model call count the app recorded and the provider's own count, for a finished day | 0 | **not in run 1** | UC-7. **Moved out with US-12 on 2026-08-26, gate 30.** The rollups are still written, so the check can be run by hand as a local script. It is not a release gate in run 1 |
 | M-16 | Photos sent to the model with a longer side over 1000 px | 0 | continuous | UC-1, Feasibility condition; token arithmetic in `00-context-brief.md` 4 |
 | M-17 | Care tasks created from an `unsure` result without an explicit yes | 0 | every release | `factory/feature.md`: never write a care task without asking first |
-| M-18 | Admin-only actions that succeed for a USER account | 0 | every release | `factory/feature.md`, two account types from day one |
+| M-18 | Admin-only actions that succeed for a USER account | 0 | every release | `factory/feature.md`, two account types from day one. **Still measured with zero admin routes** (gate 30): NFR-32 walks the router and fails the build on any route with no role decorator, which is what US-14 AC-3 actually asks for |
 | M-19 | Share of results in the `cannot-tell` band | at or under 3 in 10 | across 20 assessments | `factory/feature.md` says a model hiding behind `cannot-tell` is failing. **The 3 in 10 is a proposal by this role. The owner sets it** |
 | M-20 | Care tasks the user deletes within 7 days | at or under 2 in 10 | the same 8 weeks as M-01 | The other side of M-01, `00-context-brief.md` 3. Provisional with it |
 | M-21 | Automatic retries after a failed model call | **0** | continuous | UC-6, Viability condition. **Reversed by the owner 2026-08-26.** Was "at or under 1 — two attempts in total" (gate G-9, 2026-08-25). Two attempts cost about $0.0070 against a $0.0040 ceiling, and squeezed the time budget. Nothing is retried in run 1 |
@@ -68,8 +68,8 @@ accident. A test that reports one of them as the other is wrong even when it pas
 | US-09 A message that says if retrying helps | USER | 5 | UC-6 | M-08 | M-21 | E-6 Limits and failures |
 | US-10 See the retention, delete my photos | USER | 5 | UC-5 | M-07 | M-06 | E-5 Photo storage and deletion |
 | US-11 The whole flow in both languages | USER | 5 | cross-cutting | M-09 | — | E-8 Two languages |
-| US-12 An admin reads usage and cost | ADMIN | 5 | UC-7 | M-15 | M-05 | E-7 Admin control |
-| US-13 An admin turns the AI off, no deploy | ADMIN | 5 | UC-7 | M-10 | M-05 | E-7 Admin control |
+| US-12 An admin reads usage and cost — **not in run 1, gate 30** | ADMIN | 5 | UC-7 | M-15 | M-05 | E-7 Admin control |
+| US-13 The AI can be turned off, no deploy. **Switch ships, route does not, gate 30** | ADMIN | 5 | UC-7 | M-10 | M-05 | E-7 Admin control |
 | US-14 A normal account is refused admin actions | ADMIN and USER | 5 | UC-4, UC-7 | M-18 | M-06 | E-4 Account and permission |
 | US-15 Add a pot | USER | 5, as the step that makes it reachable | **none — gate 21** | M-23 | M-06 | E-4 Account and permission |
 

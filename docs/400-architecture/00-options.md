@@ -234,6 +234,13 @@ countable: the cold start plus the model call regularly passes 20 seconds, so us
 failure screen on a good network; or the eleven questions in section 1 grow a twelfth that needs a
 join, and the repository layer starts growing code that a database would have done.
 
+**When to re-open Option C.** Option C stops waiting for the model: the API answers at once and the
+phone collects the result later. That removes the 30-second ceiling for good. It costs a second
+function, a queue, a polling loop in the web app and a new waiting state on a screen spec that is
+already agreed at five states. **Two triggers, either one:** a second model call is added to the
+flow, or the model call alone regularly passes 15 seconds. Until then Option C buys headroom that
+`03-flow.md` says is not needed — the typical run is 8.2 seconds against 30.
+
 ## 7. What Option A is made of
 
 The detail is in `02-containers.mmd` and in the ADRs. In one table:

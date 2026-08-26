@@ -383,6 +383,17 @@ data.
    one language and is missing in the other.
 5. **Given** a verdict code from the ten, **when** it is shown, **then** there is a written sentence
    for it in both languages.
+6. **Given** an assessment I made earlier whose next-action text was written in the other language,
+   **when** I open it, **then** the text is shown exactly as it was written, with a short line saying
+   which language it is in. Nothing is translated and the model is not asked again.
+
+**Why AC-6 exists, and why it does not contradict AC-1.** AC-1 is about walking the flow now: every
+text in that flow is in one language, because every value except one is a code that renders in the
+reader's language. The next-action text is the exception — the model writes it once, as free text,
+in the language of the moment. Re-reading it later in the other language would need a translation or
+a second paid model call. **The owner decided on 2026-08-26 (gate 28) to show it as written and name
+its language**, which costs nothing and never leaves the reader wondering why one line looks
+different.
 
 **Only the two languages ship in run 1. Writing the plant and symptom words *for* Hungarian, instead
 of translating them, is idea W-1 and is Out.** See `00-prd.md` section 6.2.
@@ -392,6 +403,12 @@ of translating them, is idea W-1 and is Out.** See `00-prd.md` section 6.2.
 ---
 
 ## US-12 — An admin reads the usage and the cost figures
+
+> **MOVED OUT OF RUN 1 by the owner on 2026-08-26 (gate 30).** No admin route is built. The three
+> numbers are still written down on every assessment, so the data exists — the developer reads them
+> straight from the DynamoDB table with AWS credentials, and runs the comparison in AC-2 as a script
+> on their own machine. **This story ships when admin screens ship.** The account type and the
+> permission check still ship now: see US-14.
 
 **Account type:** ADMIN · **Serves:** backbone 5 · **From:** UC-7
 
@@ -413,14 +430,20 @@ of translating them, is idea W-1 and is Out.** See `00-prd.md` section 6.2.
 **The count has to be taken inside the application.** The model bill is Anthropic credit on a
 separate account, and no AWS budget alarm can see it (`factory/feature.md`).
 
-**There is no admin screen in run 1.** How an admin reaches these figures with no screen is 400
-Architecture's answer, recorded as open in `01-use-cases.md` (UC-7, Usability).
+**There is no admin screen and no admin route in run 1.** The question "how does an admin reach
+these figures" was open as gate 30 and is now closed: the developer reads the table directly. That
+is not a product feature, so this story waits.
 
-**Success metric:** M-15 · **Guardrail:** M-05
+**Success metric:** M-15, which is not measured in run 1 · **Guardrail:** M-05
 
 ---
 
-## US-13 — An admin turns the AI feature off without a deploy
+## US-13 — The AI feature can be turned off without a deploy
+
+> **CHANGED by the owner on 2026-08-26 (gate 30).** The switch itself ships in run 1, because cost
+> is a correctness property on an account that closes when the credit is gone. **The admin route
+> does not ship.** The developer changes the value by hand in the AWS website. Everything the switch
+> promises is still true; only the way it is reached changed. The old AC-5 is gone — see below.
 
 **Account type:** ADMIN · **Serves:** backbone 5 · **From:** UC-7
 
@@ -429,17 +452,21 @@ Architecture's answer, recorded as open in `01-use-cases.md` (UC-7, Usability).
 
 **AC**
 
-1. **Given** I am an ADMIN, **when** I turn the AI assessment off, **then** within
-   **60 seconds** (G-8, set by the owner 2026-08-25) no new model call is made by anyone.
+1. **Given** the switch is changed to off, **when** it is changed, **then** within **60 seconds**
+   (G-8, set by the owner 2026-08-25) no new model call is made by anyone.
 2. **Given** the switch, **when** it is used, **then** no code change and no deploy is needed. A
    switch that needs a release is not a kill-switch.
 3. **Given** the feature is off, **when** a USER sends a photo, **then** US-09 AC-4 applies.
 4. **Given** an assessment call is already in flight, **when** the switch goes off, **then** that
    one call is allowed to finish, because the money for it is already spent.
-5. **Given** the switch is turned off or on, **when** the log is read, **then** it records which
-   account did it and at what time.
-6. **Given** the feature is off, **when** I turn it on again, **then** it is the same action in
+5. **Given** the feature is off, **when** it is turned on again, **then** it is the same action in
    reverse and normal use continues.
+
+**There used to be a sixth criterion asking the log to record which account flipped the switch.**
+It was removed on 2026-08-26. With no admin route, the app never runs when the switch is flipped, so
+the app cannot write anything down. AWS keeps its own record of who signed in to its website and
+what they changed, and with one developer the answer to "who" is never in doubt. The criterion is
+restored when the admin route ships.
 
 **Success metric:** M-10 · **Guardrail:** M-05
 
@@ -465,7 +492,12 @@ Architecture's answer, recorded as open in `01-use-cases.md` (UC-7, Usability).
    decides the answer.
 
 **Where this check runs is 400 Architecture's decision, checked by 900 Security**, named as open in
-`factory/feature.md`. This story says what must be true.
+`factory/feature.md`. This story says what must be true. The answer is ADR-0004: every route carries
+`@Anonymous()`, `@Roles('USER')` or `@Roles('ADMIN')`, and a route with none of them does not run.
+
+**This story still ships, even though no admin route does** (gate 30, 2026-08-26). AC-3 is the whole
+point — the default is refuse, so the guard has to be right *before* the first admin route exists,
+not after. In run 1 it is proved against the guard itself rather than against a real admin route.
 
 **Success metric:** M-18 · **Guardrail:** M-06
 

@@ -13,14 +13,14 @@ C4Container
     title Containers — zamphora, run 1 (001-photo-assessment)
 
     Person(keeper, "Plant keeper", "Account type USER. Phone, one hand, evening light.")
-    Person(admin, "Admin", "Account type ADMIN. No screen in run 1. Uses curl.")
+    Person(admin, "Admin", "The developer, and nobody else in run 1. Account type ADMIN exists and no route carries it. Reaches nothing through the product - no admin screen and no admin route. Gate 30, 2026-08-26.")
 
     Container_Boundary(product, "zamphora") {
         Container(edge, "edge", "CloudFront, one domain", "One origin for the whole product. Sends /api/* to the api and everything else to the web. This is what removes CORS and lets the session cookie carry the __Host- prefix. ADR-0010.")
 
         Container(web, "web", "Next.js static export, S3 + CloudFront", "The screens SC-1 to SC-7 in both languages, built ahead of time into plain files. No server and no Lambda. Holds no credentials, reads no data store, and fetches every value from the api in the browser. ADR-0010.")
 
-        Container(api, "api", "Nest.js on AWS Lambda, apps/api", "One deployable unit. Owns the session, the ownership check, the daily limit, the kill-switch and the one model call. Refuses every route that does not name its account type. ADR-0002, ADR-0004.")
+        Container(api, "api", "Nest.js on AWS Lambda, apps/api", "One deployable unit. Owns the session, the ownership check, the daily limit and the one model call. Reads the kill-switch and never writes it. Refuses every route that does not name its account type. ADR-0002, ADR-0004.")
 
         Container(llm, "llm adapter", "TypeScript, packages/llm", "The only code in the repository allowed to import the Anthropic SDK. Behind the LlmProvider port, so another provider is a swap. ADR-0005.")
 
@@ -33,10 +33,15 @@ C4Container
 
     System_Ext(cognito, "Amazon Cognito user pool", "Accounts, passwords, the sign-in pages, and group membership for USER and ADMIN.")
     System_Ext(anthropic, "Anthropic Messages API", "One vision call per assessment. Paid from the owner's own Anthropic credit.")
-    System_Ext(mail, "Email delivery", "The 11-month warning. Named in factory/feature.md, not built in run 1.")
+    System_Ext(mail, "Email delivery", "The 11-month warning. Named in factory/feature.md, moved to the notifications run by the owner on 2026-08-26, gate 29. Not built in run 1.")
+    System_Ext(console, "AWS Management Console", "AWS's own website. The admin's only way in, in run 1. It reaches the table directly and never touches the api, which is why the app records nothing about a kill-switch flip.")
 
     Rel(keeper, edge, "Uses every screen", "HTTPS")
-    Rel(admin, edge, "Reads the figures, flips the switch", "HTTPS, curl")
+    Rel(admin, console, "Edits the kill-switch row. Reads the daily rollups", "HTTPS, by hand, AWS credentials")
+
+    %% This arrow deliberately bypasses edge and api. That is the whole point of gate 30: in run 1
+    %% the admin path is not part of the product, so no route, no guard and no log sit on it.
+    Rel(console, table, "Reads and writes items directly", "AWS API, IAM")
 
     Rel(edge, web, "Everything that is not /api/*, served from the bucket", "HTTPS")
     Rel(edge, api, "/api/* only", "HTTPS, __Host-session cookie")

@@ -303,7 +303,8 @@ A finding names a file and a fact. Write at least three.
     readable through the app after 180 days, storage is not charged after expiry, and the object may
     physically exist a little longer. NFR-41 therefore measures at 182 days. **That changes how a
     personal-data commitment reads, so it went to the owner as gate 27 rather than being adjusted
-    quietly.**
+    quietly.** **Closed 2026-08-26: the owner kept the wording. The screen still says 180 days, and
+    NFR-41 checks at 182.**
 
 24. **US-08 AC-1 counts assessments and every other sentence about the limit counts attempts.**
     `01-user-stories.md` US-08 AC-1: *"Given I have already made 10 assessments today."*
@@ -330,6 +331,10 @@ A finding names a file and a fact. Write at least three.
     it is 200-product**, which wrote US-11 and US-02 without noticing that one of the four fields is
     not a code.
 
+    **Closed 2026-08-26.** The owner chose to show the text as written and name its language. The
+    story list gained **US-11 AC-6** and the design spec gained `WrittenInLine` in §3.11, so the gap
+    is now covered by a criterion instead of by a note.
+
 26. **A promise made to the user on a screen has no owner in run 1.** US-10 AC-2 puts it in front of
     the person: an account with no sign-in for 12 months is deleted, *"with a warning by email at 11"*.
     `factory/feature.md` decides it and calls the warning "not optional here". **Nothing in run 1
@@ -337,8 +342,13 @@ A finding names a file and a fact. Write at least three.
     outside box marked "not built in run 1", no story, and no acceptance criterion.
 
     It blocks nothing today, and it is the kind of gap that is invisible for eleven months and then
-    deletes somebody's plant history. Recorded as gate 28's neighbour in the gates file, and drawn
-    in `01-context.mmd` with the words on the arrow rather than left out.
+    deletes somebody's plant history. Recorded as **gate 29**, and drawn in `01-context.mmd` with the
+    words on the arrow rather than left out.
+
+    **Closed 2026-08-26.** The owner moved it to the notifications run, backbone 6, which needs a
+    delivery channel anyway. **The screen keeps the promise and run 1 still cannot keep it**, which
+    the owner accepted knowingly: nothing is deleted for twelve months, so the gap cannot bite before
+    the run that closes it.
 
 27. **Two of this role's own choices are numbers no input gives, and both are inside a number the
     owner set.** ADR-0007 sets a hard **2 MB** ceiling on the request body, which no story names —

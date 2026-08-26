@@ -9,8 +9,9 @@
 check: *"How the two account types are enforced, and where the check runs."*
 
 Two account types exist from day one. A `USER` sees only their own pots, photos and assessments. An
-`ADMIN` can read usage and cost figures and can switch the AI feature off. The admin **screens** are
-a later feature; the permission check ships now.
+`ADMIN` can read usage and cost figures and can switch the AI feature off. **The admin screens and
+the admin routes are both a later feature** (owner, 2026-08-26, gate 30); the permission check ships
+now.
 
 The stories set four conditions, and they are not all the same kind of thing:
 
@@ -37,8 +38,14 @@ run at all** — not for a user, not for an admin. Three decorators exist and th
 ```
 @Anonymous()        the sign-in start, the callback, health
 @Roles('USER')      everything a plant keeper does
-@Roles('ADMIN')     the figures, and the kill-switch
+@Roles('ADMIN')     declared, and carried by no route in run 1
 ```
+
+**`@Roles('ADMIN')` exists and nothing uses it yet, and that is deliberate.** The owner moved the
+two admin routes out of run 1 on 2026-08-26 (gate 30), so the figures are read straight from the
+table and the kill-switch is flipped in the AWS console (ADR-0009). The decorator and the guard
+still ship, because US-14 AC-3 is about the route that does not exist yet: the default has to be
+*refuse* before somebody adds the first admin route, or the check is written after the hole.
 
 The guard reads the account type from the **profile item**, fetched in the second of the two reads that also fetch
 the session (`05-patterns.md` §1, Q-9). Not from the session item, and not from a claim copied at

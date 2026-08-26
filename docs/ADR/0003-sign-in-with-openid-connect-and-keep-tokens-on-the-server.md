@@ -70,11 +70,12 @@ developer to leave them. The cost is inside the free tier: Cognito's Lite and Es
 **as two reads in order**, not one batch: the profile's key is the user id, and that id is inside
 the session item. Budgeted together at 30 ms in `03-flow.md` step 5.
 
-**A second cost, named because it is a real product effect.** The sign-in pages are Cognito's, not
-ours. The Botanical identity in `factory/feature.md` does not fully reach them, and how much
-Hungarian they show depends on Cognito, not on our own message files. `01-CONTEXT.md` §4 already
-puts the sign-in screen out of scope for run 1, so nothing is contradicted — but the owner should
-know that "out of scope" now means "Cognito's pages", not "ours, later". **Recorded as gate 31.**
+**A second cost, named because it is a real product effect, and the owner accepted it.** The sign-in
+pages are Cognito's, not ours. The Botanical identity in `factory/feature.md` does not fully reach
+them, and how much Hungarian they show depends on Cognito, not on our own message files.
+`01-CONTEXT.md` §4 already puts the sign-in screen out of scope for run 1, so nothing is
+contradicted — and "out of scope" now means "Cognito's pages", not "ours, later". **Decided by the
+owner on 2026-08-26, gate 32.**
 
 **A third cost, small and named.** `SameSite=Strict` means a link from the 11-month warning email
 lands on a page that looks signed out until the person navigates once more. Accepted. If it is ever
@@ -101,10 +102,17 @@ one of the reasons the project exists.
 **Our own passwords.** Rejected. Password hashing, reset links, rate limiting on sign-in and breach
 handling are a body of work with sharp edges, and one part-time developer should not own them.
 
-**Which sign-in method — password, magic link or a social provider — was not decided here.** It is
-closer to a product choice than an architecture one, and no story names it. The line continued on
-email and password through Cognito's own pages, because it needs no extra vendor and no extra cost.
-**Recorded as gate 31 with the point above.**
+**Which sign-in method — password, magic link or a social provider.** Nothing named it, so the line
+continued on email and password through Cognito's own pages, and **the owner confirmed that on
+2026-08-26 (gate 32)**. It needs no extra vendor and no extra cost.
+
+**A social provider such as "Sign in with Google" was offered and not taken.** It would still be
+Cognito's pages, plus a Google Cloud project and a client secret to set up and keep. **Trigger to
+re-open:** people are failing to sign in, or a second identity provider is wanted for another
+reason.
+
+**Our own sign-in screen against Cognito's API** was the third option and lost the same way our own
+passwords lost, one paragraph above: it puts the password inside this application.
 
 ## Agent-Readable Summary
 
@@ -114,3 +122,5 @@ email and password through Cognito's own pages, because it needs no extra vendor
 > opaque `__Host-session` cookie. Do not read the account type from the session item; read it from
 > the profile item on every request. Do not drop the `Secure`, `HttpOnly` or `__Host-` settings on
 > either cookie, and do not change `__Host-session` away from `SameSite=Strict` without a new ADR.
+> Sign-in is **email and password on Cognito's own hosted pages** (owner, gate 32). Do not build a
+> sign-in screen in this repository, and do not add a social provider without re-opening ADR-0003.

@@ -65,8 +65,8 @@ from the market scan. Section 6 keeps those ideas in the Out list.
 | S-8 | Sign in, and see only your own pots, photos and assessments | US-07, US-14 | `factory/feature.md`, Human decisions |
 | S-9 | A per-user limit on assessments, checked before any model call | US-08 | `00-context-brief.md` 4, the cost that is not small |
 | S-10 | A clear message for every failure, saying whether trying again helps | US-09 | `factory/feature.md`, In scope |
-| S-11 | An admin can read the usage and cost figures | US-12 | `factory/feature.md`, Human decisions |
-| S-12 | An admin can turn the AI feature off without a deploy | US-13 | `factory/feature.md`, Human decisions |
+| S-11 | ~~An admin can read the usage and cost figures~~ **Moved out of run 1, gate 30.** The three numbers are still written down on every assessment, so the data is there. There is no route to read them with | US-12 | `factory/feature.md`, Human decisions |
+| S-12 | The AI feature can be turned off without a deploy. **The switch ships; the admin route does not** (gate 30). It is flipped in the AWS website | US-13 | `factory/feature.md`, Human decisions |
 | S-13 | Every screen in this flow works in Hungarian and in English | US-11 | `factory/feature.md`, Human decisions |
 
 ## 5. What the model returns
@@ -132,7 +132,7 @@ adds a field to what `factory/feature.md` listed. See gate G-1 in section 8.
 | The watering-schedule engine | The owner. It is backbone 1 and 2, planned for run 2 |
 | Push notification delivery | The owner. It is backbone 6, planned for run 3 |
 | Sharing a plant between two people | The owner |
-| Admin **screens** | The owner. The permission check and the switch ship now, the screens do not |
+| Admin **screens and admin routes** | The owner, 2026-08-26, gate 30. The account type, the permission check and the kill-switch value ship now. No admin route and no admin screen is built. The developer uses the AWS website |
 | Identifying which plant it is from the photo | The owner. Left out on purpose. The user names the pot |
 | A follow-up chat about the assessment | The owner. It changes the cost model |
 

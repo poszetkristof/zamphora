@@ -44,6 +44,7 @@ everywhere else is one sentence and a pointer. This table says which place.
 | What one assessment costs, and the ceilings | `06-nfrs.md` §3 |
 | Why cost is a correctness property here | `00-options.md` §3, constraint C-1 |
 | Which capacity mode DynamoDB uses, and why | ADR-0002 |
+| Why there is no cache service, and what is free instead | ADR-0002 |
 | Where components come from | ADR-0011 |
 | pnpm, Turborepo and the package scope | ADR-0012, and `../learn/monorepo-architecture.md` |
 
@@ -57,7 +58,7 @@ $0.0040     what one assessment may cost. The account closes when the credit is 
 
 ## What changed on 2026-08-26
 
-The owner made four decisions and a fresh-session pre-mortem found three defects. Both are recorded
+The owner made ten decisions and a fresh-session pre-mortem found three defects. Both are recorded
 where they belong — `factory/runs/001-photo-assessment/human-gates.md` for the decisions,
 `seam-ledger.md` for the defects — but the short version is:
 
@@ -65,6 +66,14 @@ where they belong — `factory/runs/001-photo-assessment/human-gates.md` for the
 - **`apps/web` is a static export.** No Node server, no second Lambda.
 - **DynamoDB runs in provisioned capacity**, fixed at 25/25. On-demand is outside the free amount.
 - **Components come from shadcn/ui**, which uses Base UI underneath.
+- **No cache service.** ElastiCache and DAX would save 24 ms and cost money by the hour. ADR-0002.
+- **No admin route at all in run 1** (gate 30). The account type and the permission check still ship.
+  The kill-switch is flipped in the AWS website. US-12 moves out whole, and US-13 lost its
+  who-flipped-it criterion.
+- **Sign-in is email and password on Cognito's own pages** (gate 32).
+- **The 180-day wording stays** (gate 27), **the next-action text names its language** (gate 28),
+  **the 11-month warning email moves to the notifications run** (gate 29), and **there is no
+  availability target** (gate 31).
 - **Three defects fixed:** the session and profile could not be read in one call, the time budget was
   measured on the wrong run, and two requirements contradicted each other on cost.
 
@@ -72,4 +81,7 @@ where they belong — `factory/runs/001-photo-assessment/human-gates.md` for the
 
 Whether to build it, when it ships, what a risk is worth accepting, what counts as personal data,
 whether to spend money, and whether to deploy. Those are the owner's, and `CLAUDE.md` lists them.
-Six of them are still open and sitting in `human-gates.md` as gates 27 to 32.
+
+**Every gate this run raised is now closed.** Gates 27 to 32 were answered by the owner on
+2026-08-26. Three of them share one trigger to re-open — the day the app is offered to a second
+person — and that trigger also fires gate 5 and the admin route in ADR-0009.
