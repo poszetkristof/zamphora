@@ -34,7 +34,26 @@ One repository, `zamphora` (ADR-0001). Four workspace packages and one infrastru
 - `allowBuilds` lists every package allowed to run an install script. Nothing else may.
 - Never run `npm install` or `yarn`. Never commit `package-lock.json` or `yarn.lock`.
 
-## 2. Import permissions
+## 2. Where a file goes, before the borders between packages
+
+**Added 2026-08-27.** The borders below are between *packages*. The structure **inside** a package
+decided the shape of every file and lived only in `../learn/monorepo-architecture.md` — a learning
+note that nothing routes to during a build. It is named here so the chain is not broken, and the
+`coding-standards` skill carries the short form.
+
+**`apps/web`** — `app/` is routing only, and thin. `features/<feature>/` holds the real code.
+`components/` is for what two or more features use. `lib/` is the fetch client, i18n and formatting.
+**A component leaves a feature the second time another needs it, not the first.**
+
+**`apps/api`** — `modules/<feature>/` with four layers: `domain` (imports nothing at all),
+`application` (names ports, never a database), `infrastructure` (the adapters behind those ports),
+`presentation` (controllers and DTOs). **Dependencies point inwards only**, and presentation and
+infrastructure never import each other. The test for the right layer: if you cannot unit-test it
+without starting Nest or AWS, it is in the wrong one.
+
+The reasoning, the diagram and what each layer holds are in `../learn/monorepo-architecture.md`.
+
+## 3. Import permissions
 
 This table is the border between the parts. It is short because the borders are few, and it is
 written as permissions rather than as advice, because "keep the layers clean" cannot be checked.
@@ -63,7 +82,7 @@ written as permissions rather than as advice, because "keep the layers clean" ca
 **ESLint core rules only.** No new lint plugin is added in run 1. `no-restricted-imports` is part of
 ESLint, and `typescript-eslint` is already required by ADR-0012, so nothing new is accepted here.
 
-## 3. TypeScript
+## 4. TypeScript
 
 These five come from `CLAUDE.md` and hold everywhere outside a test file.
 
@@ -116,7 +135,7 @@ when the same schema object checks both. `05-patterns.md` §11 says the same.
 calendar day is `YYYY-MM-DD`. A duration is a number of milliseconds in a constant whose name ends
 in `_MS`. Never a `Date` on the wire.
 
-## 4. Errors are values, not exceptions
+## 5. Errors are values, not exceptions
 
 US-09 AC-1 says every failure message ends with exactly one of two sentences. A message can only do
 that if the code knows which failure happened, so a failure has to arrive as a value that can be
@@ -135,7 +154,7 @@ row in `05-patterns.md` §8, a screen state in
 `docs/300-design/001-photo-assessment/02-SPEC.md` §6, and a message in both languages, before it can
 ship (ADR-0005, second cost).
 
-## 5. Configuration that can change without a deploy
+## 6. Configuration that can change without a deploy
 
 Three values live in the `CONFIG` partition of the DynamoDB table and are read on one 30-second
 memory cache: the kill-switch, the daily limit, and the model id (ADR-0006, ADR-0008, ADR-0009).
@@ -146,7 +165,7 @@ memory cache: the kill-switch, the daily limit, and the model id (ADR-0006, ADR-
   call does not run (ADR-0009).
 - **Never cache the session and never cache the daily count** (ADR-0002).
 
-## 6. Styling
+## 7. Styling
 
 - **No hex value in a component.** Token names only. Every token is in
   `docs/300-design/03-tokens.md` (ADR-0011, `02-SPEC.md` negative criterion 29).
@@ -158,7 +177,7 @@ memory cache: the kill-switch, the daily limit, and the model id (ADR-0006, ADR-
   `--radius-pill` (ADR-0011).
 - The negative list in `02-SPEC.md` §7 is part of these conventions. It is not repeated here.
 
-## 7. Language
+## 8. Language
 
 Two languages ship in run 1: Hungarian (`hu`) and English (`en`) (US-11).
 
@@ -175,7 +194,7 @@ Two languages ship in run 1: Hungarian (`hu`) and English (`en`) (US-11).
 - Design and test with the Hungarian string. Every label and button stays readable at 30 characters
   (`03-tokens.md` §2.1).
 
-## 8. Tests
+## 9. Tests
 
 - **A test ships in the same change as the code it covers.** CI blocks a pull request that deletes a
   test file unless the commit message says `DELETE_TESTS: <reason>` (`CLAUDE.md`).
@@ -184,7 +203,7 @@ Two languages ship in run 1: Hungarian (`hu`) and English (`en`) (US-11).
 - **A test may never call the Anthropic API.** Every test that needs a model answer uses a stub
   behind `LlmProvider`.
 
-## 9. The per-feature flow
+## 10. The per-feature flow
 
 Every feature is built in four steps with one review checkpoint each:
 
@@ -222,7 +241,7 @@ budgets:
     note: a guess. Replace with the measurement of the real screen
 ```
 
-## 10. Every NFR, and where it is enforced
+## 11. Every NFR, and where it is enforced
 
 One row for every requirement in `06-nfrs.md`. The middle column is the place in the code where the
 number lives. A number with no such place is not a requirement, so this table is also the check that
@@ -261,7 +280,7 @@ the architecture and the code agree.
 | NFR-51 ≤ 10 minutes of CI | The workflow's own duration | read from Actions |
 | NFR-52 every workflow filtered by path | The test in §2 above | `test` |
 
-## 11. Decisions that are not made in this file
+## 12. Decisions that are not made in this file
 
 Each of these was left open on purpose, and each needs a person.
 
