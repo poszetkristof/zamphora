@@ -85,11 +85,15 @@ back. **It never takes them apart**, and it never builds one itself — the two 
 **Both must be URL-encoded**, because `#` in a URL starts a fragment and would silently cut the value
 in half. This is the single easiest thing to get wrong in this file.
 
-**One consequence for the photo key, and it is a stop-and-ask.** ADR-0007 fixes the object key as
-`photos/<userId>/<potId>/<assessmentId>.jpg`. With a composite `AssessmentId` that key repeats the
-pot id and carries a `#`. Both are legal in S3 and both need encoding when the URL is signed. **The
-ADR is followed as written**, because an ADR outranks this file. It is worth asking the owner whether
-ADR-0007 should be amended to use only the timestamp half. See §11.
+**One consequence for the photo key, and the owner settled it on 2026-08-26 (gate 38).** The
+stop-and-ask raised here was right: writing a composite `AssessmentId` into ADR-0007's object key
+repeated the pot id and put a `#` inside an S3 key. **ADR-0007 was amended.** The key is now
+`photos/<userId>/<potId>/<createdAt>.jpg` — the timestamp half only. The pot id is already the
+folder above it, so nothing is lost, and the folder sorts by time on its own.
+
+**The id on the wire is still composite.** Only the S3 key changed. `AssessmentId` remains
+`<potId>#<createdAt>` and must still be URL-encoded wherever it appears in a path or a query
+string.
 
 **The ids are branded on purpose.** A plain `string` can be passed to the wrong parameter by
 accident; a branded id cannot.
@@ -519,7 +523,7 @@ answer schema only in `packages/llm`** — it is a wire type, and `packages/llm`
 | What | Why it is not settled | What to do |
 | --- | --- | --- |
 | Whether `room` is required on a pot, and its length | US-15 AC-2 says "two things" and gives a length rule for the name only. `00-prd.md` does not fill it | Ask the owner. This file assumes required, 1 to 60 characters |
-| The 1 to 30 range on `followUpDays` | US-02 AC-6 marks it `<PROVISIONAL — the owner sets the range>`, and `00-prd.md` §5.3 names no range | Ask the owner. This file uses 1 to 30 |
+| ~~The 1 to 30 range on `followUpDays`~~ | **Closed 2026-08-26, gate 39.** The owner set it to 1 to 30 — the value this file already used | Nothing to do. US-02 AC-6 no longer says provisional |
 | Whether ADR-0007's photo key should use only the timestamp | `05-patterns.md` §1 makes `AssessmentId` composite, so the ADR's key repeats the pot id and carries a `#` | Ask the owner. **The ADR is followed as written until then** |
 | The Zod major version | No input names one | It goes in the `catalog:` of `pnpm-workspace.yaml`. Every schema here uses API that both 3 and 4 have |
 | The provider's error shape for an empty credit balance | Not in any input | Confirm against the provider's documentation in the first task |

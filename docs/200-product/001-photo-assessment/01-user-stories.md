@@ -23,7 +23,8 @@ A story that calls a model is not the same kind of story as one that writes a ro
 code.
 
 **Six of the seven were filled in on 2026-08-24 and 2026-08-25**, when the owner answered the gates.
-`02-traceability.md` section 3.6 lists every answer. **One `<UNSET>` is left:** how far back the
+`02-traceability.md` section 3.6 lists every answer. **One `<UNSET>` is left, and it is inside a
+story that moved out of run 1** (US-12, gate 30), so it blocks nothing: how far back the
 admin figures go, in US-12 AC-4.
 
 **Account type** is on every story. `USER` sees only their own pots, photos and assessments. `ADMIN`
@@ -87,8 +88,11 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 5. **Given** any result on any screen, **when** it is shown, **then** no percentage and no score
    appears anywhere.
 6. **Given** the follow-up days field, **when** it is checked, **then** it is a whole number between
-   1 and 30. (`<PROVISIONAL — the owner sets the range>`. It exists so that a task cannot be dated
-   in the past or years away.)
+   **1 and 30**. Outside that range, the advice is still shown and no task is offered (AC-6 of
+   US-03). **Set by the owner 2026-08-26, gate 39** — it was provisional until then. Thirty days is
+   about as far ahead as plant advice stays useful: a leaf problem checked in five weeks has already
+   resolved or spread. 14 days was rejected as forcing the model to understate slow advice, and 90
+   as creating tasks nobody remembers agreeing to, in a run that cannot send a reminder.
 7. **Given** the verdict code is `nothing-wrong`, **when** the result is shown, **then** the next
    action may be "do nothing", and no care task is offered.
 
@@ -537,6 +541,14 @@ pot", so the stories were pointing at a screen that did not exist.**
    without going back to a menu first.
 8. **Given** a clean account, **when** I count the screens between signing in and sending my first
    photo, **then** there are at most **three**.
+9. **Given** the "where the plant is" field, **when** I save, **then** it is **required**, and it
+   follows the same rule as the name: 1 to 60 characters, and an empty one is refused with a message
+   that says what to do. It is free text, not a list to choose from.
+
+**Why the room is required, decided by the owner 2026-08-26 (gate 35).** AC-6 already leans on it:
+two pots may share a name, and "where the plant is" is the thing that tells them apart. A room that
+can be left empty cannot do that job. Free text rather than a fixed list, because a fixed list
+breaks for anyone whose home does not match it and every new room would be a code change.
 
 **Deliberately not in this story:** species, a photo of the plant, notes, watering settings, editing
 a pot and deleting a pot. Species and notes are backbone feature 4, and pulling them in here pulls

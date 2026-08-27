@@ -136,7 +136,7 @@ this.**
 | 5 | Re-check the photo: type in `ACCEPTED_PHOTO_TYPES`, shorter side ≥ 200, longer side ≤ 1000 | `wrong-format`, `photo-too-small`, `photo-too-large` | A check that only runs in the browser is not a check (ADR-0007). US-01 AC-2, AC-4, AC-5 |
 | 6 | Read the kill-switch from the `CONFIG` cache | `feature-off` | US-13 AC-1, AC-3. NFR-34 |
 | 7 | **The daily limit: one conditional `UpdateItem`** | `daily-limit-reached` | US-08 AC-1, AC-3. NFR-12. §5 below |
-| 8 | Write the photo to S3 at `photos/<userId>/<potId>/<assessmentId>.jpg` | `unknown` | ADR-0007. The id is made before the write |
+| 8 | Write the photo to S3 at `photos/<userId>/<potId>/<createdAt>.jpg` | `unknown` | ADR-0007, amended 2026-08-26 (gate 38). **The timestamp, not the assessment id** — the id contains a `#` |
 | 9 | **One** call to `LlmProvider.assess()`, timeout 18,000 ms | `provider-timeout`, `provider-throttled`, `provider-unavailable`, `provider-bad-request`, `no-credit` | ADR-0005. NFR-03, NFR-04, NFR-05 |
 | 10 | Read `stop_reason` **before** the content | `provider-refused`, `answer-truncated` | ADR-0005, `05-patterns.md` §4 |
 | 11 | Parse with `ModelAnswer` and run the refinement | `answer-unreadable` | `01-contracts.md` §4.1 |
@@ -309,7 +309,8 @@ capacity units (ADR-0002). The first index arrives in run 3, for backbone 6's qu
 
 ## 9. Photos
 
-- One object per photo, in one private bucket, at `photos/<userId>/<potId>/<assessmentId>.jpg`
+- One object per photo, in one private bucket, at `photos/<userId>/<potId>/<createdAt>.jpg` — the
+  timestamp, **not** the assessment id, which carries a `#` (ADR-0007, gate 38)
   (ADR-0007). **`<assessmentId>` is the composite id**, so the key repeats the pot id and carries a
   `#`. Both are legal in S3 and both must be encoded when the URL is signed. See `01-contracts.md`
   §11 — whether the ADR should be amended is a question for the owner.

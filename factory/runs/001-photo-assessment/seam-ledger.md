@@ -674,3 +674,48 @@ route of its own**. No state is lost and no screen changes. Written up in `02-we
 
 **Label: `clean`.** This is the handoff working: an architecture decision reached a design assumption
 through a role that read both, one day after the decision was made.
+
+### Finding 34 — the repair pass, and what the two starved files actually cost
+
+After the map was fixed, 500-engineering re-read its own output against
+`docs/200-product/{feature}/00-prd.md` and `docs/400-architecture/05-patterns.md`. **Four of its
+rebuilds were wrong**, and two of those changed the shape of the public contract:
+
+| Rebuilt from the ADRs | What `05-patterns.md` actually says |
+| --- | --- |
+| Assessment id as a plain UUID | The sort key is `ASSESS#<potId>#<timestamp>`, so **the id on the wire is a composite and carries a `#`** and must be URL-encoded |
+| Care task id as a plain UUID | Same shape: `TASK#<dueDate>#<taskId>` |
+| Cost stored as a decimal | Stored as **whole millionths of a dollar**, because `ADD` on a decimal loses precision |
+| `verdictCode`, nullable `band`, nullable `retakeAdvice` | `verdict`, and neither field is ever null |
+
+**This is the finding, not the list.** A role that cannot read the file its own ADRs cite does not
+fail loudly — it produces a complete, confident, plausible document that is wrong in four places.
+Two of those places were URL shapes, which are expensive to change after a client exists.
+
+### Finding 35 — `05-patterns.md` contradicted two ADRs, and the role was right not to fix it
+
+The repair pass found three stale spots and **changed none of them**, because the file is
+400-architecture's and the contradiction is a finding. All three were leftovers from decisions made
+on 2026-08-26 and all three are now fixed:
+
+1. **§8's retry column still allowed one automatic retry** on four failure names. ADR-0005 and
+   NFR-05 both say zero.
+2. **§1 said the kill-switch row holds who changed it and when.** ADR-0009 says the opposite — do
+   not add those fields, because nothing in the application writes that row any more.
+3. **§5 cited a screen state deleted with the retry**, and carried two broken sentences from the
+   same edit ("counts model model calls", and a sentence that ended "not ten").
+
+**Third time this exact shape has appeared** — findings 14, 32 and now 35. The correction pass
+proposed as change 4 and refined as change 20 would have caught all three.
+
+### Finding 36 — one contradiction was left standing on purpose, and it is the right call
+
+`05-patterns.md` §8 gives a rejected photo **one** failure name, `photo-rejected`. US-01 AC-2 needs
+a sentence naming the four accepted formats and AC-5 needs a different sentence saying the photo is
+too small. **One name cannot produce two required sentences.** The role kept three names
+(`wrong-format`, `photo-too-small`, `photo-too-large`), all mapping to the same screen, and wrote
+down why rather than silently obeying the architecture file. `02-SPEC.md` §6 already draws them as
+three rows, so the design and the contracts agree and the architecture file is the odd one out.
+
+**Label: `under-supply` from 400-architecture.** It is not fixed here because widening a failure list
+is 400's call, and nothing downstream is blocked by it.
