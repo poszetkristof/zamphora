@@ -40,8 +40,48 @@ checks it, writes it to the bucket, and then calls the model with the bytes it a
 at most 1000 px, and a hard ceiling of **2 MB** on the body. A check that only runs in the browser
 is not a check.
 
-**2. The key is `photos/<userId>/<potId>/<assessmentId>.jpg`.** The owner id is in the path, which
+### How the upload is parsed — confirmed by the owner 2026-08-26, gate 34
+
+**The parser is multer, and it is not a new dependency.** It is a direct dependency of
+`@nestjs/platform-express` 11.2.3, so it installs with the Express adapter whether or not any route
+uses it (read from the npm registry, 2026-08-26). Nest's own file-upload page documents
+`FileInterceptor` on top of it. **Three conditions came with the owner's decision:**
+
+1. **Memory storage, never disk storage.** Multer's disk mode leaves partial files behind when an
+   upload is aborted, and a Lambda's `/tmp` survives between requests in the same warm environment,
+   so those pieces outlive the request that made them.
+2. **Every limit set explicitly** — 2 MB of file, one file, and low caps on the number of fields and
+   the length of a field name. Multer has had nine denial-of-service advisories in fourteen months,
+   every one of them a request that makes the parser work forever. On this account that is not a
+   crash, it is spent credit.
+3. **The size cap is checked on the server**, not only in the browser resize.
+
+**Two things that must never change without re-opening this record:**
+
+- **Do not set `binaryMediaTypes`.** That setting belongs to API Gateway *REST* APIs. This project
+  uses an **HTTP API**, which base64-encodes a binary body automatically based on the content type
+  and hands Lambda `isBase64Encoded: true`. The adapter decodes it into a real buffer before multer
+  sees it, so no configuration is needed and none should be added.
+- **Do not move this route to a REST API.** On a REST API with `binaryMediaTypes` unset, the photo
+  is run through UTF-8 and silently corrupted before the application ever sees it. There is no
+  error — multer parses damaged bytes and the assessment fails for a reason nothing explains. This
+  is the single sharpest trap on the upload path, and it only appears if somebody changes the
+  gateway type, most likely to escape the 30-second ceiling.
+
+**The size headroom is not close.** API Gateway's payload limit is 10 MB and cannot be raised;
+Lambda's synchronous limit is 6 MB each way. Base64 adds about a third, so a 6 MB event carries
+roughly 4.5 MB of photo. This ADR caps the body at 2 MB and a real photo is about 200 KB — **about
+3% of the ceiling.**
+
+**2. The key is `photos/<userId>/<potId>/<createdAt>.jpg`.** The owner id is in the path, which
 means an IAM policy can be written to match it later if it is ever needed.
+
+**This said `<assessmentId>` until 2026-08-26, and the owner changed it (gate 38).** 500 Engineering
+found that the assessment id is not a plain value: with no secondary index, the row is found by pot
+id **and** timestamp, so the id is those two joined with a `#`. Written into the old key it produced
+`photos/u123/pot9/pot9#2026-08-26T10:00:00Z.jpg` — the pot id twice, and a `#` inside an S3 key,
+which AWS lists as a character needing special handling. **The timestamp alone is enough**, because
+the pot id is already the folder above it, and the folder then sorts by time with no extra work.
 
 **3. The bucket is private.** Block Public Access on. No bucket policy grants anonymous read.
 Encryption at rest is SSE-S3 (`AES256`).
@@ -118,9 +158,14 @@ which is two rules where one will do.
 ## Agent-Readable Summary
 
 > Photos live as one object each in one private S3 bucket, at
-> `photos/<userId>/<potId>/<assessmentId>.jpg`, and are deleted at 180 days by an S3 lifecycle rule
+> `photos/<userId>/<potId>/<createdAt>.jpg` — the timestamp, **not** the assessment id, which
+> contains a `#`. And are deleted at 180 days by an S3 lifecycle rule
 > written in CDK. Do not write a scheduled job in application code to delete photos. Do not create a
 > thumbnail, a resized copy, or any second copy of a photo anywhere. Do not serve a photo through
 > CloudFront or any cache, and do not make the bucket or any object public — always sign a URL that
 > lasts at most 5 minutes. Do not enable bucket versioning. Do not trust the browser's size and
-> format checks; re-run them in the API and reject any body over 2 MB.
+> format checks; re-run them in the API and reject any body over 2 MB. The upload is
+> `multipart/form-data` parsed by **multer in memory storage** — do not use disk storage, and do not
+> leave its `limits` unset. Do not set `binaryMediaTypes`; it does not exist on an API Gateway HTTP
+> API. Do not move this route to a REST API — the photo would be silently corrupted before the
+> application sees it.

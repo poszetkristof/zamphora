@@ -71,9 +71,23 @@ need their Tailwind written by hand, every state, every size. shadcn hands over 
 written. The remaining work is re-theming to Botanical by changing token values, which is much less
 work than writing components.
 
-**What that costs, stated plainly.** Base UI is at `1.0.0-rc.0` — a release candidate, so its API can
-still move before a final 1.0. And shadcn's files arrive in shadcn's own look, which is a long way
+**What that costs, stated plainly.** shadcn's files arrive in shadcn's own look, which is a long way
 from Botanical. The edit pass below is therefore not optional, and it is bigger than it sounds.
+
+> **Corrected 2026-08-27, and this one was a live trap.** This section said *"Base UI is at
+> `1.0.0-rc.0` — a release candidate, so its API can still move before a final 1.0."* **Both halves
+> are now wrong, and the package name is wrong too.**
+>
+> - **`@base-ui-components/react` is deprecated.** npm returns:
+>   *"Package was renamed to `@base-ui/react`."* Its latest is frozen at `1.0.0-rc.0` — **the exact
+>   version this project pinned.** We were pinned to the final release of a dead package name.
+> - **The package is `@base-ui/react`, and it is at `1.7.0`.** 1.0 shipped on 2025-12-11 and seven
+>   minor versions have followed. The API-instability caveat is void.
+> - **`CSPProvider` arrived in 1.1.0.** A static export behind CloudFront should be sending a
+>   Content Security Policy, and nothing in this repository mentions one yet. Worth raising with
+>   800 Infra rather than discovering during a deploy.
+>
+> **Install `@base-ui/react`. Do not install `@base-ui-components/react`.**
 
 **Which way accessibility was weighed against bundle size, said plainly.**
 

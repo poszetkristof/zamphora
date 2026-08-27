@@ -303,7 +303,8 @@ A finding names a file and a fact. Write at least three.
     readable through the app after 180 days, storage is not charged after expiry, and the object may
     physically exist a little longer. NFR-41 therefore measures at 182 days. **That changes how a
     personal-data commitment reads, so it went to the owner as gate 27 rather than being adjusted
-    quietly.**
+    quietly.** **Closed 2026-08-26: the owner kept the wording. The screen still says 180 days, and
+    NFR-41 checks at 182.**
 
 24. **US-08 AC-1 counts assessments and every other sentence about the limit counts attempts.**
     `01-user-stories.md` US-08 AC-1: *"Given I have already made 10 assessments today."*
@@ -330,6 +331,10 @@ A finding names a file and a fact. Write at least three.
     it is 200-product**, which wrote US-11 and US-02 without noticing that one of the four fields is
     not a code.
 
+    **Closed 2026-08-26.** The owner chose to show the text as written and name its language. The
+    story list gained **US-11 AC-6** and the design spec gained `WrittenInLine` in §3.11, so the gap
+    is now covered by a criterion instead of by a note.
+
 26. **A promise made to the user on a screen has no owner in run 1.** US-10 AC-2 puts it in front of
     the person: an account with no sign-in for 12 months is deleted, *"with a warning by email at 11"*.
     `factory/feature.md` decides it and calls the warning "not optional here". **Nothing in run 1
@@ -337,8 +342,13 @@ A finding names a file and a fact. Write at least three.
     outside box marked "not built in run 1", no story, and no acceptance criterion.
 
     It blocks nothing today, and it is the kind of gap that is invisible for eleven months and then
-    deletes somebody's plant history. Recorded as gate 28's neighbour in the gates file, and drawn
-    in `01-context.mmd` with the words on the arrow rather than left out.
+    deletes somebody's plant history. Recorded as **gate 29**, and drawn in `01-context.mmd` with the
+    words on the arrow rather than left out.
+
+    **Closed 2026-08-26.** The owner moved it to the notifications run, backbone 6, which needs a
+    delivery channel anyway. **The screen keeps the promise and run 1 still cannot keep it**, which
+    the owner accepted knowingly: nothing is deleted for twelve months, so the gap cannot bite before
+    the run that closes it.
 
 27. **Two of this role's own choices are numbers no input gives, and both are inside a number the
     owner set.** ADR-0007 sets a hard **2 MB** ceiling on the request body, which no story names —
@@ -606,3 +616,165 @@ story above.
   options one point apart — is a condition this role's own contract names as a stop, and it is
   recorded rather than settled.
 - Slots re-run: none.
+
+---
+
+## 500-engineering, 2026-08-26
+
+The first role that reads four earlier roles at once. It reported **10 stop-and-asks** and **7 places
+where its own inputs disagreed with each other** — more than any role so far. That count is the
+finding, not a complaint: a role this far down the line is where earlier drift becomes visible.
+
+### Finding 31 — the handoff map starves 500 of two files it needs
+
+**The most useful finding of the run, because it is about the line and not about this project.**
+Two files 500-engineering must read are not in its declared inputs:
+
+1. **`docs/200-product/001-photo-assessment/00-prd.md`.** Section 5.2 holds **the ten verdict
+   codes** — the closed list the whole product turns on. 500 declares `01-user-stories.md` and not
+   `00-prd.md`, so it could not see them. It did the right thing: `VERDICT_CODES` in
+   `01-contracts.md` §3 holds only the two codes named in `factory/feature.md`, plus an explicit
+   `<UNSET>` marker, and it refused to invent the other eight. **The build cannot start until those
+   eight are copied across.**
+2. **`docs/400-architecture/05-patterns.md`.** Four ADRs cite it as the authority for the DynamoDB
+   key shapes, the cookie attributes, the answer schema and the failure-name list. 500 declares
+   `00-options.md`, `02-containers.mmd` and `06-nfrs.md`, and not this one. It rebuilt all four from
+   the ADRs and the stories and said so. **Those four rebuilds have not been checked against the
+   real file.**
+
+**Label: `under-supply`, and the earliest role that could have carried it is the line itself.** The
+map in `ai-factory` decides what each role may read. Neither file is new; both existed before 500
+ran. This is a wiring bug, and it is change 18 in `run-record.md`.
+
+### Finding 32 — six stale sentences survived two sweeps, and a fresh role found them
+
+The owner reversed the retry on 2026-08-26 and changed the warn colour on 2026-08-25. Both changes
+were swept for. Six sentences still carried the old values, and **500-engineering found them by
+reading the files cold**:
+
+| Where | Said | Should say |
+| --- | --- | --- |
+| `06-nfrs.md` §8 | 9,000 ms attempt timeout | 18,000 ms, the number NFR-03 already gave |
+| `02-SPEC.md` §6 | "Yes, after the one automatic retry" | The person retries; nothing automatic does |
+| `00-options.md` §1 Q-3 | "before every model call **and** before every retry" | Once per assessment |
+| `03-tokens.md` §1.2 | `--color-warn` limited to heading size, citing 3.3:1 | No size rule — gate 23 fixed it in the colour, 6.00:1 and 4.60:1 |
+| `01-context.mmd` | "Retries at most once" | Asks exactly once, never retries |
+| ADR-0003 ×2 | "gate 31" for the sign-in question | Gate 32 |
+
+All six are fixed. **The lesson is the same one as finding 14 and it is now seven layers deep:** a
+number that appears in six files will survive a search for the number, because the sixth copy is
+written in words rather than digits. A fresh reader catches what a search does not.
+
+### Finding 33 — a static export makes one design assumption impossible, and the role caught it
+
+`02-SPEC.md` treats SC-2 to SC-7 as screens. ADR-0010 made `apps/web` a static export on 2026-08-26,
+and a static export must list every dynamic path at build time. No assessment id exists then. So the
+assessment id moves to the query string and **SC-2 becomes a state of the assess route rather than a
+route of its own**. No state is lost and no screen changes. Written up in `02-web-spec.md` §2.
+
+**Label: `clean`.** This is the handoff working: an architecture decision reached a design assumption
+through a role that read both, one day after the decision was made.
+
+### Finding 34 — the repair pass, and what the two starved files actually cost
+
+After the map was fixed, 500-engineering re-read its own output against
+`docs/200-product/{feature}/00-prd.md` and `docs/400-architecture/05-patterns.md`. **Four of its
+rebuilds were wrong**, and two of those changed the shape of the public contract:
+
+| Rebuilt from the ADRs | What `05-patterns.md` actually says |
+| --- | --- |
+| Assessment id as a plain UUID | The sort key is `ASSESS#<potId>#<timestamp>`, so **the id on the wire is a composite and carries a `#`** and must be URL-encoded |
+| Care task id as a plain UUID | Same shape: `TASK#<dueDate>#<taskId>` |
+| Cost stored as a decimal | Stored as **whole millionths of a dollar**, because `ADD` on a decimal loses precision |
+| `verdictCode`, nullable `band`, nullable `retakeAdvice` | `verdict`, and neither field is ever null |
+
+**This is the finding, not the list.** A role that cannot read the file its own ADRs cite does not
+fail loudly — it produces a complete, confident, plausible document that is wrong in four places.
+Two of those places were URL shapes, which are expensive to change after a client exists.
+
+### Finding 35 — `05-patterns.md` contradicted two ADRs, and the role was right not to fix it
+
+The repair pass found three stale spots and **changed none of them**, because the file is
+400-architecture's and the contradiction is a finding. All three were leftovers from decisions made
+on 2026-08-26 and all three are now fixed:
+
+1. **§8's retry column still allowed one automatic retry** on four failure names. ADR-0005 and
+   NFR-05 both say zero.
+2. **§1 said the kill-switch row holds who changed it and when.** ADR-0009 says the opposite — do
+   not add those fields, because nothing in the application writes that row any more.
+3. **§5 cited a screen state deleted with the retry**, and carried two broken sentences from the
+   same edit ("counts model model calls", and a sentence that ended "not ten").
+
+**Third time this exact shape has appeared** — findings 14, 32 and now 35. The correction pass
+proposed as change 4 and refined as change 20 would have caught all three.
+
+### Finding 36 — one contradiction was left standing on purpose, and it is the right call
+
+`05-patterns.md` §8 gives a rejected photo **one** failure name, `photo-rejected`. US-01 AC-2 needs
+a sentence naming the four accepted formats and AC-5 needs a different sentence saying the photo is
+too small. **One name cannot produce two required sentences.** The role kept three names
+(`wrong-format`, `photo-too-small`, `photo-too-large`), all mapping to the same screen, and wrote
+down why rather than silently obeying the architecture file. `02-SPEC.md` §6 already draws them as
+three rows, so the design and the contracts agree and the architecture file is the odd one out.
+
+**Label: `under-supply` from 400-architecture.** It is not fixed here because widening a failure list
+is 400's call, and nothing downstream is blocked by it.
+
+---
+
+## The skills audit, 2026-08-27
+
+Three skill files were checked against the repo's own specs and against current practice. **The
+skills are the first thing an agent reads before writing the first file**, and no code exists yet, so
+a wrong line here becomes wrong code rather than a wrong review comment.
+
+### Finding 37 — three skill lines would each have built something an ADR forbids
+
+Not stale wording. Instructions to build a rejected design:
+
+| Skill said | The repo decided |
+| --- | --- |
+| "The client never uploads through the API. It asks for a short-lived **pre-signed S3 URL**" | ADR-0007 rejected exactly that. The photo goes **through** the API as `multipart/form-data` |
+| "Check **ownership in the service**, not the route" | ADR-0004 §2: ownership *"is not a check at all"*. The owner id is the partition key, and an ownership check per service method was rejected by name as *"the mechanism that most often has one hole in it"* |
+| "a confident but wrong response → the **confidence threshold** routes it to 'not sure'" | `01-contracts.md` §3: *"There is no confidence number anywhere in this file, and that is a rule, not an omission."* A test needing a threshold makes someone build the forbidden field |
+
+**The shape is the finding.** Each line is ordinary good advice for a generic application, and false
+for this one. A skill is where that shape hides best, because a skill is read as settled fact and
+carries no reasoning to check it against.
+
+### Finding 38 — the same rule stated twice, and the two copies disagreed
+
+The testing skill said tests are colocated (`PlantCard.tsx` + `PlantCard.test.tsx`) and, ninety lines
+later, that CI blocks deleting *"a file under `tests/`"*. **Both cannot be true**: if every test is
+colocated, no file is ever under `tests/`, so the gate matches nothing and never fires. `CLAUDE.md`
+states it correctly and without a directory.
+
+This is the same disease as the problem+json contradiction, inside one file this time. It is the
+argument for the rule the owner set on 2026-08-27: **the skill states the rule once and points at
+the doc for the reasoning.**
+
+### Finding 39 — pinned to the last release of a deprecated package
+
+`stack.md` and ADR-0011 pinned Base UI at `1.0.0-rc.0` and warned its API could still move. Checked
+on npm 2026-08-27: **`@base-ui-components/react` is deprecated** — *"Package was renamed to
+`@base-ui/react`"* — and its latest is frozen at exactly `1.0.0-rc.0`. The live package is
+`@base-ui/react` at **1.7.0**, stable since 2025-12-11.
+
+**A pinned version looked like diligence and was the opposite here.** The pin captured the moment a
+package died. The lesson is not "do not pin" — it is that a pin needs a date and a re-check, which
+`stack.md` now carries.
+
+### Finding 40 — an accessibility rule the design guarantees will break
+
+**SC 2.4.11 Focus Not Obscured is Level AA and new in WCAG 2.2.** A focused element must not be
+entirely hidden by author content, and its documented failure case is a **fixed bottom bar**. SC-1
+has one by design — `02-SPEC.md` puts the primary action *"fixed at the bottom"* — and the
+accessibility skill itself instructs it: *"Primary actions sit in the lower half of the screen."*
+
+The skill mandated the condition and never named the criterion. **axe cannot see it**; it is found by
+tabbing to the last field. The fix is `scroll-padding-bottom` sized to the bar.
+
+**Also corrected:** the skill cited 44×44 px as if it were the AA requirement. AA is **24×24**
+(SC 2.5.8); 44×44 is SC 2.5.5, which is **AAA**. The project is stricter on purpose, and the skill
+now says which line is the standard and which is ours — a reviewer's citation has to survive being
+challenged.

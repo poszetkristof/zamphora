@@ -17,18 +17,49 @@ first, a premium model only for one named decision with the reason written here.
 | 3 | 300-design | 4 owned files: `00-journey-map.md` (140 lines), `01-CONTEXT.md` (163), `02-SPEC.md` (616), `03-tokens.md` (209, flat). 7 surfaces, a 10-state camera list, 19 components all flagged new, 37 negative ACs | default (Opus 5) | Default model, one pass. 133,941 tokens — the most expensive role so far, and the largest output. Well under the 250,000 bound | no |
 | 4 | 400-architecture | 6 owned files + 11 ADRs and the index. `00-options.md` (4 options, 4 constraints), `01-context.mmd` (6 boxes), `02-containers.mmd` (12 boxes), `05-patterns.md` (11 access patterns), `06-nfrs.md` (30 NFRs), `001-photo-assessment/03-flow.md` (15 steps, timed). 7 gates and 4 seam findings | default (Opus 5) | Default model, one pass. 280,000 tokens — over the 250,000 bound, and the first role to go over it. The output is also the largest: 11 ADRs are 11 documents. Recorded, not re-run | no |
 | 4b | 400-architecture, **pre-mortem** | `001-photo-assessment/07-adversarial.md` (~800 lines, 11 findings) | default (Opus 5), **fresh session** | The contract says a session that built a design defends it, so this one was handed only `docs/400-architecture/` — no ADRs, no product or design files, no conversation history. 163,697 tokens. It found two defects the building session missed, both confirmed by hand | no |
-| 5 | 500-engineering | | | | |
+| 5 | 500-engineering | 5 owned files: `00-conventions.md` (241 lines), `01-contracts.md` (425), `02-web-spec.md` (335), `03-api-spec.md` (340), `docs/context/stack.md` (84). 13 routes plus health, 20 failure codes, every NFR given an enforcement point | default (Opus 5) | Default model, one pass. 202,090 tokens, under the 250,000 bound. **10 stop-and-asks and 7 disagreements between its own inputs** — the most any role has reported, and the reason is that it is the first role reading four earlier roles at once | no |
+| 5b | 500-engineering, **repair pass** | the same 5 files, corrected in place | default (Opus 5), same session resumed | **A repair, not a re-run.** The handoff map was fixed mid-run and two files entered its inputs. Resuming the same agent cost 276,040 tokens against about 200,000 for a fresh run, and kept role ownership — the alternative was the assistant editing a role-owned file. It corrected four rebuilds, two of which changed URL shapes | yes — this row is the re-run |
 | 6 | 800-infra | | | | |
 | 7 | 900-security | | | | |
 | 8 | 600-qa | | | | |
 
 ## What broke
 
-See `seam-ledger.md`. Summarise the three that matter.
+Full list in `seam-ledger.md`. The three that matter:
+
+1. **A role could not read two files it needed, and did not say so.** The handoff map still pointed
+   at folder names from before a refactor. 500 Engineering wrote a complete, confident document that
+   was wrong in four places, two of them URL shapes. **A starved role does not fail loudly — it
+   guesses well.** The same bug sat in two more roles; Security was told to check the sign-in ADR and
+   could not open a single ADR.
+
+2. **An answered decision did not reach the documents built on it.** Seven times. The owner reversed
+   the retry rule, and old values survived two deliberate sweeps — because three of the copies wrote
+   the number *in words*, which no search for the number can match. A fresh reader found them.
+
+3. **The skills contradicted the specs, and skills are what get read during a build.** Three lines
+   each instructed a design an ADR had rejected by name — a pre-signed upload, an ownership check in
+   the service, a confidence threshold that must never exist. Each is ordinary good advice for a
+   generic app and false for this one, which is why it survived review.
 
 ## What stayed with a human
 
-See `human-gates.md`. Summarise, including any gate marked `missed`.
+**Forty-two gates. All closed. None marked `missed`.**
+
+The owner answered sixteen in the last two days. The four that changed the most:
+
+- **No retry, anywhere** — moved the deadline from 24,000 ms to 20,000 ms and rewrote a screen state
+  list.
+- **No admin route in run 1** — reversed part of an accepted ADR, moved one story out and removed an
+  acceptance criterion. Cheap only because nothing had been built on it yet.
+- **`interface` is allowed again.** The ban had no source behind it, and the owner said so before
+  any research did.
+- **Vitest, and exact version pins.** Pinning caught that the project was pinned to a package that
+  had since been renamed and deprecated.
+
+**The pattern worth keeping:** every gate that turned out expensive was expensive because a role had
+already built on the old answer. A gate asked *before* the role runs costs nothing — gate 19, the
+visual identity, was answered first and no rework followed it.
 
 ## What to fix before the next run
 
@@ -60,13 +91,23 @@ without it you never learn whether the fix worked.
 | 15 | Finding 28 — a role flagged a figure as unverified, then made a choice that only works if the figure lands one way. ADR-0002 said the free amount was "not treated as verified here" and still picked on-demand DynamoDB capacity, which the free amount does not cover | Add a rule to every slot contract: **a figure marked unverified may not be the basis of a choice.** Either pick the option that is safe under every reading of it, or record the choice as a gate. Flagging a number and then betting on it is worse than not flagging it, because the flag reads as care | `factory/subagent-slots/*.md` in the `ai-factory` repo | no | |
 | 16 | Finding 29 — `02-containers.mmd` claimed in its own header that every box had an arrow, which was true and did not catch a connection the prose described and the diagram never drew | Change the diagram check in the slot contract from "no orphan boxes" to **"every connection a box's description claims has a matching `Rel()`"**. The weak version passed a container diagram with no `web -> api` arrow, and the arrow was hiding an undecided question | `factory/subagent-slots/400-architecture.md` in the `ai-factory` repo | no | |
 | 17 | Finding 30 — the pre-mortem found three real defects **before** the next role read the files. Every earlier instance of finding 14 was caught after the next role had already built on the wrong value | Make the pre-mortem a **gate on the role rather than its last output**. The role is not complete until a fresh session has read only its folder and reported. Today it is one of eight files the role writes, which means a role can be marked done with a defect still in it | `factory/subagent-slots/400-architecture.md` and `commands/run-role.md` in the `ai-factory` repo | no | |
+| 18 | Finding 31 — 500-engineering could not read the ten verdict codes, because `00-prd.md` is not one of its declared inputs. It also could not read `05-patterns.md`, which four ADRs name as the authority for the key shapes, the cookie attributes and the answer schema | Add both files to `500-engineering`'s inputs in the handoff map. More generally: **when an ADR cites a file as the authority for a rule, every role that must follow the rule has to be able to read that file.** The map has no way to express that today, so it can starve a role of a fact its own inputs point at | `factory/handoff-map.yaml` in the `ai-factory` repo | no | |
+| 19 | The slash command loaded plugin **0.1.2** from the cache while the repo ships **0.2.0**. 0.1.2 predates the per-feature folder refactor, so it reported two inputs MISSING that were present. A less careful operator records a false seam and stops the line | Make `role-inputs.mjs` print the plugin version it is running from, so a stale cache is visible in the first line of output instead of looking like a missing file | `factory/scripts/role-inputs.mjs` in the `ai-factory` repo | no | |
+| 20 | Finding 32 — six stale sentences survived two deliberate sweeps after the retry reversal and the colour change, and a role reading the files cold found all six. Three of them wrote the old value in words rather than digits, so no search for the number could match | Add a step to the correction pass: after a reversal, **a fresh session reads every file that cites the changed decision and reports disagreements**, rather than the changing session searching for the old value. A search finds copies of a number; only a reader finds a sentence that means the old number | `commands/factory-run.md` in the `ai-factory` repo | no | |
+| 21 | Finding 34 — a role that could not read the file its own ADRs cite produced a complete, confident document that was wrong in four places, two of them URL shapes. It did not fail; it guessed well | Add a rule to `run-role.md`: **before dispatching, resolve every file an input ADR names as an authority, and add it to the dispatch.** An ADR that says "see `05-patterns.md` §1" is a declared input in everything but name. Today the map has no way to express "this file is reachable through that one" | `commands/run-role.md` and `factory/handoff-map.yaml` in the `ai-factory` repo | no | |
+| 22 | The slot contracts restated each role's inputs in prose, next to the map that also holds them. The two copies drifted after the per-feature refactor, so five contracts named paths that no longer existed | **Applied on 2026-08-26.** The prose list is deleted from all five and replaced by a pointer to the `reads:` block. One statement of a fact cannot disagree with itself | `factory/subagent-slots/*.md` in the `ai-factory` repo | **yes** | |
 
 ## Done bar
 
-- [ ] ≥3 seam findings, each naming a file and a fact
-- [ ] ≥2 human-gate observations
-- [ ] ≥1 change to make, naming its file
-- [ ] one row per role call above
-- [ ] no file was hand-fed outside a role's `reads:` list, or the exception is written down
+- [x] ≥3 seam findings, each naming a file and a fact — **40 findings**
+- [x] ≥2 human-gate observations — **42 gates, all closed, none `missed`**
+- [x] ≥1 change to make, naming its file — **22 changes; number 22 is applied**
+- [x] one row per role call above — **7 rows, including two repair passes**
+- [x] no file was hand-fed outside a role's `reads:` list — **with one exception, written down here.**
+      When 500 Engineering was resumed for its repair pass, it was *told* that four values had
+      changed (the 18,000 ms timeout, the retry wording, the `--color-warn` rule, the Q-3 line)
+      instead of being left to re-read them. Every one of those facts was inside a file it
+      already declared, so nothing new entered its context — but it was stated rather than read,
+      and that is hand-feeding by the letter of the rule.
 
 A run that stopped and is honest about it passes. A clean demo that was staged does not.

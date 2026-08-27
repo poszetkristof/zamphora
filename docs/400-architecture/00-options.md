@@ -24,7 +24,7 @@ question this feature asks of stored data. It is a short list, and its shortness
 | --- | --- | --- | --- |
 | Q-1 | Which pots does this user own? | Every time the assess screen opens | US-01, US-15 |
 | Q-2 | One pot by its id, owned by this user | Every assessment | US-01 |
-| Q-3 | How many model attempts has this user made today? | Before every model call **and** before every retry | US-08 |
+| Q-3 | How many model attempts has this user made today? | Before every model call. There is no retry, so that is once per assessment (2026-08-26) | US-08 |
 | Q-4 | Is the AI feature switched on? | Before every model call | US-13 |
 | Q-5 | Write one finished assessment for one pot | Once per assessment | US-02, US-05 |
 | Q-6 | Read the assessments of one pot, newest first | Not in run 1. Backbone 4 reads it | US-10 AC-4 |
@@ -233,6 +233,13 @@ recovers them.
 countable: the cold start plus the model call regularly passes 20 seconds, so users meet the
 failure screen on a good network; or the eleven questions in section 1 grow a twelfth that needs a
 join, and the repository layer starts growing code that a database would have done.
+
+**When to re-open Option C.** Option C stops waiting for the model: the API answers at once and the
+phone collects the result later. That removes the 30-second ceiling for good. It costs a second
+function, a queue, a polling loop in the web app and a new waiting state on a screen spec that is
+already agreed at five states. **Two triggers, either one:** a second model call is added to the
+flow, or the model call alone regularly passes 15 seconds. Until then Option C buys headroom that
+`03-flow.md` says is not needed — the typical run is 8.2 seconds against 30.
 
 ## 7. What Option A is made of
 

@@ -22,7 +22,7 @@ are not two versions of the same text, and neither repeats the other.
 | 9 | Deletion belongs to the storage rule | ADR-0007 |
 | 10 | Language: codes on the wire | — |
 | 11 | Nothing crosses the wire except a contract | ADR-0001, ADR-0012 |
-| 12 | The admin has no screen | ADR-0009 |
+| 12 | There is no admin route at all in run 1 | ADR-0009, ADR-0004 |
 
 Every pattern below belongs to the whole product, not to this one feature. Later runs read this
 file and extend it. They do not rewrite it.
@@ -46,7 +46,12 @@ remember to write.
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` | The pot, the assessment it came from, the action text |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` | One number |
 | A day's usage | `USAGE` | `<yyyy-mm-dd>` | Assessments started, model calls made, cost in millionths of a dollar |
-| The kill-switch | `CONFIG` | `AI_ENABLED` | On or off, who changed it, when |
+| The kill-switch | `CONFIG` | `AI_ENABLED` | On or off. **One field only** — see the note under this table |
+
+**The kill-switch row holds one field, and this changed on 2026-08-26.** It used to hold who flipped
+it and when. The owner removed the admin route (gate 30), so nothing in the application ever writes
+that row — the developer edits it in the AWS website, and AWS keeps its own record of who did that.
+ADR-0009 says plainly: **do not add `changedBy` or `changedAt`.**
 
 **The same thing as a picture.** One table, and the partition key is what separates one person's
 data from everyone else's. Everything a person owns sits under one key, so one `Query` gets it.
@@ -295,12 +300,16 @@ Four properties fall out of this and each one is an acceptance criterion:
 - **The date is in the key**, so yesterday's counter is never read and never needs clearing. The TTL
   on the item exists only to stop the table growing, and nothing depends on it firing on time.
 
-**One consequence, written down because it is easy to meet by surprise.** The counter counts model
-model calls. With no retry, one assessment is one call, so ten a day means ten assessments, not
-ten. That is exactly what `factory/feature.md` asks for — *"Every attempt costs money, which is the
-whole point of the limit"* — and it means the limit message can appear on the retry of an
-assessment that had already started. `02-SPEC.md` SC-2 state 4 already says the retry line tells the
-person the second try counts too.
+**One consequence, written down because it is easy to meet by surprise.** The counter counts **model
+calls**, not finished assessments. With no retry, one assessment is exactly one call, so ten a day
+means ten assessments. That is what `factory/feature.md` asks for — *"Every attempt costs money,
+which is the whole point of the limit"*.
+
+**This paragraph used to say more, and the retry reversal of 2026-08-26 removed the reason for it.**
+While a retry existed, one assessment could cost two calls, so ten a day could mean five
+assessments, and the screen had a line warning that the second try counted too. That line and the
+state it lived in are both gone. The counter still counts calls rather than assessments, because the
+day a retry comes back the limit must not silently double.
 
 **The day is a UTC calendar day.** The message that says when the limit resets shows that moment in
 the reader's own time. **Do not** compute the day from a timezone sent by the browser: two
@@ -340,12 +349,16 @@ Every failure in this feature is one of a closed list, and each name carries two
 needs: whether trying again helps, and whether it may be retried automatically. The two are not the
 same. "The person may tap again" and "the code retries by itself" are different permissions.
 
+**The middle column changed on 2026-08-26 and used to say "yes, once" on four rows.** The owner
+removed every automatic retry. **Nothing in run 1 retries itself.** "The person may tap again" is
+still a real difference from "the code retries by itself", and now only the first one happens.
+
 | Name | Auto retry? | The sentence the screen ends with |
 | --- | --- | --- |
-| `provider-timeout` | yes, once | trying again may work |
-| `provider-throttled` (429) | yes, once | trying again may work |
-| `provider-unavailable` (503) | yes, once | trying again may work |
-| `answer-unreadable` | yes, once | trying again may work |
+| `provider-timeout` | **no — nothing retries in run 1** | trying again may work |
+| `provider-throttled` (429) | **no — nothing retries in run 1** | trying again may work |
+| `provider-unavailable` (503) | **no — nothing retries in run 1** | trying again may work |
+| `answer-unreadable` | **no — nothing retries in run 1** | trying again may work |
 | `provider-refused` (`stop_reason: refusal`) | **no** | trying again will not work now |
 | `answer-truncated` (`stop_reason: max_tokens`) | **no** | trying again will not work now |
 | `provider-bad-request` | **no** | trying again will not work now |
@@ -390,11 +403,17 @@ in whichever language the person is reading. `02-SPEC.md` §9 and US-11 AC-5 nee
 the request carries the reader's language, the prompt tells the model to answer in it, and the
 assessment row records which language it was written in.
 
-**That leaves a hole nobody has covered, and it is recorded rather than solved.** An assessment
-written in Hungarian and read later in English shows a Hungarian next action inside an English
-screen. US-11 AC-1 says every text in the flow is in the language being read. No story says what
-happens to an old assessment after a language switch. See seam 13 and gate 28. Run 1 stores the
-language and shows the text as written; nothing translates it.
+**That left a hole nobody had covered, and the owner closed it on 2026-08-26 (gate 28).** An
+assessment written in Hungarian and read later in English shows a Hungarian next action inside an
+English screen. **The answer: show the text exactly as written, and put a short line next to it
+saying which language it is in.** The assessment row already stores the language, so the screen has
+what it needs and no extra read is done.
+
+Two alternatives lost. Translating on read means a second paid model call every time somebody opens
+an old assessment, on an account that closes when the credit runs out. Saying nothing at all is
+cheapest and leaves the reader wondering why one line looks different. **US-11 AC-6 is the new
+criterion**, and it does not contradict AC-1: AC-1 is about walking the flow now, AC-6 is about
+re-reading something written earlier.
 
 **Do not** build a sentence by joining fragments. `02-SPEC.md` §9 forbids it, and Hungarian does not
 put the parts in the English order.
@@ -416,16 +435,22 @@ decide whether a later split is cheap:
 fields to draw SC-3, SC-4 and SC-5, so the schema is a wire type and belongs in `contracts`.
 `packages/llm` imports it.
 
-## 12. The admin has no screen, and that is a shape too
+## 12. There is no admin route at all in run 1, and that is a shape too
 
-US-12 and US-13 have no screen in run 1. They are still HTTP routes on the same API, behind the same
-session cookie and the same role decorator from pattern 3. An admin signs in in a browser like
-anybody else, and then calls the route.
+**Decided by the owner on 2026-08-26 (gate 30), which reversed the first version of this section.**
+Run 1 builds no admin route and no admin screen. The developer reads the usage figures straight from
+the DynamoDB table with AWS credentials, and flips the kill-switch by editing its row in the AWS
+website (ADR-0009).
 
-**Do not** build a second way in for the admin — no separate key, no shared secret, no editing the
-row from the AWS console. US-13 AC-5 requires the log to record **which account** flipped the
-switch. A console edit records an AWS principal, not a zamphora account, so it cannot satisfy that
-criterion at all.
+**The role decorator still ships, carried by no route.** Every route declares `@Anonymous()`,
+`@Roles('USER')` or `@Roles('ADMIN')`, and one with none of them does not run (ADR-0004, NFR-32).
+`ADMIN` is declared and unused on purpose: US-14 AC-3 is about the admin route somebody adds next
+year, and the default has to already be *refuse* on the day they add it.
+
+**Do not** build a second way in for the admin when that route finally arrives — no separate key and
+no shared secret. Editing the row in the AWS console is no longer on that list, because it is now the
+run-1 answer; what makes it acceptable is that only the person holding the AWS account can do it, and
+in run 1 that is the same person.
 
 **One credential deliberately stays out of the running system.** US-12 AC-2 asks for the app's
 model-call count to match the provider's own record exactly. Anthropic publishes that record through
@@ -433,4 +458,4 @@ an admin endpoint, `/v1/organizations/usage_report/messages`, which needs an **a
 is a different and more powerful credential than the one the app uses
 ([Anthropic usage and cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api),
 checked 2026-08-25). That key does not go on the server. The comparison is a script the owner runs
-locally. 900 Security confirms or overrules that; it is recorded as gate 29.
+locally, against the table directly. 900 Security confirms or overrules that placement.

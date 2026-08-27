@@ -24,6 +24,7 @@ carry the weight:
 | [0010](0010-serve-the-web-and-the-api-from-one-origin.md) | Serve the web app and the API from one origin | Accepted |
 | [0011](0011-build-the-components-on-base-ui.md) | Build the components on Base UI, delivered by shadcn/ui | Accepted 2026-08-26 |
 | [0012](0012-run-the-workspace-on-pnpm-and-turborepo.md) | Run the workspace on pnpm and Turborepo | Accepted 2026-08-26. Supersedes part of 0001 |
+| [0013](0013-run-every-test-on-vitest.md) | Run every test on Vitest, in all three packages | Accepted 2026-08-26 |
 
 **0001 to 0011** were written by the 400-architecture role on 2026-08-25, from the chosen direction
 in `docs/400-architecture/00-options.md`. **0012** was written on 2026-08-26 after the owner chose

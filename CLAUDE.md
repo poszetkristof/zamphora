@@ -82,26 +82,38 @@ when the file is saved. Run `/ai-factory:learn`. See
 
 Do not infer the design from surrounding code; it may not exist yet.
 
-| Working on | Read |
-| --- | --- |
-| Anything at all | `docs/context/stack.md` |
-| Any `.ts` / `.tsx` | `docs/500-engineering/00-conventions.md` |
-| The web app | `docs/500-engineering/02-web-spec.md` |
-| **A screen** | `docs/300-design/<slug>/02-SPEC.md` is the contract. Then open `docs/design-preview.html` to see what it should look like — the mockup is a **reference**, so where the two disagree the spec wins |
-| The API | `docs/500-engineering/03-api-spec.md` |
-| Anything crossing the wire | `docs/500-engineering/01-contracts.md` |
-| Tests | `docs/600-qa/00-test-plan.md` |
-| Anything under `infra/` | `docs/800-infra/` |
-| Auth, uploads, user input, AI calls | `docs/900-security/02-mitigations.md` |
-| "Why is it like this?" | `docs/ADR/` |
+**Load the skill first, then the doc.** The skill is the rules and is short. The doc is the
+reasoning and is long. You need the rules on every file and the reasoning only when something
+surprises you or you are about to argue with a rule.
+
+| Working on | Load this skill | Then, if you need the why |
+| --- | --- | --- |
+| Anything at all | — | `docs/context/stack.md` |
+| **Any `.ts` / `.tsx`, or any new file or folder** | **`coding-standards`** | `docs/500-engineering/00-conventions.md` |
+| Tests | **`testing-patterns`** | `docs/600-qa/00-test-plan.md` *(not written yet)* |
+| JSX, forms, dialogs, lists, ARIA | **`accessibility`** | `docs/300-design/03-tokens.md` |
+| Auth, uploads, user input, AI calls, any response body | **`security`** | `docs/900-security/02-mitigations.md` *(not written yet)* |
+| The web app | `coding-standards` | `docs/500-engineering/02-web-spec.md` |
+| **A screen** | `coding-standards`, `accessibility` | `docs/300-design/<slug>/02-SPEC.md` is the contract. Then open `docs/design-preview.html` — the mockup is a **reference**, so where the two disagree the spec wins |
+| The API | `coding-standards`, `security` | `docs/500-engineering/03-api-spec.md` |
+| Anything crossing the wire | `coding-standards` | `docs/500-engineering/01-contracts.md` |
+| Anything under `infra/` | — | `docs/800-infra/` *(not written yet)* |
+| "Why is it like this?" | — | `docs/ADR/` |
+
+**Three of those docs do not exist yet.** 600 QA, 900 Security and 800 Infra have not run. The
+skills stand on their own until they do.
 
 ## Hard rules
 
 - **Do only what was asked.** No opportunistic refactoring, no drive-by tidying. Spot a real problem
   outside scope? One sentence, then keep going.
-- **No wire type outside `packages/contracts`.** Writing `type PlantResponse = {…}` in an app? Stop.
-- **No bare string literals** for route names, roles, task kinds, statuses or analytics labels.
-- **No `enum`, no `interface`, no `any`** outside test files.
+- **Every type that crosses the wire is a Zod schema in `packages/contracts`**, imported by both
+  sides. Writing `type PlantResponse = {…}` in an app? Stop.
+- **Route names, roles, task kinds, statuses and analytics labels come from a named `const` list.**
+  It lives in `packages/contracts` when the value crosses the wire, beside its code when it does not.
+- **No `enum`, no `any`** outside test files. Use a `const` object, and `unknown` with narrowing.
+- **Default to `type`. Reach for `interface` to extend an object type, or to merge a declaration.**
+  Never `type A = B & C` for objects — `docs/500-engineering/00-conventions.md` §4 says why.
 - **Every model call goes through `LlmProvider`.** No SDK import outside its adapter.
 - **Tests ship with the change.** CI blocks a pull request that deletes a test file unless the
   commit message says `DELETE_TESTS: <reason>`.

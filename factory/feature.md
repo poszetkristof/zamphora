@@ -64,7 +64,7 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
 | Watering-schedule engine | A separate feature. It consumes the task this one creates |
 | Push notification delivery | A separate feature. Named here only as the consumer of the task |
 | Sharing a plant between two people | Not in the product yet. Product owns the decision |
-| Admin screens and admin-only actions | The account type exists from day one (see below), but the admin **screens** are a later feature |
+| Admin screens and admin-only actions | The account type and the permission check exist from day one (see below). The admin **screens and routes** are both a later feature, decided 2026-08-26 |
 | Plant identification from a photo | Deliberately not attempted. Assessment assumes the user named the plant |
 | A conversational follow-up chat | Named as a later option. It changes the cost model and needs its own pass |
 
@@ -91,7 +91,11 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   decision, and it does not need a third repository either way.
 - **Two account types from day one: `USER` and `ADMIN`.** A user sees only their own plants and
   photos. An admin can read usage and cost figures, and can turn the AI feature off. The permission
-  check ships with this feature. The admin **screens** are a later feature.
+  check ships with this feature. **The admin screens and the admin routes are both a later feature,
+  decided 2026-08-26 (gate 30).** In run 1 the developer reads the figures out of the table and
+  flips the kill-switch in the AWS website, both with AWS credentials. The account type and the
+  guard still ship now, because the guard's whole job is to refuse the admin route that does not
+  exist yet.
 - **A photo is kept 180 days, then deleted automatically, decided 2026-08-24.** A storage lifecycle
   rule does the deleting, not application code, so the rule holds even when the app is broken. A
   user can also delete their own photos on demand. GDPR names no period for anything — it requires

@@ -46,6 +46,14 @@ requests and 400,000 GB-seconds per month"*
 includes 25 GB of storage with 25 write and 25 read capacity units, each month, per Region, per
 payer account.
 
+**API Gateway is not.** Checked 2026-08-26: its free amount is a **12-month trial**, not an Always
+Free one — *"one million API calls received for HTTP APIs…per month for up to 12 months"*
+([API Gateway pricing](https://aws.amazon.com/api-gateway/pricing/)) — and this plan runs Always
+Free offers only. So it bills from the first request, at **$1.00 per million calls**. At one user
+that is about a cent a month, so it changes nothing here. It is written down because the sentence
+above would otherwise read as "the whole stack is free", and it is not. **800 Infra picks this up in
+`02-cost-guardrails.md`.**
+
 ### The capacity mode
 
 **Verified first-party on 2026-08-26, and it changed the decision.** The free amount does not cover
@@ -76,6 +84,28 @@ free line without asking.
 
 25 read units is 25 strongly consistent reads a second, sustained. One user making ten assessments a
 day is nowhere near it.
+
+### Why there is no cache in front of the table
+
+**Asked and answered on 2026-08-26.** A cache such as ElastiCache or DAX is not added, and the
+reason is arithmetic. The reads it would remove are the session and the profile: **24 ms out of a
+typical 8,191 ms run** (`../400-architecture/001-photo-assessment/03-flow.md` §2, step 5). That is
+0.3% of one assessment, against a model call of 6,000 to 8,000 ms.
+
+A cache in front of DynamoDB is normally bought for latency or for read units. Neither applies:
+DynamoDB already answers in single-digit milliseconds, and one user is nowhere near 25 read units.
+
+**It would also cost twice.** Neither ElastiCache nor DAX has an Always Free offer — ElastiCache
+changed to credits for accounts opened after 2025-07-15 — and both are charged by the hour whether
+anyone uses the app or not. That is the shape `00-options.md` rejected in Option B. Worse, both live
+in a VPC, so the API function would have to move into that VPC and lose its default route to the
+internet. The model call goes out over the internet, so getting it back needs a NAT gateway, which
+is also charged by the hour with no free offer.
+
+**The free cache is already in the design.** The function stays alive between requests, so a value
+in memory survives to the next call. ADR-0009 does exactly this for the kill switch. **Do not cache
+the session** — a cached session keeps a signed-out person signed in for as long as the cache lives.
+**Do not cache the daily count** — ADR-0008 needs an atomic conditional write to stay correct.
 
 ## Consequences
 
@@ -143,6 +173,9 @@ same table with none of the reading cost.
 > gone. Do not turn on auto scaling, and do not raise the 25s. Do not add a second table in run 1;
 > it would split the same 25 units. Do not add a second database, a relational
 > store, an always-on container or a load balancer. Do not add a DynamoDB secondary index in run 1.
+> Do not add ElastiCache, DAX or any other cache service — it saves 24 ms, it is charged by the
+> hour, and it would drag the function into a VPC and force a NAT gateway. Cache in the function's
+> own memory instead, as ADR-0009 does, and never cache the session or the daily count.
 > Do not let any request run past the 20,000 ms application deadline — the gateway cuts the request
 > off at 30 seconds and answers with a 504 the app did not write. Do not rely on DynamoDB TTL to
 > delete anything on time; always check the expiry in code.

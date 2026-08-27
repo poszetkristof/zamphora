@@ -175,9 +175,19 @@ The part with the value in it. `--color-ground` behind, hairline border in `--co
 Holds the next action text at `--text-body` in `--color-body`, and under it the `FollowUpLine`: the
 follow-up in whole days turned into a date, at `--text-caption` in `--color-muted`.
 
+**`WrittenInLine`, added 2026-08-26 by the owner (gate 28).** The next action is the one value the
+model writes as free text, so it exists in one language only. When the assessment's stored language
+is **not** the language being read, the card shows one extra line under the text, at
+`--text-caption` in `--color-muted`: a short sentence naming the language it was written in. When
+the two match, the line is not rendered at all — no empty space, no placeholder. It is never shown
+on a fresh assessment, because a fresh one is always written in the reader's language.
+
 **States:** `shown` · `no-task-possible` (the follow-up days field is missing or out of range, so
 the card shows the action and the date line is replaced by one sentence saying no task can be made,
 US-03 AC-6) · `hidden` (band is `cannot-tell`).
+
+`WrittenInLine` is not a state. It appears or does not appear inside `shown` and inside
+`no-task-possible`, driven only by whether the two languages match.
 
 ### 3.12 UnsureBand
 
@@ -291,7 +301,7 @@ with `PhotoPreview` · `LimitNote` if it applies · `PrimaryButton` (send) fixed
 | 8 | `camera-permission-denied` | The operating system refused the camera | See section 5 |
 | 9 | `no-camera` | The device has no camera | See section 5 |
 | 10 | `limit-reached` | 10 assessments already made today | `FailureNote` in state `blocked-by-limit`: the limit is reached, and when it resets. No try-again button. **No model call is made and no money is spent** (US-08 AC-1, AC-2, AC-3) |
-| 11 | `feature-off` | An admin turned the AI feature off | `FailureNote` in state `feature-off`: the feature is off, and trying again will not work now (US-09 AC-4, US-13 AC-3) |
+| 11 | `feature-off` | The AI feature was turned off with the kill-switch | `FailureNote` in state `feature-off`: the feature is off, and trying again will not work now (US-09 AC-4, US-13 AC-3) |
 | 12 | `no-credit` | The model credit balance is empty | `FailureNote` in state `no-credit`: the assessment is not available now and trying again will not work. **This is a normal failure state, not a crash, and it is never retried** (`factory/feature.md`). Everything else in the app keeps working |
 | 13 | `offline` | No network | The offline strip in `AppFrame`. The chosen photo stays on screen. Send is `disabled` with the reason. Nothing is sent and nothing is queued (US-09 AC-2; taking a photo now to assess later is idea W-6 and is Out) |
 | 14 | `sending` | Send was tapped | Moves to SC-2. Send is `busy` and cannot be tapped again (US-01 AC-7) |
@@ -460,11 +470,11 @@ message not in this table has not been designed.
 | Upload failed | Trying again may work | Yes. The photo is still there | US-09 AC-2 |
 | Network dropped | Trying again may work | Yes. The photo is still there | US-09 AC-2 |
 | Timed out at 30 seconds | Trying again may work | Yes | US-01 AC-8, US-09 AC-3 |
-| Provider error, a 429 or a 503 | Trying again may work | Yes, after the one automatic retry | US-09 AC-3, AC-5 |
+| Provider error, a 429 or a 503 | Trying again may work | Yes, and the person does it — **there is no automatic retry**, 2026-08-26 | US-09 AC-3, AC-5 |
 | Bad request to the provider | Trying again will not work now | No | US-09 AC-5 |
 | Answer could not be read | Trying again may work | Yes, as "send another photo" on SC-5 | US-02 AI Eval Card |
 | Daily limit of 10 reached | Trying again will not work now | No. It says when it resets | US-08 AC-1, AC-2 |
-| Admin turned the feature off | Trying again will not work now | No | US-09 AC-4, US-13 AC-3 |
+| The feature was turned off | Trying again will not work now | No | US-09 AC-4, US-13 AC-3 |
 | Model credit balance empty | Trying again will not work now | No | `factory/feature.md` |
 | Writing the care task failed | Trying again may work | Yes | US-03 |
 | Deleting the photo failed | Trying again may work | Yes | US-10 AC-3 |
@@ -618,9 +628,9 @@ Every story in `01-user-stories.md`, and where it is drawn.
 | US-08 Stopped at my own limit | SC-1 state 10, SC-5 state 4, `LimitNote` | |
 | US-09 A message that says if trying again helps | Section 6, `FailureNote` | Every screen |
 | US-10 How long photos are kept, and delete | SC-7, `RetentionNote` | Deleting all photos at once has no screen in this run |
-| US-11 Hungarian or English | Section 9 | Every screen |
-| US-12 An admin reads the figures | **No screen in run 1** | `00-prd.md` section 6.1 |
-| US-13 An admin turns the feature off | **No screen in run 1.** Its effect on a user is SC-1 state 11 | |
+| US-11 Hungarian or English | Section 9, and `NextActionCard`'s `WrittenInLine` for AC-6 | Every screen |
+| US-12 An admin reads the figures | **Not in run 1 at all.** No screen and no route (gate 30) | `00-prd.md` section 6.1 |
+| US-13 The feature can be turned off | **No screen and no route in run 1.** The switch is flipped in the AWS website. Its effect on a user is SC-1 state 11 | |
 | US-14 A normal account is refused | **No screen.** A refused admin action never renders a screen, and the answer does not say whether the action exists | |
 
 ## 13. What this document does not decide

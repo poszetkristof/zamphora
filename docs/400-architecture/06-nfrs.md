@@ -7,8 +7,8 @@ Every row below has four things: a number, the window it is measured over, how i
 the job that runs the test. A row missing any of the four is not a requirement, it is a wish.
 
 **Two of these budgets are the ones this project cannot skip**, because both can kill it rather than
-slow it down: what one model call costs (NFR-10 to NFR-13), and how often the answer is right
-(NFR-14 to NFR-16). On an account that closes instead of billing, cost is a correctness property.
+slow it down: what the model costs (NFR-10 to NFR-14), and how often the answer is right (NFR-20 to
+NFR-23). On an account that closes instead of billing, cost is a correctness property.
 
 **`M-nn` in the last column is the metric id in `docs/200-product/001-photo-assessment/02-traceability.md`.**
 Where a row has no `M-nn`, this document is the only place the number exists.
@@ -59,7 +59,7 @@ application — see section 8.
 | NFR-11 | Cost of one `ai-eval` run | **≤ $0.20** | Every run | The eval script prints its total before it starts and refuses to run if the set is larger than 50 photos | `ai-eval` | — |
 | NFR-12 | Model calls per account per day | **≤ 10** | A UTC calendar day | Two tests. The 11th call is refused with no provider call. Ten parallel requests give exactly ten successes. **With no retry, 10 a day now means 10 assessments**, not 5 assessments and 5 retries | `test` | M-14 |
 | NFR-13 | The app's model-call count matches the provider's own record | **difference = 0** | Any finished day | A local script the owner runs, comparing the day's rollup against `/v1/organizations/usage_report/messages`. **Not automated in CI, because the admin key it needs does not go on the server** — see `05-patterns.md` §12 | none — a local script | M-15, US-12 AC-2 |
-| NFR-14 | Anthropic spend for this feature | **< $5.00** | 2026-07-01 to 2026-12-31 | The sum of the day rollups over the range. Read through the admin figures route | none — runtime only | M-05 |
+| NFR-14 | Anthropic spend for this feature | **< $5.00** | 2026-07-01 to 2026-12-31 | The sum of the day rollups over the range, read from the table directly — there is no admin route in run 1 (gate 30) | none — runtime only | M-05 |
 
 **NFR-14 is a watch number and the daily limit does not guarantee it.** Two arithmetics, both true:
 expected use is about 30 assessments a month, which over six months is 180 calls and about **$0.63**.
@@ -125,7 +125,11 @@ Two days is chosen as the window because the same page describes the process as 
 **This changes how M-07 has to be read, and the owner should see it**, because the 180 days is a
 promise printed on a screen (US-10 AC-1). The photo is not billed for after it expires, and it is
 not readable through the app, because the app only ever signs a URL for a row that still exists. But
-the object can sit in the bucket for a short time after the date. Recorded as gate 27.
+the object can sit in the bucket for a short time after the date.
+
+**Gate 27, closed by the owner on 2026-08-26: the wording on the screen stays as it is.** "Deleted
+after 180 days" is what a person means by deleted — they cannot see it and nobody is paying to keep
+it. NFR-41 checks at 182 days so a working system passes.
 
 ## 7. Size and build
 
@@ -146,7 +150,7 @@ what it actually was.
 | Number | Row | Why it is a guess | What replaces it |
 | --- | --- | --- | --- |
 | 8,000 ms for the model call | NFR-01, NFR-03 | No source at all | The first real call |
-| 9,000 ms attempt timeout | NFR-03 | Derived from the 8,000 ms guess plus room | Re-derived once the real latency is known |
+| 18,000 ms model timeout | NFR-03 | What is left of the 20,000 ms deadline after the other steps. The 8,000 ms guess sets how much slack that leaves, not the number itself | Re-derived once the real latency is known. **This row said 9,000 ms until 2026-08-26** — that belonged to the two-attempt rule the owner dropped |
 | 800 ms cold start | NFR-06 | Secondary sources, not this app | The `InitDuration` metric |
 | 1 in 100 unreadable answers | NFR-23 | Nobody has run one call yet | The first 100 attempts |
 | 170 KB for SC-1 | NFR-50 | No screen has been built | The measurement of the real screen |
@@ -161,11 +165,20 @@ linked next to it with the date it was checked.
 in the 15 stories asks for one, and the product has one user, an unattended credit balance and a
 cloud account that closes on 2026-12-31 by design.
 
-This role's contract says an NFR with no test approach is a stop-and-ask, so it is a gate rather
-than a number invented here. **Recorded as gate 30.** The line continued with no availability
-target, on the stated assumption that a personal app with one user and a manual top-up has nothing
-meaningful to promise yet. The moment the app is offered to a second person, this needs a number,
-and so does the EU AI Act position in gate 5 — the same trigger fires for both.
+This role's contract says an NFR with no test approach is a stop-and-ask, so it was raised as a gate
+rather than answered with a number invented here.
+
+**The owner closed it on 2026-08-26 (gate 31): there is no availability target in run 1, and that is
+written down as a position rather than left as a gap.** The reasoning, in full, so nobody has to
+rebuild it: this app has one user, no second copy of anything, nobody on call, a model credit
+balance topped up by hand, and an AWS account that closes on 2026-12-31 by design. A promise like
+"up 99% of the month" would be untestable and unkeepable, and writing one down would make the next
+role build alarms against a fiction.
+
+**The trigger to set a number is the day the app is offered to a second person.** That is the same
+trigger as gate 5, the EU AI Act position, and the same trigger as the admin route in ADR-0009. All
+three should be answered in one sitting, because they are all consequences of the app having exactly
+one user today.
 
 ## 10. What this document does not decide
 
