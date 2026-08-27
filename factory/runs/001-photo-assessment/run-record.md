@@ -25,11 +25,41 @@ first, a premium model only for one named decision with the reason written here.
 
 ## What broke
 
-See `seam-ledger.md`. Summarise the three that matter.
+Full list in `seam-ledger.md`. The three that matter:
+
+1. **A role could not read two files it needed, and did not say so.** The handoff map still pointed
+   at folder names from before a refactor. 500 Engineering wrote a complete, confident document that
+   was wrong in four places, two of them URL shapes. **A starved role does not fail loudly — it
+   guesses well.** The same bug sat in two more roles; Security was told to check the sign-in ADR and
+   could not open a single ADR.
+
+2. **An answered decision did not reach the documents built on it.** Seven times. The owner reversed
+   the retry rule, and old values survived two deliberate sweeps — because three of the copies wrote
+   the number *in words*, which no search for the number can match. A fresh reader found them.
+
+3. **The skills contradicted the specs, and skills are what get read during a build.** Three lines
+   each instructed a design an ADR had rejected by name — a pre-signed upload, an ownership check in
+   the service, a confidence threshold that must never exist. Each is ordinary good advice for a
+   generic app and false for this one, which is why it survived review.
 
 ## What stayed with a human
 
-See `human-gates.md`. Summarise, including any gate marked `missed`.
+**Forty-two gates. All closed. None marked `missed`.**
+
+The owner answered sixteen in the last two days. The four that changed the most:
+
+- **No retry, anywhere** — moved the deadline from 24,000 ms to 20,000 ms and rewrote a screen state
+  list.
+- **No admin route in run 1** — reversed part of an accepted ADR, moved one story out and removed an
+  acceptance criterion. Cheap only because nothing had been built on it yet.
+- **`interface` is allowed again.** The ban had no source behind it, and the owner said so before
+  any research did.
+- **Vitest, and exact version pins.** Pinning caught that the project was pinned to a package that
+  had since been renamed and deprecated.
+
+**The pattern worth keeping:** every gate that turned out expensive was expensive because a role had
+already built on the old answer. A gate asked *before* the role runs costs nothing — gate 19, the
+visual identity, was answered first and no rework followed it.
 
 ## What to fix before the next run
 
@@ -69,10 +99,15 @@ without it you never learn whether the fix worked.
 
 ## Done bar
 
-- [ ] ≥3 seam findings, each naming a file and a fact
-- [ ] ≥2 human-gate observations
-- [ ] ≥1 change to make, naming its file
-- [ ] one row per role call above
-- [ ] no file was hand-fed outside a role's `reads:` list, or the exception is written down
+- [x] ≥3 seam findings, each naming a file and a fact — **40 findings**
+- [x] ≥2 human-gate observations — **42 gates, all closed, none `missed`**
+- [x] ≥1 change to make, naming its file — **22 changes; number 22 is applied**
+- [x] one row per role call above — **7 rows, including two repair passes**
+- [x] no file was hand-fed outside a role's `reads:` list — **with one exception, written down here.**
+      When 500 Engineering was resumed for its repair pass, it was *told* that four values had
+      changed (the 18,000 ms timeout, the retry wording, the `--color-warn` rule, the Q-3 line)
+      instead of being left to re-read them. Every one of those facts was inside a file it
+      already declared, so nothing new entered its context — but it was stated rather than read,
+      and that is hand-feeding by the letter of the rule.
 
 A run that stopped and is honest about it passes. A clean demo that was staged does not.

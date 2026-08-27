@@ -807,6 +807,25 @@ and every ADR. It writes five files: `00-conventions.md` (naming, folders, what 
 `01-contracts.md` (the Zod schemas — the only place a wire type is defined) · `02-web-spec.md` ·
 `03-api-spec.md` (every endpoint, its body, its errors) · `docs/context/stack.md`.
 
+### A role that cannot read a file does not fail. It guesses well.
+
+This run, 500 Engineering was not given two files it needed. The handoff map still pointed at the
+old folder names. **It did not stop and it did not complain.** It wrote a complete, confident
+document that was wrong in four places — including two URL shapes, which are expensive to change
+once a browser is sending them.
+
+Three things to take from it:
+
+- **A missing input is invisible in the output.** The document looks finished either way. You find
+  it by checking the map, not by reading the result.
+- **The rule to add:** if an ADR says "see file X", every role that must obey that ADR has to be
+  able to read file X. Ours pointed at a file four ADRs cite and three roles could not open.
+- **The same bug was in two more roles.** Security was told *"check the sign-in ADR"* and could not
+  open a single ADR. Fix the class, not the instance.
+
+The map lives in the plugin. Fix it there, run `derive-agents.mjs`, bump the version, push, then
+**update the installed plugin** — a push alone changes nothing on your machine.
+
 **Watch one decision travel through four roles.** This is the clearest proof the line works. Follow
 the word `unsure`:
 
@@ -821,21 +840,19 @@ The Zod schema is the important step. **It is one definition, used by the API an
 Without it the API allows three values and the web app checks for a word someone typed from memory.
 The two stop matching, and nobody notices until a user sees a confident wrong verdict.
 
-**Who may import what.** The API has three layers, each with one job: the **controller** speaks HTTP,
-the **service** holds the actual rules ("on `unsure`, write no task"), the **repository** talks to the
-database and nothing else. The spec writes down which may import which:
+**Who may import what.** The API has four layers, and **arrows only point inwards**:
 
-| Layer | May import | Must not |
+| Layer | Holds | Never holds |
 | --- | --- | --- |
-| controller | service, contracts | repository, the data client |
-| service | repository, other services, contracts | `Request`, `Response` |
-| repository | the data client, contracts | service |
+| `domain` | the rules — "on `unsure`, write no task" | any import at all |
+| `application` | the steps, in order | which database |
+| `infrastructure` | the database and the model adapter | rules |
+| `presentation` | controllers and HTTP | anything worth testing alone |
 
-The row that matters most: **a service never sees `Request` or `Response`.** If it does, your business
-rules are welded to HTTP, and you can no longer test "on `unsure`, write no task" without a fake
-HTTP request first — so the rule that matters most becomes the hardest thing to check. A table like
-this is only real if a **lint rule** enforces it, so the spec names the rule beside each row. A
-boundary nobody checks lasts about three weeks.
+**The test: if you cannot test it without starting the framework, it is in the wrong layer.** Put a
+rule in `presentation` and "on `unsure`, write no task" now needs a fake HTTP request before you can
+check it — so the most important rule becomes the hardest one to test. A table like this is only real
+if a **lint rule** enforces it. A boundary nobody checks lasts about three weeks.
 
 **Check before moving on:** is the `confidence` field in the **contract schema**, or only in the API
 spec? If the API spec describes it and the contract does not, the web app will invent its own type and
