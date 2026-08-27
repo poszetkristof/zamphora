@@ -21,11 +21,20 @@ focus ring). If your fix moves things on screen, that is a design change and nee
 
 ## Mobile first is an accessibility rule here
 
-- **Touch targets are at least 44×44 pixels**, with space between them. A 24px icon button is a
-  defect on a phone even when it looks fine on a laptop.
+- **Touch targets are at least 44×44 px here, with 24 px between them** — `--target-min` and
+  `--target-gap`. **Cite the project rule, not WCAG**, because WCAG 2.2 **AA** only asks for
+  **24×24** (SC 2.5.8); 44×44 is SC 2.5.5, which is **AAA**. This project is stricter on purpose, so
+  a 32 px button passes AA and still fails here. (2.5.8 also has a spacing exception: an undersized
+  target passes if a 24 px circle centred on it does not touch another target's circle. The 24 px
+  gap is what satisfies it.)
 - Nothing depends on hover. A hover-only tooltip does not exist on a phone.
-- Works at 320px wide and at 200% zoom, with no sideways scrolling.
+- Works at 320px wide and at 200% zoom, with no sideways scrolling — **SC 1.4.10 Reflow (AA)**.
 - Primary actions sit in the lower half of the screen, where a thumb reaches.
+- **SC 2.4.11 Focus Not Obscured (AA), and this design guarantees the condition that breaks it.**
+  A focused element must not be *entirely* hidden by author content — and a **fixed bottom button**
+  is the classic cause. SC-1 has exactly that. When a person tabs down the page, the focused field
+  can scroll under the fixed bar and vanish. The fix is `scroll-padding-bottom` on the scroll
+  container, sized to the bar. **axe cannot see this**; you find it by tabbing to the last field.
 
 ## Do not rebuild what Base UI gives you
 
@@ -78,8 +87,11 @@ the dialog role.
 
 ## Focus, colour, motion, language
 
-- Focus is always visible. **Never `outline: none`** without an equally visible replacement. Use
-  `focus-visible:`, and the ring needs 3:1 contrast.
+- Focus is always visible — **SC 2.4.7 Focus Visible (AA)**. **Never `outline: none`** without an
+  equally visible replacement. Use `focus-visible:`, and the ring needs **3:1** contrast, which comes
+  from **SC 1.4.11 Non-text Contrast (AA)**. The 2 px thickness in `--focus-ring-width` comes from
+  **SC 2.4.13 Focus Appearance**, which is **AAA** — so cite 1.4.11 for the contrast and the project
+  token for the thickness.
 - Focus order follows visual order. No positive `tabIndex`, ever.
 - Colour is never the only carrier of meaning. Text contrast 4.5:1, 3:1 for large text, borders and
   rings 3:1. Check light **and** dark — a token can pass in one and fail in the other.

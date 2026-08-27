@@ -59,6 +59,19 @@ DynamoDB `CONFIG` partition, and is read on the same 30-second cache. Changing i
 silent model upgrade would change the answers without changing a line in the repository, and NFR-20
 would drift with nobody able to say when.
 
+> **Checked 2026-08-27 against current Claude API guidance, and there is a conflict to settle before
+> the first call.** That guidance says to use the bare id — `claude-haiku-4-5` — and not to append a
+> date, because current model ids are already complete. This project's reason for the dated form is
+> still good: an alias that moves changes the answers under a measurement that NFR-20 depends on.
+> **Both ids appear to be valid, one as an alias and one as a snapshot, but that has not been proved
+> here.** Verify with a live `GET /v1/models` before writing the value into the `CONFIG` row, and
+> keep the dated form only if it resolves. A wrong id fails every call, so this is worth two minutes
+> rather than a guess.
+>
+> **The cost table above was re-checked on the same day and is correct.** Haiku 4.5 is $1 and $5 per
+> million tokens, Sonnet 5 is $2 and $10, Opus 5 is $5 and $25 — the same 1 : 2 : 5 ratio the
+> per-assessment figures use. Nothing in decision 2 or the $0.0040 ceiling needs to move.
+
 **6. The cost of every call is computed from the `usage` block the API returns**, never from the
 estimate in the table above. The two prompt and answer estimates are named in seam ledger finding 4
 as the weakest numbers in the brief.

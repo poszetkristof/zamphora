@@ -12,22 +12,34 @@ here — it belongs in a skill or in `00-conventions.md`.
 
 | Slot | Choice | Where it was decided |
 | --- | --- | --- |
-| Runtime | **Node 22 or newer**, in CI and in Lambda | ADR-0012 |
-| Language | **TypeScript, pinned to `6.0.3`** | ADR-0012 |
-| Package manager | **pnpm 11**. Package scope `@zamphora/*` | ADR-0012 |
-| Task runner | **Turborepo** | ADR-0012 |
-| Web framework | **Next.js**, built with `output: 'export'` | ADR-0010 |
-| API framework | **Nest.js**, Express adapter, one Lambda function | ADR-0002 |
-| Shared types | **Zod**, in `packages/contracts` | `factory/feature.md` |
-| Components | **shadcn/ui**, which uses **Base UI** underneath. Styled with Tailwind | ADR-0011 |
-| Infrastructure | **AWS CDK**, one stack per deployable unit | ADR-0001 rule 5 |
-| Bundler for Lambda | **esbuild** | ADR-0012 |
-| Browser tests | **Playwright** | `06-nfrs.md` §1 |
-| Bundle budget | **size-limit** | `06-nfrs.md` NFR-50 |
-| Unit test runner | **not chosen.** See section 5 | — |
+**Every version below is exact, and lives in the `catalog:` in `pnpm-workspace.yaml`.** A package
+writes `"zod": "catalog:"` and never a number (ADR-0012 rule 2). Versions read from the npm registry
+on **2026-08-27**.
 
-**Do not install TypeScript 7.** `typescript-eslint` cannot run on it yet, and installing it turns
+| Slot | Choice | Version | Where it was decided |
+| --- | --- | --- | --- |
+| Runtime | **Node**, in CI and in Lambda | **22 or newer** | ADR-0012 |
+| Language | **TypeScript** | **`6.0.3`** | ADR-0012 |
+| Package manager | **pnpm**. Package scope `@zamphora/*` | **11** | ADR-0012 |
+| Task runner | **Turborepo** | latest | ADR-0012 |
+| Web framework | **Next.js**, built with `output: 'export'` | **`16.3.3`** | ADR-0010 |
+| UI library | **React** | **`19.2.8`** | with Next.js |
+| API framework | **Nest.js**, Express adapter, one Lambda function | **`11.2.3`** | ADR-0002 |
+| Shared types | **Zod**, in `packages/contracts` | **`4.4.3`** | `factory/feature.md` |
+| Components | **shadcn/ui**, which uses **Base UI** underneath. Styled with Tailwind | **`@base-ui/react` `1.7.0`** | ADR-0011 |
+| Infrastructure | **AWS CDK**, one stack per deployable unit | latest | ADR-0001 rule 5 |
+| Bundler for Lambda | **esbuild** | latest | ADR-0012 |
+| Unit and integration tests | **Vitest** with **Vite** | **`4.1.11`** / **`8.2.2`** | ADR-0013 |
+| Browser tests | **Playwright** | latest | `06-nfrs.md` §1 |
+| Bundle budget | **size-limit** | latest | `06-nfrs.md` NFR-50 |
+
+**Stay on TypeScript 6.** `typescript-eslint@8.68.0` declares `typescript: ">=4.8.4 <6.1.0"`, so
+even 6.1 would break it, and TypeScript 7 ships no programmatic API until 7.1. Installing 7 turns
 off every type-aware lint rule in silence (ADR-0012).
+
+**Stay on Zod 4.** Zod 3's `required_error`, `invalid_type_error` and `errorMap` are **accepted and
+ignored** by Zod 4 — no error, no warning, the custom message replaced by default English. Write
+custom messages with the single `error` parameter. `01-contracts.md` §9a has the proof and the rest.
 
 ## 2. The folders
 
@@ -62,7 +74,10 @@ One CloudFront domain. `/api/*` reaches `apps/api`; everything else reaches the 
 | Gotcha | What to do |
 | --- | --- |
 | API Gateway cuts a request off at **30 seconds** and cannot be raised. Its 504 has a body nobody here wrote | The app fails at **20,000 ms** and answers for itself (ADR-0002, NFR-02) |
-| The Anthropic SDK retries on its own by default | Set `maxRetries: 0` on the client. There is no retry in run 1 (ADR-0005, NFR-05) |
+| The Anthropic SDK retries on its own by default | Set `maxRetries: 0` on the client. There is no retry in run 1 (ADR-0005, NFR-05). It also protects the deadline: the SDK retries timeouts too, so the default turns an 18,000 ms timeout into 54,000 ms |
+| The Base UI package was renamed | Install **`@base-ui/react`**. `@base-ui-components/react` is deprecated and its latest is the old `1.0.0-rc.0` this project used to pin (ADR-0011) |
+| The Anthropic SDK's `timeout` is in **milliseconds** in TypeScript | Some other SDKs take seconds. `18_000` is right here; `18` would be an 18 ms timeout that fails every call |
+| `max_tokens` on the model call is **1024**, and lowering it saves nothing | You are billed for tokens generated, not for the ceiling. A tight ceiling only causes `answer-truncated`, which is a dead end for the person (`03-api-spec.md` §4) |
 | An assessment id and a care task id **contain a `#`** — they are the sort key without its prefix | URL-encode both, always. An unencoded `#` cuts the value in half (`01-contracts.md` §2.1) |
 | `bundling.nodeModules` in CDK's `NodejsFunction` is broken with pnpm 11 | Bundle with esbuild instead (ADR-0012) |
 | A pnpm setting left in `.npmrc` is ignored in silence | Every pnpm setting goes in `pnpm-workspace.yaml`. `.npmrc` is for the registry and login only |
@@ -78,10 +93,12 @@ One CloudFront domain. `/api/*` reaches `apps/api`; everything else reaches the 
 
 ## 5. What is not settled yet
 
-- **The unit test runner has no name in any input.** Choosing one is accepting a new dependency,
-  which is the owner's decision. It must run on Node 22 inside a pnpm workspace driven by Turborepo.
-  Until it is chosen, every "how it is tested" line in `06-nfrs.md` that names the `test` job has a
-  target but no runner.
+- **Settled 2026-08-26: the test runner is Vitest** (gate 33, ADR-0013). Every `test` job in
+  `06-nfrs.md` now has a runner. `apps/api` needs four lines in its config or Nest.js dependency
+  injection fails at run time:
+  ```ts
+  oxc: { decorators: { legacy: true, emitDecoratorMetadata: true } }
+  ```
 - **The ten verdict codes are in `docs/500-engineering/01-contracts.md` §3**, copied from
   `docs/200-product/001-photo-assessment/00-prd.md` §5.2. **What each one means stays in the PRD
   only.** Do not copy a meaning into code, and do not add an eleventh code — the list is reviewed

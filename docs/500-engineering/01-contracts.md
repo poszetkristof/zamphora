@@ -48,7 +48,7 @@ export const Locale = z.enum(LOCALES);
 
 export const PotId = z.string().uuid().brand<'PotId'>();
 
-export const IsoInstant  = z.string().datetime();          // 2026-08-26T18:04:11.000Z
+export const IsoInstant  = z.iso.datetime();               // 2026-08-26T18:04:11.000Z
 export const CalendarDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 ```
 
@@ -378,25 +378,61 @@ conditional write in the API and nothing else (ADR-0008).
 **`MeResponse` carries no account type**, for the reason in §2.2: nothing on any run-1 screen draws
 one. A 401 from this route is how the web knows it is signed out (US-07 AC-1).
 
-## 8. Failures — the `Problem` envelope
+## 8. Failures — the `Problem` envelope, which is RFC 9457
 
-Every answer that is not a success is this shape, and nothing else:
+Every answer that is not a success is this shape, and nothing else. It is
+**[RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457.html)**, served as
+`application/problem+json`.
 
 ```ts
 export const RETRY_HINTS = ['may-work', 'will-not-work'] as const;
 export const RetryHint = z.enum(RETRY_HINTS);
 
 export const Problem = z.strictObject({
+  // The five RFC 9457 members. `instance` is omitted — see below.
+  type:      z.url(),        // https://zamphora.app/problems/<code>
+  title:     z.string(),     // short, stable, English, for a developer
+  status:    z.int().min(400).max(599),
+  detail:    z.string(),     // safe to show a person, in the reader's language
+
+  // Extension members. RFC 9457 §3.2 allows these and readers must ignore what they do not know.
   code:      FailureCode,
   retryHint: RetryHint,
   details:   z.record(z.string(), z.unknown()).optional(),
 });
 ```
 
+**Why a standard rather than our own three fields.** `application/problem+json` is understood by
+HTTP tooling, by logging services and by anyone who has met an API before. It costs three fields we
+would otherwise not send, and it means nobody has to learn a shape that only exists here. **This was
+the owner's decision on 2026-08-27**, after `Problem` was found claiming the media type without
+matching it.
+
+**`code` stays, and it is still the field the code switches on.** `type` is a URI and URIs invite
+string-matching on a URL, which breaks the day the domain changes. The rule: **branch on `code`,
+never on `type`.**
+
+**`instance` is deliberately not sent.** RFC 9457 makes it optional. It would identify one specific
+occurrence — a request id — and NFR-30 keeps request ids out of response bodies, because the browser
+has no use for one and it is one more thing that can leak.
+
+**`title` and `detail` are not the same thing, and mixing them is the usual mistake.**
+
+| Field | Who reads it | Language | Changes between two failures of the same kind? |
+| --- | --- | --- | --- |
+| `title` | a developer, a log | always English | no — it is stable per `code` |
+| `detail` | the person using the app | the reader's language | yes — it may name this photo or this limit |
+
+`detail` is a promise: **it is safe to put on a screen.** No stack, no SQL, no file path, no
+provider message copied through. That rule already exists in `.claude/skills/security/SKILL.md`.
+
 `retryHint` is not decoration. US-09 AC-1 says **no failure message may end without exactly one of
 two sentences**, and this field is which one. `02-SPEC.md` §3.16 turns it into a button: a try-again
 button exists only when the hint is `may-work`, so a person who did not read the sentence cannot
 start a paid call.
+
+**`status` must equal the real HTTP status.** Two places state the same number, so a test asserts
+they match — the table in §8.1 is the source.
 
 ### 8.1 Every failure code
 
@@ -486,6 +522,43 @@ retry anything at all in run 1". See §11.
 credit balance is empty. It is not written in any input to this role. Until it is confirmed, an
 unrecognised provider error maps to `provider-unavailable`, which is the safe direction — the person
 is told trying again may work, and one call is not made twice.
+
+## 9a. This is Zod 4, and three habits from Zod 3 fail silently here
+
+**The catalog pins `zod` to `4.4.3`.** Most Zod 3 code still runs, which is the problem: the three
+things below do not error, they are ignored.
+
+**Write custom messages with the single `error` parameter.**
+
+```ts
+z.string({ error: 'Give the pot a name.' })          // the message appears
+z.string().min(1, { error: 'Give the pot a name.' }) // on a check, the same
+```
+
+Zod 3 offered `required_error`, `invalid_type_error` and `errorMap`. **In Zod 4 all three are
+accepted, ignored, and replaced by the default English text.** Verified by running Zod 4.4.3 on
+2026-08-27:
+
+```
+z.string({ required_error: 'MY-REQUIRED' })      -> "Invalid input: expected string, received undefined"
+z.string({ invalid_type_error: 'MY-INVALID' })   -> "Invalid input: expected string, received number"
+z.string({ error: 'MY-NEW' })                    -> "MY-NEW"
+```
+
+**This is the worst kind of failure for this project.** There is no error and no warning. The types
+still check, any test asserting only `success === false` still passes, and the app ships default
+English into a Hungarian screen — which is US-11 AC-1 broken by a silent default.
+
+**Use the current spellings for the built-in formats.** The old ones still work and are deprecated:
+
+| Write this | Not this |
+| --- | --- |
+| `z.email()` | `z.string().email()` |
+| `z.iso.datetime()` | `z.string().datetime()` |
+| `z.enum(SomeNativeEnum)` | `z.nativeEnum(SomeNativeEnum)` |
+
+**`.default()` applies to the output type in Zod 4**, not the input. A schema that relied on the
+Zod 3 behaviour changes shape without complaining.
 
 ## 10. Every schema, and the two sides that use it
 

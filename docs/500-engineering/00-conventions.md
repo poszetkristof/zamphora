@@ -69,7 +69,7 @@ These five come from `CLAUDE.md` and hold everywhere outside a test file.
 
 - **No `enum`.** Use a `const` array with `as const`, and build the Zod schema from it. `z.enum(...)`
   is a Zod function and is not a TypeScript `enum`, so it is allowed and it is the pattern to use.
-- **No `interface`.** Use `type`.
+- **Default to `type`, and reach for `interface` in two named cases.** The three rules are below.
 - **No `any`.** `unknown` plus a Zod parse is the way in from outside.
 - **No bare string literal** for a route name, an account type, a verdict code, a band, a failure
   code, a task kind or a status. Every one of those is a named `const` list. It lives in
@@ -77,6 +77,35 @@ These five come from `CLAUDE.md` and hold everywhere outside a test file.
   — `01-contracts.md` §2.2 has the two cases where it does not.
 - **Comments are two lines at most**, in plain English, and explain *why*. No commented-out code and
   no `TODO`. A longer explanation goes in `docs/` or in an ADR.
+
+### `type` or `interface` — three rules, and the reason for each
+
+**This replaced a flat ban on `interface` on 2026-08-27, at the owner's decision.** The ban had no
+source behind it. The TypeScript handbook says the two are mostly a preference, and the TypeScript
+team's own performance page recommends `interface` for one specific job.
+
+1. **Default to `type`.** Two reasons that both bite in this repo. Almost everything in
+   `packages/contracts` is `z.infer<typeof X>`, and only `type` can name that. And two `type`
+   aliases with the same name in one scope are a compile error, while two same-named `interface`
+   declarations **merge in silence** — which is a real way to end up with a shape nobody wrote.
+
+2. **Use `interface X extends Y, Z` to compose object types.** The TypeScript wiki's performance page
+   asks for this directly:
+
+   > "Interfaces create a single flat object type that detects property conflicts… Type relationships
+   > between interfaces are also cached, as opposed to intersection types as a whole. **For this
+   > reason, extending types with `interface`s/`extends` is suggested over creating intersection
+   > types.**"
+
+   There is a correctness half too. `{ a: string } & { a: number }` gives you `a: never` and says
+   nothing. `interface … extends` reports the conflict.
+
+3. **Use `interface` when you need declaration merging.** Augmenting Nest's `Request` to carry the
+   session, or any `declare module`. `type` cannot do this at all, and the old ban made it
+   impossible.
+
+**Never write `type A = B & C` to build an object type.** This is the one point the TypeScript team
+and every critic of `interface` agree on. Rule 2 is what to write instead.
 
 **Every value that crosses the wire is a Zod schema in `packages/contracts`, with no exception.**
 Writing `type AssessmentResponse = { … }` inside `apps/web` or `apps/api` is always wrong. The

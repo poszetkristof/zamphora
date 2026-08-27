@@ -719,3 +719,62 @@ three rows, so the design and the contracts agree and the architecture file is t
 
 **Label: `under-supply` from 400-architecture.** It is not fixed here because widening a failure list
 is 400's call, and nothing downstream is blocked by it.
+
+---
+
+## The skills audit, 2026-08-27
+
+Three skill files were checked against the repo's own specs and against current practice. **The
+skills are the first thing an agent reads before writing the first file**, and no code exists yet, so
+a wrong line here becomes wrong code rather than a wrong review comment.
+
+### Finding 37 — three skill lines would each have built something an ADR forbids
+
+Not stale wording. Instructions to build a rejected design:
+
+| Skill said | The repo decided |
+| --- | --- |
+| "The client never uploads through the API. It asks for a short-lived **pre-signed S3 URL**" | ADR-0007 rejected exactly that. The photo goes **through** the API as `multipart/form-data` |
+| "Check **ownership in the service**, not the route" | ADR-0004 §2: ownership *"is not a check at all"*. The owner id is the partition key, and an ownership check per service method was rejected by name as *"the mechanism that most often has one hole in it"* |
+| "a confident but wrong response → the **confidence threshold** routes it to 'not sure'" | `01-contracts.md` §3: *"There is no confidence number anywhere in this file, and that is a rule, not an omission."* A test needing a threshold makes someone build the forbidden field |
+
+**The shape is the finding.** Each line is ordinary good advice for a generic application, and false
+for this one. A skill is where that shape hides best, because a skill is read as settled fact and
+carries no reasoning to check it against.
+
+### Finding 38 — the same rule stated twice, and the two copies disagreed
+
+The testing skill said tests are colocated (`PlantCard.tsx` + `PlantCard.test.tsx`) and, ninety lines
+later, that CI blocks deleting *"a file under `tests/`"*. **Both cannot be true**: if every test is
+colocated, no file is ever under `tests/`, so the gate matches nothing and never fires. `CLAUDE.md`
+states it correctly and without a directory.
+
+This is the same disease as the problem+json contradiction, inside one file this time. It is the
+argument for the rule the owner set on 2026-08-27: **the skill states the rule once and points at
+the doc for the reasoning.**
+
+### Finding 39 — pinned to the last release of a deprecated package
+
+`stack.md` and ADR-0011 pinned Base UI at `1.0.0-rc.0` and warned its API could still move. Checked
+on npm 2026-08-27: **`@base-ui-components/react` is deprecated** — *"Package was renamed to
+`@base-ui/react`"* — and its latest is frozen at exactly `1.0.0-rc.0`. The live package is
+`@base-ui/react` at **1.7.0**, stable since 2025-12-11.
+
+**A pinned version looked like diligence and was the opposite here.** The pin captured the moment a
+package died. The lesson is not "do not pin" — it is that a pin needs a date and a re-check, which
+`stack.md` now carries.
+
+### Finding 40 — an accessibility rule the design guarantees will break
+
+**SC 2.4.11 Focus Not Obscured is Level AA and new in WCAG 2.2.** A focused element must not be
+entirely hidden by author content, and its documented failure case is a **fixed bottom bar**. SC-1
+has one by design — `02-SPEC.md` puts the primary action *"fixed at the bottom"* — and the
+accessibility skill itself instructs it: *"Primary actions sit in the lower half of the screen."*
+
+The skill mandated the condition and never named the criterion. **axe cannot see it**; it is found by
+tabbing to the last field. The fix is `scroll-padding-bottom` sized to the bar.
+
+**Also corrected:** the skill cited 44×44 px as if it were the AA requirement. AA is **24×24**
+(SC 2.5.8); 44×44 is SC 2.5.5, which is **AAA**. The project is stricter on purpose, and the skill
+now says which line is the standard and which is ours — a reviewer's citation has to survive being
+challenged.

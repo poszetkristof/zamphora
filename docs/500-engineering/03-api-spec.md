@@ -59,9 +59,18 @@ or any other admin route in this run (ADR-0009).
 use the product: the admin's only path is the AWS website, and the containers diagram draws it
 reaching the table directly and never reaching the API.
 
-**Every failure is the `Problem` envelope from `01-contracts.md` §8.** The status codes are in that
-same table and are not repeated here. **The API never answers 403** — a row belonging to another
-account answers exactly as a row that does not exist (ADR-0004, US-07 AC-2).
+**Every failure is the `Problem` envelope from `01-contracts.md` §8**, which is **RFC 9457** and is
+sent with `Content-Type: application/problem+json`. One Nest exception filter builds it for every
+route, so no controller writes an error body by hand. The status codes are in that same table and
+are not repeated here.
+
+**Two things the filter must get right.** `Problem.status` has to equal the real HTTP status — one
+number stated twice, so a test asserts they agree. And `type` is
+`https://zamphora.app/problems/<code>`, built from the code, so a new failure code cannot ship
+without a URI.
+
+**The API never answers 403** — a row belonging to another account answers exactly as a row that does
+not exist (ADR-0004, US-07 AC-2).
 
 ## 3. Sign-in, and the two reads on every request
 
@@ -163,6 +172,26 @@ this.**
 **There is no retry. Anywhere.** Not a timeout, not a 429, not a 503, not an unreadable answer
 (owner, 2026-08-26; ADR-0005; NFR-05). The Anthropic client is built with `maxRetries: 0`, because
 the SDK retries on its own by default and that default would break NFR-04 in silence.
+
+**`maxRetries: 0` also protects the deadline, not only the money.** The SDK retries a timeout too,
+and its wall clock is `timeout × (retries + 1)`. Left at the default 2, an 18,000 ms timeout could
+run to 54,000 ms — past the 20,000 ms application deadline and past the gateway's hard 30,000 ms
+cut-off, so the person would get a 504 nothing in this product wrote.
+
+### The three request numbers
+
+| Field | Value | Why |
+| --- | --- | --- |
+| `max_tokens` | **1024** | See below |
+| `timeout` | **18,000** | NFR-03. **Milliseconds** — the TypeScript SDK takes ms, unlike some others |
+| `maxRetries` | **0** | Above |
+
+**`max_tokens: 1024`, and the reasoning matters because the number looks arbitrary.** The answer is
+four small fields; a realistic one is about 150 tokens. **You are billed for tokens generated, not
+for the ceiling**, so a generous ceiling costs nothing and a tight one is the only thing that causes
+`answer-truncated` — a `will-not-work` failure that ends the person's attempt with no way forward.
+1024 is roughly seven times the expected size. **Do not tune this number down to save money; it does
+not save any.**
 
 ## 5. The daily limit
 

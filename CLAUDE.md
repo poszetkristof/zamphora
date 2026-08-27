@@ -99,9 +99,13 @@ Do not infer the design from surrounding code; it may not exist yet.
 
 - **Do only what was asked.** No opportunistic refactoring, no drive-by tidying. Spot a real problem
   outside scope? One sentence, then keep going.
-- **No wire type outside `packages/contracts`.** Writing `type PlantResponse = {…}` in an app? Stop.
-- **No bare string literals** for route names, roles, task kinds, statuses or analytics labels.
-- **No `enum`, no `interface`, no `any`** outside test files.
+- **Every type that crosses the wire is a Zod schema in `packages/contracts`**, imported by both
+  sides. Writing `type PlantResponse = {…}` in an app? Stop.
+- **Route names, roles, task kinds, statuses and analytics labels come from a named `const` list.**
+  It lives in `packages/contracts` when the value crosses the wire, beside its code when it does not.
+- **No `enum`, no `any`** outside test files. Use a `const` object, and `unknown` with narrowing.
+- **Default to `type`. Reach for `interface` to extend an object type, or to merge a declaration.**
+  Never `type A = B & C` for objects — `docs/500-engineering/00-conventions.md` §2 says why.
 - **Every model call goes through `LlmProvider`.** No SDK import outside its adapter.
 - **Tests ship with the change.** CI blocks a pull request that deletes a test file unless the
   commit message says `DELETE_TESTS: <reason>`.
