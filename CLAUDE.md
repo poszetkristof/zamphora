@@ -35,8 +35,8 @@ docs/            The specs, one folder per role. docs/context/stack.md first
 docs/ADR/        Decisions. Each ends in an instruction you must follow
 factory/         feature.md (this run's one feature) and the cost limits. The line itself is
                  the ai-factory plugin, in its own repo
-docs/learn/       Two notes. ai-native-delivery.md is the method; monorepo-architecture.md is the
-                 repository shape. Keep both current
+docs/learn/       Three notes. ai-native-delivery.md is the method; monorepo-architecture.md is the
+                 repository shape; aws-and-the-pipeline.md is the running system. Keep all current
 apps/            web (Next.js) and api (Nest.js)
 packages/        contracts (Zod) and anything else shared
 infra/           CDK
@@ -97,11 +97,11 @@ surprises you or you are about to argue with a rule.
 | **A screen** | `coding-standards`, `accessibility` | `docs/300-design/<slug>/02-SPEC.md` is the contract. Then open `docs/design-preview.html` — the mockup is a **reference**, so where the two disagree the spec wins |
 | The API | `coding-standards`, `security` | `docs/500-engineering/03-api-spec.md` |
 | Anything crossing the wire | `coding-standards` | `docs/500-engineering/01-contracts.md` |
-| Anything under `infra/` | — | `docs/800-infra/` *(not written yet)* |
+| Anything under `infra/` | — | `docs/800-infra/01-iac-plan.md` is the resource list. `02-cost-guardrails.md` before adding any service |
 | "Why is it like this?" | — | `docs/ADR/` |
 
-**Three of those docs do not exist yet.** 600 QA, 900 Security and 800 Infra have not run. The
-skills stand on their own until they do.
+**Two of those docs do not exist yet.** 600 QA and 900 Security have not run. The skills stand on
+their own until they do.
 
 ## Hard rules
 
