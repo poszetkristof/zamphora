@@ -623,8 +623,8 @@ the first two and stop.
 
 | Level | Name | One box is | Drawn here? |
 | --- | --- | --- | --- |
-| 1 | Context | The whole product, plus the people and the outside services around it | Yes — `01-context.mmd` |
-| 2 | Containers | One part inside the product that runs on its own | Yes — `02-containers.mmd` |
+| 1 | Context | The product drawn as **one box**, with the people who use it and the outside services it calls drawn around it. Not a list of what users can do — that is use cases. This level is only what sits *outside* the product | Yes — `01-context.mmd` |
+| 2 | Containers | The product split into the parts it is actually built from, each named by what it is: the website (`web`), the server (`api`), the database (`table`), the photo store. The test for one box: can it be deployed and restarted on its own, without touching the others? | Yes — `02-containers.mmd` |
 | 3 | Components | A module or class inside one of those parts | No |
 | 4 | Code | The classes themselves | No |
 
@@ -800,157 +800,160 @@ number it cannot check, so the number means nothing.
 
 ## 9. Steps 5 and 6 — Engineering, then Infra
 
-### Engineering turns targets into types
+### Engineering makes the contract that both sides import
 
-It reads the stories, the design spec, the architecture options, the container diagram, the NFR table
-and every ADR. It writes five files: `00-conventions.md` (naming, folders, what is banned) ·
-`01-contracts.md` (the Zod schemas — the only place a wire type is defined) · `02-web-spec.md` ·
-`03-api-spec.md` (every endpoint, its body, its errors) · `docs/context/stack.md`.
+Engineering reads the stories, the design spec, the architecture options, the container diagram, the
+NFR table and every ADR. It writes five files: `00-conventions.md` (naming, folders, what is banned)
+· `01-contracts.md` · `02-web-spec.md` · `03-api-spec.md` (every endpoint, its body, its errors) ·
+`docs/context/stack.md`.
 
-### A role that cannot read a file does not fail. It guesses well.
+`01-contracts.md` carries the most weight. **It holds the Zod schemas, and it is the only place a
+type that crosses the wire is defined.** The API imports it to check what it sends. The web app
+imports it to check what it receives. One file, so the two cannot drift apart.
 
-This run, 500 Engineering was not given two files it needed. The handoff map still pointed at the
-old folder names. **It did not stop and it did not complain.** It wrote a complete, confident
-document that was wrong in four places — including two URL shapes, which are expensive to change
-once a browser is sending them.
+**Follow one word to see why that matters.** Product decided what happens when the model is `unsure`.
+That decision travels:
 
-Three things to take from it:
-
-- **A missing input is invisible in the output.** The document looks finished either way. You find
-  it by checking the map, not by reading the result.
-- **The rule to add:** if an ADR says "see file X", every role that must obey that ADR has to be
-  able to read file X. Ours pointed at a file four ADRs cite and three roles could not open.
-- **The same bug was in two more roles.** Security was told *"check the sign-in ADR"* and could not
-  open a single ADR. Fix the class, not the instance.
-
-The map lives in the plugin. Fix it there, run `derive-agents.mjs`, bump the version, push, then
-**update the installed plugin** — a push alone changes nothing on your machine.
-
-**Watch one decision travel through four roles.** This is the clearest proof the line works. Follow
-the word `unsure`:
-
-| Role | What it did with it |
+| Role | What it did with `unsure` |
 | --- | --- |
-| **200** Product | wrote the rule: *"on `unsure`, show the verdict, say it may be wrong, write no task without a yes"* |
+| **200** Product | wrote the rule: on `unsure`, show the verdict, say it may be wrong, write no task without a yes |
 | **300** Design | drew the screen for it — the unsure state |
-| **500** Engineering | made `confidence` a field with three allowed values, in a Zod schema in `packages/contracts` |
+| **500** Engineering | made `confidence` a field with three allowed values (`likely`, `unsure`, `cannot-tell`) in a Zod schema in `packages/contracts` |
 | **600** QA | writes a test that sends an `unsure` answer and checks the unsure state appears |
 
-The Zod schema is the important step. **It is one definition, used by the API and by the web app.**
-Without it the API allows three values and the web app checks for a word someone typed from memory.
-The two stop matching, and nobody notices until a user sees a confident wrong verdict.
+The schema step is the one that holds it together. Without it, the API allows three values and the
+web app checks for a word someone typed from memory. The first time the two disagree, a user sees a
+confident wrong verdict, and nothing warns you.
 
-**Who may import what.** The API has four layers, and **arrows only point inwards**:
+### The four layers, and the test that keeps them honest
+
+The API is split into four layers. Imports point one direction only — inward, toward the rules:
 
 | Layer | Holds | Never holds |
 | --- | --- | --- |
 | `domain` | the rules — "on `unsure`, write no task" | any import at all |
-| `application` | the steps, in order | which database |
-| `infrastructure` | the database and the model adapter | rules |
-| `presentation` | controllers and HTTP | anything worth testing alone |
+| `application` | the steps, in order | which database is used |
+| `infrastructure` | the database client and the model adapter | any rule |
+| `presentation` | controllers and HTTP | anything worth testing on its own |
 
-**The test: if you cannot test it without starting the framework, it is in the wrong layer.** Put a
-rule in `presentation` and "on `unsure`, write no task" now needs a fake HTTP request before you can
-check it — so the most important rule becomes the hardest one to test. A table like this is only real
-if a **lint rule** enforces it. A boundary nobody checks lasts about three weeks.
+**The test for a wrong placement: can you check the piece without starting the framework?** Put "on
+`unsure`, write no task" in `presentation` and checking it needs a fake HTTP request. The most
+important rule in the product becomes the hardest one to test. Move it to `domain` and the test is a
+plain function call.
 
-**Check before moving on:** is the `confidence` field in the **contract schema**, or only in the API
-spec? If the API spec describes it and the contract does not, the web app will invent its own type and
-the unsure state will never fire.
+A layer table is only real if a **lint rule** blocks the imports it forbids. A boundary that no
+check enforces will not hold once someone is in a hurry.
 
-### Infra decides what it costs to be wrong
+*(One run-1 note: Engineering was handed a read list pointing at a renamed folder, so it could not
+open a file four ADRs cite. It did not stop. It wrote a confident spec that was wrong in four
+places, two of them URL shapes. A missing input does not show in the output — you find it by
+checking the read list, not by reading the result.)*
 
-Four questions, and a plan that misses one is not a plan: **what exactly ships** · **the deployment
-written as code**, never a console click · **a pipeline with gates that fail the change, not the
-customer** · **a one-step rollback**, named and tested.
+**Check before moving on:** is `confidence` in the **contract schema**, or only described in the API
+spec? If only the API spec has it, the web app invents its own type and the unsure state never
+fires.
 
-On the AWS free account plan one fact changes how you think about cost: **it cannot send you a
-surprise bill. It closes the account instead**, and takes the resources with it. So cost here is not a
-finance problem. **It is a correctness problem.** A cost mistake does not make you poorer, it deletes
-your work.
+### Infra: cost is a correctness property, not a finance one
 
-The traps that cost money by default:
+Infra answers four questions, and a plan that skips one is not a plan:
+
+- **what exactly ships**
+- **the deployment written as code**, never a console click
+- **a pipeline whose gates fail the change, not the customer**
+- **a one-step rollback**, named and tested
+
+One fact on the AWS free account plan changes how cost is treated. **It cannot send you a surprise
+bill. It closes the account instead**, and takes every resource with it. So a runaway cost is not a
+money problem. It deletes your work. That is why cost is checked here like any other correctness
+rule, not left as "be careful".
+
+The defaults that cost money on their own:
 
 | Trap | Cost | Instead |
 | --- | --- | --- |
 | DynamoDB **on-demand** (the default) | billed from the first request | provisioned — the free allowance covers only this |
-| **NAT Gateway** | ~$33/month at zero traffic | never create one |
-| **Secrets Manager** | $0.40 per secret | Parameter Store `SecureString`, free |
-| a **customer-managed KMS key** | $1/month forever | AWS-managed keys, free |
+| **NAT Gateway** | about $33 per month at zero traffic | never create one |
+| **Secrets Manager** | $0.40 per secret per month | Parameter Store `SecureString`, free |
+| a **customer-managed KMS key** | $1 per month, forever | AWS-managed keys, free |
 
 `02-cost-guardrails.md` turns that into numbers that stop things: 10 assessments per user per day, a
-budget alarm at 50%, a kill-switch at 100%. The owner set the 10, not a role — see section 6.
+budget alarm at 50%, a kill-switch at 100%. The owner set the 10, not a role.
 
-**Check before moving on:** provisioned, not on-demand? No NAT Gateway? A plan that took the framework
-default for the table has already picked the billed mode.
+**Check before moving on:** provisioned, not on-demand? No NAT Gateway? A plan that took the
+framework default for the table has already chosen the billed mode.
 
 ---
 
 ## 10. Steps 7 and 8 — Security, then QA, and the break
 
-### Security reviews something that now exists
+### Security reviews a system that now exists
 
-This is why Infra runs first. Security reads the container diagram, the contracts, the API spec, the
-environments file and the infrastructure plan — **a real described system**, not an intention.
+Security runs after Infra for one reason: it reads the container diagram, the contracts, the API
+spec, the environments file and the infrastructure plan — **a described system, not an intention.** A
+threat model of a deployment nobody has written down yet is guesswork.
 
-It writes `00-assets.md`, `01-threats.md`, `02-mitigations.md` and `03-evidence.md`, and **it runs two
-threat lists, because there are two different things to protect:**
+It writes `00-assets.md`, `01-threats.md`, `02-mitigations.md` and `03-evidence.md`, and it runs
+**two** threat lists, because there are two different things to protect:
 
-| List | Protects | Why separate |
+| List | Protects | The risk it covers |
 | --- | --- | --- |
-| **OWASP LLM Top 10** | **the product** — one model call reading a photo | the model reads text it did not write |
-| **OWASP Agentic Top 10** | **the factory** — eight roles with tools, web access, and the power to write files | an agent has memory, tools and permission to act. A single call has none of those |
+| **OWASP LLM Top 10** | the product — one model call reading a photo | the model acts on text it did not write |
+| **OWASP Agentic Top 10** | the factory — eight roles with tools, web access and permission to write files | a role has memory, tools and the power to act; a single call has none of those |
 
-The second list surprises people. **Your factory is itself an attack surface.** Role 100 browses the
-web and writes files — a page it fetches could contain text telling it to write something else.
+The second list is the one people forget. **The factory is itself an attack surface.** Role 100
+fetches web pages and writes files. A page it reads could carry text that tells it to write something
+else.
 
-The test worth memorising is the **lethal trifecta**. Any two are usually fine. All three at once is
-the dangerous shape:
+**The test to memorise is the lethal trifecta.** Any two together are usually safe. All three at
+once is the dangerous combination:
 
 > private data · untrusted outside content · a way to send data out
 
-What it finds on zamphora: the photo carries **EXIF GPS — the location of the user's home** · a plant
-nickname is free text reaching the model, a **prompt injection** path · the paid endpoint is a
-**denial-of-wallet** target, not breaking anything, just spending your money until the account closes.
+On zamphora it finds three real ones: the photo carries **EXIF GPS**, which is the user's home
+address · a plant nickname is free text that reaches the model, so it is a **prompt-injection** path
+· the paid endpoint is a **denial-of-wallet** target — it breaks nothing, it just spends your money
+until the account closes.
 
-One more rule: **check a package is real before adding it.** Models invent plausible package names, the
-same invented name returns across sessions, and attackers register those names and wait. This has a
-name — **slopsquatting**.
+One more habit: **check a package is real before you add it.** Models invent plausible package names,
+the same invented name comes back across sessions, and attackers register it and wait. The name for
+this is **slopsquatting**.
 
-### And here is the break
+### The break: a good document on each side, a gap in between
 
-Role 900 writes this into `02-mitigations.md`:
+Security writes this into `02-mitigations.md`:
 
 > **Risk:** anyone can call the paid assessment endpoint in a loop and empty the budget.
 > **Fix:** add a rate limit to the endpoint.
 
-Read that on its own and it is fine. It found a real risk. It named a real fix. You would approve it.
+On its own it is fine. Real risk, real fix, you would approve it. Then QA reaches the rate limit and
+stops: **a rate limit of what?** Ten calls a minute? A thousand a day? No number, so no test.
 
-Then QA runs, gets to the rate limit, and stops. **A rate limit of what?** Ten calls a minute? A
-thousand a day? There is no number, so there is nothing to test.
+Neither file is broken. The mistake is in what passed between them, and reading either file alone
+will never show it — both look finished. This is the seam problem in one example, and it is why the
+run's real output is the review in section 11, not the folders.
 
-Neither document is broken. Security did its job. QA did its job. **The mistake is in what passed
-between them** — and reading either file will never show it, because both look finished. That is the
-whole problem in one example. After a run you have eight folders that all look good.
+### What QA writes
 
-### What QA writes anyway
+- `00-test-plan.md` — in scope, out of scope **with a reason**, the top 3 risks, entry and exit
+  rules
+- `01-test-cases.md`
+- `02-ai-evals.md` — the golden set, the rubric, the pass bar
 
-`00-test-plan.md` (in scope, out of scope **with a reason**, top 3 risks, entry/exit rules) ·
-`01-test-cases.md` · `02-ai-evals.md` (the golden set, the rubric, the pass bar). Two things here have
-no equal in a normal project.
+Two parts have no equal on a normal project:
 
-**Force at least five negatives.** "Write tests for this" produces tests that pass, because that is
-what the words ask for. The valuable half: a photo of a wall · a photo too dark to judge · a healthy
-plant the user thinks is sick · a model reply that does not match the schema · a model timeout.
+**Force at least five negative tests.** "Write tests for this" produces tests that pass, because that
+is what the words ask for. The useful half is the failures: a photo of a wall · a photo too dark to
+judge · a healthy plant the user thinks is sick · a model reply that breaks the schema · a model
+timeout.
 
-**The golden set and its judge.** 40 photos with known correct verdicts, and the 8-in-10 pass bar
-taken straight from the NFR table. If a model scores the answers, **score a sample by hand too** and
-write down how often the two agree. Skip that and your pass bar measures the judge, not the model,
-and you will not know which one is wrong.
+**Check the judge, not only the model.** The golden set is 40 photos with a known correct verdict,
+and the pass bar is 8 in 10, taken from the NFR table. If a model scores the answers, score a sample
+by hand as well and write down how often the two agree. Skip that and the pass bar is measuring the
+judge.
 
-**Check before moving on:** five negatives present, and does a failed eval actually **block the
-release**, or is it advisory? Calling something critical and leaving it advisory is the same as not
-writing it.
+**Check before moving on:** are the five negatives there, and does a failed eval **block the
+release** or only warn? Calling a check critical and leaving it advisory is the same as not writing
+it.
 
 ---
 
