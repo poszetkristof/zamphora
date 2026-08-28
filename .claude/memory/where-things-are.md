@@ -16,8 +16,12 @@ the user, and keep them in step when the factory changes:
   catalog, Turborepo against Nx and when to add one, the layout, clean architecture inside
   `apps/api`, where shared code goes, and every trigger on one screen. Written 2026-08-26 with
   checked versions, so re-check the version numbers before trusting them.
-- **Two notes, two subjects.** The first is about the method, the second about the code's shape. A
-  third file needs a third subject that is neither.
+- `docs/learn/aws-and-the-pipeline.md` — **the running system**: the free account and its two kinds
+  of free offer, the seven CDK stacks, how the build signs in to AWS with no password stored
+  anywhere, what protects a public repository, and why the kill-switch and the circuit breaker are
+  two separate things. Five Mermaid diagrams. Written 2026-08-27 after 800 Infra ran.
+- **Three notes, three subjects.** The method, the code's shape, the running system. A fourth file
+  needs a fourth subject that is none of those.
 - That note is also the user's **approved model for how learning material should read**: teach as
   a walkthrough, name the actor in every example, say each thing once, and tell the reader which
   parts are lookup rather than learning.
