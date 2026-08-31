@@ -50,7 +50,7 @@ using.
 **What it buys.**
 
 - Nothing runs between requests on the web side, so an untouched week costs nothing there either.
-- No second cold start in front of the one that already costs 800 ms.
+- No second cold start in front of the one that already costs about 2,000 ms (NFR-06).
 - The web CDK stack becomes a bucket and an origin — the smallest deployable thing in the product.
 - It removes a real build problem: Next.js traces which files a server needs, and that tracing has a
   known open bug with the symlinks a pnpm workspace uses. With no server, there is nothing to trace.

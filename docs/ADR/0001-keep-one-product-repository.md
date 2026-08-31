@@ -3,6 +3,10 @@
 - **Status:** Accepted. **The package manager half is superseded by
   [ADR-0012](0012-run-the-workspace-on-pnpm-and-turborepo.md)**, 2026-08-26
 - **Date:** 2026-08-25
+- **Corrected 2026-08-31:** the Agent-Readable Summary named ADR-0012 and then still said *"Do not
+  add Turborepo or Nx"* in the next sentence. Turborepo is the task runner and is in use, so that
+  clause told an agent to remove it. The clause now says Turborepo stays and only Nx is refused.
+  Nothing had been built on the old text, so this record is corrected rather than superseded.
 
 ## Context
 
@@ -108,8 +112,8 @@ repository borders from agents — buying a tool to undo a border this ADR is no
 ## Agent-Readable Summary
 
 > The product lives in one repository, `zamphora`. **The package manager and task runner are in
-> ADR-0012: pnpm and Turborepo.** Do not add
-> Turborepo or Nx until there are more than six workspace packages or CI passes 10 minutes. Do not
+> ADR-0012: pnpm and Turborepo.** Turborepo is in use today — do not remove it, and do not add Nx.
+> Do not
 > write a relative import that crosses an app border, and do not import `packages/contracts` by
 > relative path — always by package name. Do not create a second repository for a shared package or
 > for a new service; add a workspace package and a CDK stack instead.

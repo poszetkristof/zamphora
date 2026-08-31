@@ -5,6 +5,12 @@
 - **Corrected 2026-08-26:** the capacity mode was written as **on demand**, which is outside the
   free allowance. It is now **provisioned, fixed at 25/25**. See "The capacity mode" below. Nothing
   had been built on the old value, so this record is corrected rather than superseded.
+- **Corrected 2026-08-31, two changes.** First, the free allowance is billed in **capacity-unit
+  hours per month**, not as a ceiling that applies at every moment. Second, gate 43 (owner,
+  2026-08-27) split the allowance across **two** tables — `prod` at 20/20 and `preview` at 5/5 —
+  because `06-nfrs.md` needs a preview environment. This record still said "fixed at 25/25" and
+  "do not add a second table", which contradicted the built system. The rule is now a total, not a
+  per-table number. See "The capacity mode" below. Nothing had been built on the old text.
 
 ## Context
 
@@ -29,8 +35,9 @@ search, and no report over a large set.
 Nest.js runs inside it through its Express adapter. One function, not one per route, so there is one
 place to look and one cold start to pay.
 
-**Data: one Amazon DynamoDB table, provisioned capacity, fixed at 25 write and 25 read units, with
-auto scaling switched off.** The key design and every access pattern are in
+**Data: one DynamoDB table per environment, provisioned capacity, auto scaling switched off. The
+total across every table in the Region must never pass 25 write and 25 read units.** Today that is
+`prod` at 20/20 and `preview` at 5/5 (gate 43). The key design and every access pattern are in
 `docs/400-architecture/05-patterns.md` §1. Summary:
 
 - The owner id is the partition key of everything a person owns.
@@ -82,8 +89,16 @@ The requests fail and somebody notices. On demand, the same loop succeeds and ea
 keeps the account open. Auto scaling is off for the same reason: it would raise the numbers past the
 free line without asking.
 
-25 read units is 25 strongly consistent reads a second, sustained. One user making ten assessments a
+20 read units is 20 strongly consistent reads a second, sustained. One user making ten assessments a
 day is nowhere near it.
+
+**The allowance is measured in unit-hours per month, and that changes the arithmetic.** AWS bills
+provisioned capacity per **capacity-unit-hour**. So the free amount is not "25 units at every
+moment"; it is 25 units held for a whole month, which is about **18,250 unit-hours per Region per
+month**. `prod` at 20 units for a full month uses 14,600 of them. That leaves 3,650 — exactly enough
+for a 5-unit `preview` table to run for the whole month as well. **This is why two tables fit inside
+one allowance**, and why a preview table that is left running by accident costs a small amount
+rather than taking capacity away from `prod`.
 
 ### Why there is no cache in front of the table
 
@@ -119,10 +134,11 @@ correct when ten requests arrive at once (ADR-0008).
 person gets a 504 whose body nothing in this product wrote. **The application therefore fails at
 20 seconds and answers for itself. The three stacked deadlines are in `03-flow.md` §4.**
 
-**The capacity mode has two costs of its own.** The 25 units are **shared across every table in the
-account, in one Region**. A second table splits the same allowance and nothing warns you, which is
-why run 1 has one table and why a second one is a decision, not a detail. And a burst past 25 units
-a second is refused rather than served, so a real spike shows up as failed requests.
+**The capacity mode has two costs of its own.** The allowance is **shared across every table in the
+account, in one Region**, and nothing warns you when a new table eats into it. That is why the
+number in this record is a **total** and why adding a table is a decision, not a detail: whoever
+adds one has to subtract its units from somewhere. And a burst past a table's own units is refused
+rather than served, so a real spike shows up as failed requests.
 
 **The way back is open, and here is the trigger.** On demand becomes right the day this app is
 offered to a second person, or the day the account leaves the free plan — the same trigger as gates
@@ -144,6 +160,15 @@ onto a relational store without changing a screen or a contract.
 few days after their expiration"* and expired items still come back from reads until then
 ([DynamoDB TTL](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html),
 checked 2026-08-25). So no rule may depend on a TTL firing on time — see NFR-35.
+
+**Fifth cost, and it is the honest price of one function: there is one IAM execution role.**
+`GET /api/health` runs with the same DynamoDB and S3 permissions as `POST /api/assessments`. One
+function per route would let each one carry only the permissions it needs, which is what least
+privilege asks for. That is given up here on purpose: the trade is a real one, and at one developer
+with one function the reading cost of many small roles is worse than the risk. **The border that
+does the work instead is ADR-0004** — the owner id comes from the session and the key builder will
+not compile without it, so a bug in one route still cannot read another person's data. If the API is
+ever split, split the role with it.
 
 ## Alternatives considered
 
@@ -167,11 +192,12 @@ same table with none of the reading cost.
 ## Agent-Readable Summary
 
 > `apps/api` is one Nest.js application in one Lambda function behind an API Gateway HTTP API, and
-> all data is in one DynamoDB table keyed by owner, in **provisioned** capacity mode, fixed at 25
-> write and 25 read units. Do not create the table in on demand mode and do not switch it to on
-> demand — the free allowance does not cover on demand, and the account closes when the credit is
-> gone. Do not turn on auto scaling, and do not raise the 25s. Do not add a second table in run 1;
-> it would split the same 25 units. Do not add a second database, a relational
+> all data is in one DynamoDB table per environment, keyed by owner, in **provisioned** capacity
+> mode. Today that is `prod` at 20/20 and `preview` at 5/5. Do not create a table in on demand mode
+> and do not switch one to on demand — the free allowance does not cover on demand, and the account
+> closes when the credit is gone. Do not turn on auto scaling. **The total provisioned capacity
+> across every table in `eu-central-1` must never pass 25 write and 25 read units** (gate 43); if
+> you add a table, take its units from an existing one. Do not add a second database, a relational
 > store, an always-on container or a load balancer. Do not add a DynamoDB secondary index in run 1.
 > Do not add ElastiCache, DAX or any other cache service — it saves 24 ms, it is charged by the
 > hour, and it would drag the function into a VPC and force a NAT gateway. Cache in the function's

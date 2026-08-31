@@ -3,7 +3,9 @@
 **Written by** 200 Product, run 1 (`photo-assessment`). **Date:** 2026-08-24.
 **Read next by** 300 Design, 400 Architecture, 500 Engineering, 600 QA.
 
-Fourteen stories. Every one of them serves backbone feature 5, the one feature of this run.
+Fifteen stories. Every one of them serves backbone feature 5, the one feature of this run.
+**US-15 was added by gate 21 on 2026-08-25**, and three files went on saying fourteen until
+2026-08-31.
 
 ## How to read a story
 
@@ -76,9 +78,16 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 
 **AC**
 
-1. **Given** the model call succeeded, **when** the answer is read, **then** it carries exactly four
-   fields: a verdict code, a confidence band, a next action as text, and the follow-up in whole
-   days. (The fourth field is a decision of this document. See gate G-1.)
+1. **Given** the model call succeeded, **when** the answer is read, **then** it carries exactly six
+   fields: a verdict code, a confidence band, a next action as text, the follow-up in whole days,
+   the reason it cannot tell, and the retake advice. (The fourth field is a decision of this
+   document. See gate G-1.)
+
+   **Corrected 2026-08-31.** This used to say "exactly four fields". `05-patterns.md` §4 and
+   `01-contracts.md` §4 both define six, and the extra two are not optional: US-04 AC-2 needs
+   `cannotTellReason` and US-05 AC-2 needs `retakeAdvice`. A test written word for word from the old
+   sentence would have failed on a correct answer. **Four of the six may be `null`** — that is what
+   makes a `likely` answer look like it has four fields.
 2. **Given** the answer, **when** the verdict code is checked, **then** it is one of the ten codes
    in `00-prd.md` section 5.2 and nothing else.
 3. **Given** the answer, **when** the band is checked, **then** it is exactly one of `likely`,
@@ -102,7 +111,7 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 | --- | --- |
 | How often it must be right | When the band is `likely`, a person agrees with the verdict at least **8 times in 10**, measured over the first 20 real assessments (`factory/feature.md`). The bar is provisional and is replaced by the measurement |
 | What it does when it is not sure | It must return the band `unsure` or `cannot-tell` rather than a `likely` guess. US-04 and US-05 say what each one looks like on screen |
-| The fallback | If the answer is missing a field, has a verdict code outside the ten, or has a band outside the three, the app treats the whole result as `cannot-tell`, shows no verdict, writes no task, and offers another photo. The failed answer is stored so 600 QA can count how often this happens |
+| The fallback | If the answer is missing a field, has a verdict code outside the ten, or has a band outside the three, it is a **failure** — `answer-unreadable` — and never a verdict. The person sees a `FailureNote`, no verdict is shown, no task is written, and another photo is offered. The failed answer is stored as a **failure record**, not as an assessment, so 600 QA can count how often this happens. **Corrected 2026-08-31:** this used to say the app "treats the whole result as `cannot-tell`", which contradicted `factory/feature.md` and ADR-0005. The two are different things and must stay different: `cannot-tell` is an answer the model gave on purpose, with a reason and retake advice; `answer-unreadable` is our system failing. If both looked the same on screen, nobody could tell a careful model from a broken one, and gate G-6 needs exactly that difference |
 
 **Success metric:** M-03 · **Guardrails:** M-05, M-22
 
@@ -346,7 +355,11 @@ see that spend, because the model bill is not an AWS bill.
 2. **Given** I open a pot or an assessment, **when** the screen is shown, **then** it states how
    long the assessment **text** is kept: **as long as the pot exists** (G-3, set 2026-08-24). There
    is no period to print. Deleting the pot deletes its assessments; deleting the account deletes
-   everything. An account with no sign-in for 12 months is deleted, with a warning by email at 11.
+   everything. **Amended 2026-08-31 (owner):** the screen no longer states the 12-month idle-account
+   rule or the 11-month email warning. Run 1 builds neither the monthly sweep that finds an idle
+   account nor any email delivery — gate 29 moved email to the notifications run — so the screen was
+   promising something nothing enforced. **The 12-month rule is still the intended policy and moves
+   to that run with the sweep and the email.** A screen may state it once something does it.
 3. **Given** I delete one photo, **when** the delete has finished, **then** the photo and every
    resized or cached copy of it is gone.
 4. **Given** I deleted a photo, **when** I open the assessment it belonged to, **then** the

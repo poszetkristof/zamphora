@@ -38,6 +38,7 @@ here.
 | SC-5 | Result — `cannot-tell` | SC-2 | US-05, US-06, US-11 |
 | SC-6 | Confirm sheet — write the task anyway | SC-4 | US-03 |
 | SC-7 | Photo detail — how long it is kept, and delete | SC-3, SC-4, SC-5 | US-10 |
+| SC-8 | Add a pot — name it and say where it is | SC-1 state 2, `PotPicker` `empty` | US-15 |
 
 SC-1 to SC-5 are the five screens of the main flow. SC-6 is a sheet over SC-4, not a page. SC-7 is a
 page reached from any result.
@@ -216,10 +217,12 @@ and record the missing field for QA (US-04 AI Eval Card).
 Only on SC-5. One line from a fixed list of four (US-05 AC-2): too dark · not a plant · more than
 one plant in the frame · the photo is too small or too blurred to read.
 
-**State `unreadable-answer` — WITHDRAWN 2026-08-25.** The owner ruled that a malformed answer is a
-failure and never a verdict, so it does not reach this screen at all: it goes to the failure path
-with the other errors. **The failure path needs this state added, and that is an open gap on this
-role.** The withdrawn text is kept below so the change is visible rather than silent.
+**State `unreadable-answer` — WITHDRAWN 2026-08-25. The gap it left was closed 2026-08-31.** The
+owner ruled that a malformed answer is a failure and never a verdict, so it does not reach this
+screen at all: it goes to the failure path with the other errors, as `answer-unreadable`. **Four
+other places in this file still routed it to SC-5 after the withdrawal — §3.16 state 10, §3.17
+state 2, §6 and §11 — and all four were corrected on 2026-08-31.** The withdrawn text is kept below
+so the change is visible rather than silent.
 
 ~~The line is replaced by one sentence saying the answer could not be read, and the screen behaves in
 every other way like `cannot-tell`. This is decision D-3 in `01-CONTEXT.md` and human gate 22. **It
@@ -269,8 +272,13 @@ Two short lines at `--text-caption` in `--color-muted` (US-10 AC-1, AC-2):
 
 1. Photos are kept **180 days** and are then deleted.
 2. The assessment text is kept **as long as the pot exists**. There is no period to print here.
-   Deleting the pot deletes its assessments. Deleting the account deletes everything. An account
-   with no sign-in for 12 months is deleted, with a warning by email at 11 months.
+   Deleting the pot deletes its assessments. Deleting the account deletes everything.
+
+**The 12-month idle-account line was removed on 2026-08-31 (owner).** It used to end this note:
+*"An account with no sign-in for 12 months is deleted, with a warning by email at 11 months."* Run 1
+builds no monthly sweep to find an idle account and no email at all (gate 29), so the screen stated
+a rule that nothing carried out. **Do not put it back until the sweep and the email exist.** A
+promise about deleting somebody's data is the kind that gets checked.
 
 ### 3.19 LimitNote
 
@@ -331,7 +339,7 @@ remaining states keep their old numbers so that every reference elsewhere still 
 app does automatically.**
 | 8 | `offline` | The network dropped mid-flight | `FailureNote` in state `offline`. Back on SC-1 the photo is still there (US-09 AC-2) |
 | 9 | `answered` | A well-formed answer arrived | Moves to SC-3, SC-4 or SC-5 by band |
-| 10 | `answer-unreadable` | A missing field, a verdict code outside the ten, or a band outside the three | Moves to SC-5 in state `unreadable-answer`. No verdict, no task, another photo offered. The failed answer is stored for QA (US-02 AI Eval Card) |
+| 10 | `answer-unreadable` | A missing field, a verdict code outside the ten, or a band outside the three | **`FailureNote` in state `retry-may-work`. It does not reach SC-5** (corrected 2026-08-31). No verdict, no task, another photo offered. The answer is stored as a **failure record**, not as an assessment, so QA can count it (US-02 AI Eval Card) |
 
 **There is no cancel button.** See `00-journey-map.md` section 5.
 
@@ -397,7 +405,7 @@ photo. That turns a refusal into a next move faster than any sentence.
 | # | State | What starts it | What is on screen |
 | --- | --- | --- | --- |
 | 1 | `shown` | Band is `cannot-tell` | **No verdict text and no next action anywhere** (US-05 AC-1). One reason from the fixed list of four (US-05 AC-2). **No way to create a task is offered at all** (US-03 AC-5). No accent colour except the send-another-photo button |
-| 2 | `unreadable-answer` | The answer was malformed | The reason line is replaced by one sentence saying the answer could not be read. Everything else behaves as state 1. Decision D-3 |
+| 2 | ~~`unreadable-answer`~~ | — | **Withdrawn 2026-08-25, removed here 2026-08-31.** A malformed answer is a failure and never a verdict, so it never reaches this screen. It is `answer-unreadable` on the failure path (§3.14, §6). Decision D-3 no longer applies |
 | 3 | `counted` | Always | The screen says the attempt counted against today's limit, because the money was already spent (US-05 AC-5). The record is stored as a **finished assessment, not an error** (US-05 AC-3) |
 | 4 | `limit-now-reached` | This attempt used the tenth of the day | The send-another-photo button is `disabled`, with `FailureNote` in state `blocked-by-limit` under it |
 | 5 | `retake` | The button was tapped | The photo buttons open for the same pot, in one tap (US-05 AC-4) |
@@ -432,9 +440,45 @@ photo. That turns a refusal into a next move faster than any sentence.
 | 6 | `delete-failed` | The delete failed | `FailureNote` in state `retry-may-work` |
 | 7 | `offline` · `loading` · `error` | As SC-3 | As SC-3 |
 
-**Deleting every photo at once (US-10 AC-7)** is a control on an account or settings screen, which
-is not designed in this run. The behaviour it must have is the behaviour of state 4, applied to
-every photo.
+**Deleting every photo at once (US-10 AC-7)** moved out of run 1 on 2026-08-31, together with its
+route. It returns in the run that gives it an account or settings screen, and the behaviour it must
+have is the behaviour of state 4, applied to every photo, in pages.
+
+### SC-8 — Add a pot
+
+**Written 2026-08-31.** US-15 has been in scope since gate 21 and this file never drew it, so SC-1
+state 2 and `PotPicker`'s `empty` state both linked to a screen that did not exist. 500 Engineering
+invented one and wrote *"no design spec exists for it"*. This closes that.
+
+**Purpose.** Make the first pot, in as few taps as possible, and come straight back ready to take a
+photo. This screen stands between signing in and the first assessment, so every extra element on it
+is paid for by every new person.
+
+**Layout, top to bottom:** `AppFrame` · one heading at `--text-heading` · the **name** field · the
+**where it is** field · `PrimaryButton` "save" · `QuietButton` back. Nothing else. No photo, no
+plant type, no watering schedule (US-15 AC-2 says two things, and §7 criterion 12 forbids the rest).
+
+| # | State | What starts it | What is on screen |
+| --- | --- | --- | --- |
+| 1 | `empty` | The screen opened | Both fields blank. The name field holds focus. `PrimaryButton` is `disabled` |
+| 2 | `typing` | The name has at least one character | `PrimaryButton` becomes enabled. Nothing else moves |
+| 3 | `name-missing` | Save was tapped with an empty name | `InlineRefusal` under the name field saying what to do (US-15 AC-4). Focus moves to the field. **The other field keeps what was typed** |
+| 4 | `saving` | Save was tapped and the name is valid | `PrimaryButton` is `busy`. Both fields are read-only, not disabled, so the text stays readable |
+| 5 | `saved` | The pot was created | The person lands on SC-1 with this pot already picked (US-15 AC-7). This screen does not stay in the history — going back must not offer to make the pot twice |
+| 6 | `save-failed` | The write failed | `FailureNote` in state `retry-may-work`. **Both fields keep what was typed** |
+| 7 | `offline` · `loading` · `error` | As SC-3 | As SC-3 |
+
+**Four rules this screen carries.**
+
+- **Two pots may have the same name** (US-15 AC-6). Nothing checks for a duplicate and no warning is
+  shown. A person with two ferns called "fern" knows which is which.
+- **A 30-character Hungarian name must not break the layout** anywhere the name is later drawn
+  (US-15 AC-5). The tightest place is `PotPicker`, not this screen — test it there.
+- **At most three screens between signing in and the first photo** (US-15 AC-8). The path is
+  Cognito's page → SC-8 → SC-1. That is three. **Adding any screen to that path breaks the
+  criterion**, so a welcome screen or a tour cannot be added here.
+- **Both fields are `--target-comfortable` and `--radius-card`**, and the two touch targets keep the
+  24 px gap from §8 like every other pair.
 
 ## 5. The camera flow — its own state list
 
@@ -472,7 +516,7 @@ message not in this table has not been designed.
 | Timed out at 30 seconds | Trying again may work | Yes | US-01 AC-8, US-09 AC-3 |
 | Provider error, a 429 or a 503 | Trying again may work | Yes, and the person does it — **there is no automatic retry**, 2026-08-26 | US-09 AC-3, AC-5 |
 | Bad request to the provider | Trying again will not work now | No | US-09 AC-5 |
-| Answer could not be read | Trying again may work | Yes, as "send another photo" on SC-5 | US-02 AI Eval Card |
+| Answer could not be read | Trying again may work | Yes. **On the failure path, not on SC-5** (corrected 2026-08-31) | US-02 AI Eval Card |
 | Daily limit of 10 reached | Trying again will not work now | No. It says when it resets | US-08 AC-1, AC-2 |
 | The feature was turned off | Trying again will not work now | No | US-09 AC-4, US-13 AC-3 |
 | Model credit balance empty | Trying again will not work now | No | `factory/feature.md` |
@@ -619,7 +663,7 @@ Every story in `01-user-stories.md`, and where it is drawn.
 | Story | Screens | Note |
 | --- | --- | --- |
 | US-01 Send one photo of one named pot | SC-1, section 5 | |
-| US-02 Verdict, band, action, follow-up | SC-3, SC-4, SC-5 | The malformed-answer fallback is SC-5 state 2 |
+| US-02 Verdict, band, action, follow-up | SC-3, SC-4, SC-5 | A malformed answer is a **failure**, not a verdict. It is `FailureNote` on the failure path, never SC-5 (corrected 2026-08-31) |
 | US-03 Turn the action into a task | SC-3, SC-4, SC-6 | |
 | US-04 An `unsure` result, honestly | SC-4, SC-6 | |
 | US-05 `cannot-tell` with a reason | SC-5 | |
@@ -627,11 +671,12 @@ Every story in `01-user-stories.md`, and where it is drawn.
 | US-07 Sign in once, see only my own | SC-1 state 1, `AppFrame` `signed-out` | The sign-in screen is not designed here |
 | US-08 Stopped at my own limit | SC-1 state 10, SC-5 state 4, `LimitNote` | |
 | US-09 A message that says if trying again helps | Section 6, `FailureNote` | Every screen |
-| US-10 How long photos are kept, and delete | SC-7, `RetentionNote` | Deleting all photos at once has no screen in this run |
+| US-10 How long photos are kept, and delete | SC-7, `RetentionNote` | AC-7, deleting all photos at once, moved out of run 1 with its route on 2026-08-31 |
 | US-11 Hungarian or English | Section 9, and `NextActionCard`'s `WrittenInLine` for AC-6 | Every screen |
 | US-12 An admin reads the figures | **Not in run 1 at all.** No screen and no route (gate 30) | `00-prd.md` section 6.1 |
 | US-13 The feature can be turned off | **No screen and no route in run 1.** The switch is flipped in the AWS website. Its effect on a user is SC-1 state 11 | |
 | US-14 A normal account is refused | **No screen.** A refused admin action never renders a screen, and the answer does not say whether the action exists | |
+| US-15 Add a pot | SC-8, section 3.13 | **Added 2026-08-31.** US-15 was in scope from gate 21 and this table stopped at US-14 |
 
 ## 13. What this document does not decide
 

@@ -150,7 +150,7 @@ filter @type = "REPORT"
         by bin(1d)
 ```
 
-**Nothing about NFR-06 changes except the method.** The number is still 800 ms at p95 over a rolling
+**The method changed here, and the number changed on 2026-08-31.** NFR-06 is now 2,000 ms at p95 over a rolling
 7 days. It is still not tested in CI, because a cold start depends on the platform on the day.
 **`06-nfrs.md` belongs to 400 Architecture**, so the correction to its wording is named in the list
 in `04-ci-cd.md` §6.2 rather than made here.
@@ -198,11 +198,26 @@ spending money, not an addition.
 | 7 | **Runaway spend** | `zamphora/CostMicroUsd` sum > 100,000 in 1 hour | 100,000 millionths is $0.10. At $5 of balance, one dollar an hour empties it in an evening |
 | 8 | **The breaker opened** | `zamphora/BreakerOpened` ≥ 1 in 5 minutes | The product stopped calling the model on its own. Something is wrong with the provider, or with us |
 | 9 | Gateway 5xx | API Gateway `5xx` ≥ 1 in 5 minutes | A 504 from the gateway means a request passed 30 seconds. The app should have answered at 20 |
-| 10 | Front door 5xx | CloudFront `5xxErrorRate` > 1% over 15 minutes | The distribution or an origin is broken |
+| 10 | Front door 5xx | CloudFront `5xxErrorRate` > 1% over 15 minutes | The distribution or an origin is broken. **Lives in `us-east-1`, see below** |
+| 11 | **Front door flood** | CloudFront `Requests` sum > 50,000 in 1 hour | Expected use is a few hundred a day. This is the only warning of a flood that stops at the edge and never reaches the throttled gateway. **Lives in `us-east-1`** |
 
-**Alarms 6, 7 and 8 are the ones this project actually needs.** The other seven are the ordinary
-ones any system has. These three are about a balance that ends a feature and an account that ends a
+**Alarms 6, 7, 8 and 11 are the ones this project actually needs.** The others are the ordinary ones
+any system has. These four are about a balance that ends a feature and an account that ends a
 product.
+
+**Alarms 10 and 11 cannot live in `eu-central-1`, and this was wrong until 2026-08-31.**
+**CloudFront publishes its metrics only to `us-east-1`**
+([CloudFront metrics](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html),
+checked 2026-08-31). Alarm 10 was written against the same Region as everything else. It would have
+deployed with no error and **never fired**, and dashboard row 5 would have drawn an empty graph. Both
+alarms now live in `ZamphoraCloudFrontAlarmsStack` in `us-east-1` (`01-iac-plan.md` §7), which holds
+alarms and nothing else.
+
+**Alarm 11 is new, and it closes the last hole in the cost story.** `01-iac-plan.md` §4.4 throttles
+API Gateway at 100 requests a second, which caps what reaches the function. Nothing caps what
+reaches **CloudFront**, and CloudFront bills per request once the 10 million free ones are used.
+There is no automatic defence for that on this account. This alarm is the manual one: it fires, and
+the response is to disable the distribution by hand.
 
 **Alarm 8 changed shape when gate 50 was answered, and the change is worth understanding.** Before
 the answer, this alarm *was* the circuit breaker: it counted failures and asked a person to flip the
@@ -349,7 +364,7 @@ A check that this file covers what `06-nfrs.md` says can only be measured at run
 | Requirement | Marked in `06-nfrs.md` as | Covered here by |
 | --- | --- | --- |
 | NFR-02, the 20,000 ms server share | `test`, plus real behaviour | Alarm 3, dashboard row 3 |
-| NFR-06, cold start ≤ 800 ms p95 | **runtime only** | §4, the Logs Insights query |
+| NFR-06, cold start ≤ 2,000 ms p95 | **runtime only** | §4, the Logs Insights query |
 | NFR-10, ≤ $0.0040 per assessment | `test`, plus the rollup | `CostMicroUsd`, dashboard row 1 |
 | NFR-13, the app's count matches the provider's | **a local script** | §7, read from the table |
 | NFR-14, under $5.00 to 2026-12-31 | **runtime only** | Dashboard row 1, the running total |

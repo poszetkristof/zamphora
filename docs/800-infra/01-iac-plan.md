@@ -204,14 +204,27 @@ cognito.UserPoolDomain
 - **One test account in the `preview` pool**, created by hand, with its password in a GitHub secret.
   The `e2e` job has to sign in and self sign-up is off (`04-ci-cd.md` §7).
 
-**The tier is Lite** (gate 52, closed 2026-08-28). **Nobody had to choose. A checked fact settled
-it.**
+**The tier is Essentials** (gate 52, reopened and closed again 2026-08-31). **A checked fact
+settled it, and the first check was wrong.**
 
-Both Lite and Essentials include **managed login**, which is the hosted sign-in page gate 32 chose.
-Essentials only adds a **visual editor** for that page. This project styles the page against its own
-tokens, so the editor buys nothing. Both tiers give **10,000 free monthly active users**. Past that,
-Lite is **$0.0055 per user** and Essentials is **$0.015**
-([Cognito pricing](https://aws.amazon.com/cognito/pricing/), checked 2026-08-28).
+**The correction.** This section used to say that both Lite and Essentials include managed login and
+that Essentials only adds a visual editor. Both halves were wrong. AWS states it plainly: *"Where the
+Lite plan has the hosted UI, the Essentials plan opens up this advanced version of sign-up and
+sign-in pages"*, and *"The Essentials plan is the lowest plan level that unlocks access to managed
+login"*
+([Cognito Essentials plan features](https://docs.aws.amazon.com/cognito/latest/developerguide/feature-plans-features-essentials.html),
+checked 2026-08-31). Lite gets the **older classic hosted UI**, and the branding editor is Essentials
+and Plus only — so on Lite this project could not style the sign-in page against its own tokens,
+which is what gate 32 asked for.
+
+**Essentials costs the same as Lite here: nothing.** Both tiers give **10,000 free monthly active
+users**. Past that, Lite is **$0.0055 per user** and Essentials is **$0.015**
+([Cognito pricing](https://aws.amazon.com/cognito/pricing/), checked 2026-08-28). At one user the
+difference is $0.00, so Lite was buying a saving that does not exist and giving up a feature the
+design assumed it had.
+
+**Set `featurePlan: ESSENTIALS` when the pool is created.** The feature plan is chosen at creation
+time, so this has to be right before the first deploy.
 
 **The tier is set when the pool is created, and changing it afterwards is hard.** That is why it was
 worth two minutes of checking before the first deploy rather than a surprise after it. *Nobody
@@ -228,6 +241,7 @@ lambdaNodejs.NodejsFunction
   timeout               Duration.seconds(22) <- NFR-02 names 22,000 ms
   reservedConcurrentExecutions  10 in prod, 2 in preview
   logGroup              a log group created in this stack, retention 30 days
+  entry                 apps/api/dist/main.js   <- COMPILED JS, never the .ts source
   bundling              { minify: true, sourceMap: true, format: ESM,
                           externalModules: ['@aws-sdk/*'] }
   environment           TABLE_NAME, PHOTOS_BUCKET, COGNITO_*, APP_ORIGIN,
@@ -238,8 +252,31 @@ lambda.Alias  name 'live'  ->  the current version
 apigatewayv2.HttpApi
   defaultIntegration    HttpLambdaIntegration(the alias)
   createDefaultStage    true, autoDeploy true
+  defaultRouteSettings  { throttlingRateLimit: 100,   <- REQUIRED. See below
+                          throttlingBurstLimit: 50 }
   no CORS configuration                        <- ADR-0010
 ```
+
+**The build is two steps, and the order is not optional.** `apps/api` is compiled by `nest build`
+first, then `NodejsFunction` bundles the compiled `dist/main.js`. esbuild cannot emit
+`emitDecoratorMetadata`, and Nest.js reads constructor dependencies from that metadata. Point CDK at
+the TypeScript source and the function deploys without complaint, then throws
+`Nest can't resolve dependencies` on its first request (ADR-0012, third cost).
+
+**The throttle is a required property, not a suggestion** (owner, 2026-08-31). Left unset, the stage
+inherits the AWS account default of **10,000 requests a second**. API Gateway has no Always Free
+offer, so it bills from the first request: a flood at the default rate costs roughly **$36 an hour**
+and the account closes when the credit is gone. Authentication happens *inside* the function
+(ADR-0004, no gateway authorizer), so a stranger who is not signed in still costs a gateway request
+and an invocation. **Reserved concurrency caps the function's work. It does not cap billed gateway
+requests.** 100 a second is five hundred times below the default and far above anything this product
+needs — ten assessments a day is 0.0001 a second — while leaving room to demonstrate the app to a
+room of people. A flood at 100 a second costs about $0.36 an hour instead of $36.
+
+**What this does not defend.** A flood that stops at the CloudFront edge is still billed for
+CloudFront requests once the 10 million free ones are used. There is no automatic answer to that on
+this account. The accepted answer is the manual one: the alarm in `03-observability.md` §5 fires on
+CloudFront request count, and the response is to disable the distribution by hand.
 
 **Node 24, and the date is part of the reason** (gate 60, owner, 2026-08-27). ADR-0012 said Node 22.
 It is now 24, in the function **and** in CI, and the deciding fact is support length:
@@ -272,14 +309,19 @@ product is a kind of bug that only appears at deploy.
   the largest number any written requirement asks for. `02-cost-guardrails.md` §6 does the
   arithmetic.
 - **1024 MB is a starting value, not a measurement.** Lambda gives CPU in proportion to memory, and
-  NFR-06 wants a cold start under 800 ms. A cold start is the extra time the first call waits while
+  NFR-06 wants a cold start under 2,000 ms. A cold start is the extra time the first call waits while
   Lambda starts a new copy of the function. Measure it after the first deploy
   (`03-observability.md` §4) and write the real number down.
 - **`ARM_64` costs less per GB-second and there is one condition on it.** The bundle must contain no
-  native module, or the build must run on an arm64 runner. Step 5 of `03-api-spec.md` §4 re-checks
-  the photo's width and height. **Use a pure-JavaScript image-header reader for that, not `sharp`.**
-  If a native module ever enters the bundle, either move the build to an arm64 runner or set
-  `X86_64`. This is written here because the failure is silent until deploy.
+  native module, **or the build must run on an arm64 runner**. **Amended 2026-08-31 (owner):** this
+  used to say "use a pure-JavaScript image-header reader, not `sharp`". That is now wrong, because
+  step 5b of `03-api-spec.md` §4 does not only read a header — it **decodes and re-encodes the
+  photo**, which is what strips EXIF, proves the bytes are really an image and fixes rotation. Pure
+  JavaScript decoding of a 2 MB photo costs real CPU inside the 20,000 ms request deadline. **So
+  `sharp` is accepted, and the build moves to an arm64 runner** (`ubuntu-24.04-arm`, free on public
+  repositories). Do not set `X86_64`; fix the runner instead. If any other native module is ever
+  added, the same condition applies. This is written here because the failure is silent until
+  deploy.
 - **The gateway is an HTTP API, never a REST API.** ADR-0007 calls this the sharpest trap on the
   upload path. On a REST API with `binaryMediaTypes` unset, API Gateway runs the photo through UTF-8
   and corrupts it before the application ever sees it, and nothing reports an error. **Do not set
@@ -331,7 +373,8 @@ cloudfront.Distribution
                        functionAssociations: [ viewer-request: the rewrite function ]
                        responseHeadersPolicy: the security headers policy below
   additionalBehaviors
-    '/api/*'           origin: HttpOrigin(the API Gateway hostname)
+    '/api/*'           origin: HttpOrigin(the API Gateway hostname,
+                                 readTimeout: Duration.seconds(25))  <- REQUIRED
                        cachePolicy: CACHING_DISABLED
                        originRequestPolicy: ALL_VIEWER_EXCEPT_HOST_HEADER
                        allowedMethods: ALLOW_ALL
@@ -351,6 +394,16 @@ cloudfront.Distribution
   reaches the API.
 - **`CACHING_DISABLED` on `/api/*`.** An API answer must never be cached. A cached `GET /api/me`
   would hand one person another person's answer.
+- **`readTimeout: 25 seconds` on the `/api/*` origin, and this is the fourth deadline.**
+  **Added 2026-08-31.** A CloudFront custom origin has its own response timeout: **30 seconds by
+  default, 60 seconds at most** without a quota increase. It was never set here, so CloudFront —
+  not API Gateway — was the outermost clock, and a request that reached it would produce a 504 whose
+  body nothing in this product wrote. That is the exact failure `03-flow.md` §4 exists to prevent,
+  and F-4 in the pre-mortem named it. 25 seconds sits between the app's 20,000 ms deadline and the
+  gateway's 30,000 ms cut-off, so the app is still the first thing to answer. **The full stack is
+  now four numbers and they are listed once, in `03-flow.md` §4.** Note the ceiling this sets:
+  CloudFront can never give more than 60 seconds, so "escape the 30-second limit later" is bounded
+  by this, not only by the gateway.
 - **The photo bucket is not an origin here** (ADR-0007).
 - **A CloudFront Function on the viewer request, doing two small jobs.** First, add `index.html` to
   a path that names a folder, because a static export writes `/hu/index.html` and a bucket reached
@@ -438,11 +491,24 @@ in a table the API reads on every request.
 the bucket CDK stores templates in, the roles a deploy assumes, and a container image repository.
 That last one stays empty, because this project has no container image assets.
 
-**One Region, and no cross-Region piece at all.** Gate 45 chose the free CloudFront hostname, so
-there is no ACM certificate, no `ZamphoraCertStack` in `us-east-1`, and no
-`crossRegionReferences: true` on the CDK app. That is one fewer stack, one fewer Region and one
-fewer thing that expires. **Do not add a certificate stack unless a domain is bought, which would
-re-open gate 45.**
+**One Region for everything that serves a request. One small stack in `us-east-1`, for alarms
+only.** Gate 45 chose the free CloudFront hostname, so there is no ACM certificate and no
+`ZamphoraCertStack`. **Do not add a certificate stack unless a domain is bought, which would re-open
+gate 45.**
+
+**Amended 2026-08-31.** This section used to say "no cross-Region piece at all". That could not
+hold, because **CloudFront publishes its metrics only to `us-east-1`**
+([CloudFront metrics](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html),
+checked 2026-08-31). Alarm 10 in `03-observability.md` §5 was written against `eu-central-1`, where
+those metrics do not exist. It would have deployed without an error and **never fired**, and
+dashboard row 5 would have drawn an empty graph.
+
+**`ZamphoraCloudFrontAlarmsStack`, in `us-east-1`.** It holds CloudFront alarms and nothing else —
+no function, no table, no bucket. It needs `crossRegionReferences: true` on the CDK app so it can
+read the distribution id. It also gives the alarm on **CloudFront request count** a home, which is
+the one guard against a flood that stops at the edge and never reaches the throttled gateway
+(§4.4). Keep it to alarms: the moment anything that serves a request moves to a second Region, the
+rule above is broken for real.
 
 ## 8. Backups — there are none, and that is a decision
 

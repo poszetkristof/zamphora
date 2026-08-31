@@ -123,8 +123,20 @@ signed-out → empty → ready → photo-chosen → sending → (SC-2) resizing 
                     timed-out · provider-error · not-retryable · offline → failure view
 ```
 
-Refusals that never reach `sending`: `wrong-format`, `too-small`, `limit-reached`, `feature-off`,
-`no-credit`, `offline`, and `empty` with no pot picked.
+**The `requestId` is made at `photo-chosen`, not at `sending`.** **Added 2026-08-31.** One UUID per
+photo the person picks. It goes in the form body of `POST /api/assessments` and the API uses it to
+make sure one tap is one charge (`03-api-spec.md` §4a). **A resend of the same photo must carry the
+same id** — that is the whole point — so it is stored with the chosen photo in the state, and a new
+one is only made when a new photo is picked. If the API answers `409 request-in-flight`, the screen
+stays in `asking` and keeps waiting; it does not send again.
+
+Refusals that never reach `sending`: `wrong-format`, `photo-too-small`, `daily-limit-reached`,
+`feature-off`, `no-credit`, `offline`, and `empty` with no pot picked.
+
+**Corrected 2026-08-31.** Two of these were written with short names — `too-small` and
+`limit-reached` — that do not exist. The real codes are `photo-too-small` and `daily-limit-reached`
+(`01-contracts.md` §8). A code is a value from a closed list, so a near-miss is a bug, not a
+shorthand.
 
 **Four rules the state machine carries, and each is a negative criterion in `02-SPEC.md` §7.**
 
@@ -265,11 +277,10 @@ at all, because US-08 AC-4 forbids a message about the limit when the person is 
 
 ## 9. SC-8 — Add a pot
 
-US-15 is in scope (`factory/feature.md`, added 2026-08-25, gate 21) and **`02-SPEC.md` does not draw
-it**. Its SC-1 state 2 and its `PotPicker` `empty` state both link out to "the create-a-pot screen",
-so the design points at a screen that was never specified. This section builds the smallest screen
-that satisfies US-15 and nothing more. **The state list, the layout and the copy are 300 Design's and
-do not exist yet — see §10.**
+US-15 is in scope (`factory/feature.md`, added 2026-08-25, gate 21). **`02-SPEC.md` §4, SC-8 now draws
+it** (written 2026-08-31). This section is the engineering half — the route, the fields and the
+validation. Where this file and `02-SPEC.md` disagree about a state, the layout or the copy,
+**`02-SPEC.md` wins**, as it does for every other screen.
 
 - **Route:** `/[locale]/pots/new`.
 - **Two fields, and nothing else on the screen** (AC-2): a name, and where the plant is.
@@ -329,14 +340,14 @@ a later tidy-up.
 | US-07 Sign in once, see only my own | `AppFrame` `signed-out`, SC-1 state 1 | The sign-in pages are Cognito's |
 | US-08 Stopped at my own limit | SC-1 state 10, SC-5 state 4, `LimitNote` | |
 | US-09 A message that says if trying again helps | `FailureNote`, every screen | §8 |
-| US-10 How long photos are kept, and delete | `/[locale]/photo` — SC-7, `RetentionNote` | Deleting every photo at once has no screen in run 1 |
+| US-10 How long photos are kept, and delete | `/[locale]/photo` — SC-7, `RetentionNote` | AC-7, deleting every photo at once, moved out of run 1 with its route on 2026-08-31 |
 | US-11 Hungarian or English | Every route, in both languages | §7 |
 | US-12 An admin reads the figures | **No screen.** Moved out of run 1 by the owner, gate 30 | |
 | US-13 The feature can be turned off | **No screen.** The switch is flipped in the AWS website. Its effect on a person is SC-1 state 11 | |
 | US-14 A normal account is refused | **No screen, on purpose.** A refused admin action never renders a screen and never says whether the action exists | |
-| US-15 Add a pot | `/[locale]/pots/new` — SC-8 | §9. **No design spec exists for it** |
+| US-15 Add a pot | `/[locale]/pots/new` — SC-8 | §9. Design spec written 2026-08-31, `02-SPEC.md` §4, SC-8 |
 
 ## 13. What this file does not decide
 
 The exact words of any sentence · which of the two answers builds the `/` redirect, which is 800
-Infra's to place · the visual state list for SC-8 · the unit test runner.
+Infra's to place · the unit test runner.
