@@ -5,7 +5,8 @@ infrastructure. This note explains how that is arranged, which tools do which jo
 choice was made. It assumes you know React and TypeScript. It assumes nothing about workspaces.
 
 **Written 2026-08-26**, from research with checked sources. Every version number below was read from
-the npm registry on that date.
+the npm registry on that date. **Updated 2026-08-28:** the task runner is now **Turborepo**, decided
+in ADR-0012. Sections 2, 7 and 16 changed.
 
 ---
 
@@ -25,7 +26,7 @@ the npm registry on that date.
 12. [Sharing code, and the React Native question](#12-sharing-code-and-the-react-native-question)
 13. [Why the model call gets its own package](#13-why-the-model-call-gets-its-own-package)
 14. [The TypeScript 7 situation](#14-the-typescript-7-situation)
-15. [Does deployment still work?](#15-does-deployment-still-work)
+15. [How this deploys](#15-how-this-deploys)
 16. [Every trigger on one screen](#16-every-trigger-on-one-screen)
 
 ---
@@ -61,7 +62,7 @@ flowchart LR
         A1["Downloads packages<br/>Links the folders together<br/>Writes the lock file"]
     end
     subgraph slot2["Slot 2 — task runner"]
-        B["nothing · Turborepo · Nx"]
+        B["Turborepo (chosen) · Nx · none"]
         B1["Runs build, test, lint<br/>In the right order<br/>Skips what did not change"]
     end
     slot1 --> slot2
@@ -76,8 +77,8 @@ flowchart LR
 **pnpm does not compete with Turborepo.** They compete with npm and with Nx respectively. A project
 using Turborepo still needs a package manager underneath it, and most of them use pnpm.
 
-zamphora picks **pnpm** for slot 1 and **nothing** for slot 2, for now. Section 7 has the trigger to
-fill slot 2.
+zamphora picks **pnpm** for slot 1 and **Turborepo** for slot 2. ADR-0012 recorded both on
+2026-08-26. Section 7 explains why Turborepo was added at the start and not later.
 
 ---
 
@@ -171,7 +172,8 @@ Two smaller wins: `pnpm --filter <name> build` runs a command in one package, wh
 path-filtered CI cheap. And pnpm stores one copy of each package version on the whole machine and
 links to it, so ten projects using React store React once.
 
-**Current version: pnpm 11.24.0.** It needs Node 22 or newer.
+**Current version: pnpm 11.24.0.** It needs Node 22 or newer. This project runs **Node 24** in CI
+and in Lambda (`docs/800-infra/04-ci-cd.md`).
 
 ---
 
@@ -191,9 +193,9 @@ packages:
   - "packages/*"
 
 catalog:
-  zod: ^4.1.13
+  zod: 4.4.3
   typescript: 6.0.3
-  vitest: ^4.0.8
+  vitest: 4.1.11
 ```
 
 Then every package refers to the catalog instead of a version:
@@ -288,22 +290,25 @@ that would be a third new thing to learn on a project already learning Nest.js a
 a product whose job is to hide repository borders from coding agents — which is a tool to undo a
 border this project is not creating.
 
-### Why not Turborepo yet
+### Why Turborepo is in from the start
 
-Nothing is wrong with it. The honest reason is that it earns its keep through caching, and **there is
-nothing to cache yet.** Four packages, a build measured in seconds.
+ADR-0012 put Turborepo in slot 2 on day one. That looks early, because Turborepo earns its keep
+through caching and **there is nothing to cache yet** — four packages, a build measured in seconds.
+Three reasons make it the right call anyway.
 
-**Adding it later costs almost nothing** — one `turbo.json` and a changed script line. It is
-additive. Nothing has to be rearranged. So waiting has no penalty, and adding it now would be a tool
-carried without a job.
+- **The owner already used Turborepo on a previous project.** ADR-0001 first rejected it as a third
+  new tool to learn next to Nest.js and AWS. That reason does not apply, because Turborepo is not
+  new to the person building this.
+- **Adding it later is a small migration, not a free switch.** It is one `turbo.json`, one changed
+  script line, and a change to how CI stores its cache. Doing it before any code exists means that
+  migration never has to happen.
+- **Earning nothing for six months is an accepted outcome.** ADR-0012 says this in writing. If the
+  cache stays empty because every build is already fast, that is fine, and it is not a reason to
+  remove Turborepo.
 
-**The trigger to add it:** when the same task re-runs on unchanged inputs and that is measurably the
-biggest part of CI wall time. Measure first. A package count is a proxy; wasted re-runs are the
-actual thing.
-
-**One caution for that day.** Turborepo's own documentation discourages TypeScript project
-references, while Nx recommends them. So "add Turborepo" and "add project references" are two
-directions, not two steps.
+**One caution for later.** Turborepo's own documentation discourages TypeScript project references,
+while Nx recommends them. So "use Turborepo" and "add project references" are two directions, not two
+steps.
 
 ---
 
@@ -549,21 +554,60 @@ measurement only stays cheap if changing the model touches one file.
 named values the rest of the code can branch on. Only this package knows what an Anthropic error
 looks like.
 
-### About RAG and what comes later
+### What RAG is, and where it would go
 
-Retrieval-augmented generation means looking something up first — a plant care database, past
-assessments — and putting what you found into the prompt.
+Today the model gets two things: the photo and the plant name. It answers from what it learned
+during training. It does not know two things that zamphora could look up:
 
-**When that arrives, it goes here**, and the port may not change at all: `assess(photo, plantName,
-locale)` is still the question being asked. What changes is what the adapter does before it calls the
-model. If the port does change, it changes in one file, and every caller is a compile error rather
-than a silent behaviour change.
+- the plant care notes the team writes and keeps in a database
+- what this same plant looked like in an earlier assessment
 
-**Today it is one call and nothing more.** `docs/400-architecture/00-options.md` §8 has the ladder:
-plain code, then one model call, then a fixed chain, then a free-roaming agent. Stop at the first
-rung that does the job. Photo assessment is one call. Reaching for an agent by default is the most
-common mistake in this area right now, and an agent is the hardest thing to test, to debug and to
-predict the cost of.
+**RAG is how you give the model those facts.** The name stands for **Retrieval-Augmented
+Generation**. It is three steps in this order:
+
+- **Retrieval** — before the model call, read something. The care notes for `Rhaphidophora` from
+  the database. This user's last assessment for this plant.
+- **Augmented** — put that text into the prompt. The prompt now carries the photo, the care notes,
+  the earlier verdict, and the question.
+- **Generation** — call the model once. It answers using the photo and the looked-up text together.
+
+**RAG is not a new model and not an agent.** It is a database read, then building a longer prompt
+string, then the one model call that already exists.
+
+**One walk through it**, for a user sending a photo of their Rhaphidophora:
+
+1. The photo arrives and the pot is picked. Same as today.
+2. The adapter reads the care notes for `Rhaphidophora`: bright indirect light, water when the top
+   3 cm are dry, harmed by cold.
+3. The adapter reads this user's last assessment for this plant: four weeks ago the verdict was
+   `under-watered`.
+4. The adapter builds the prompt from the photo, those two pieces of text, and the question.
+5. One model call. The same call as today.
+6. The answer can now say more: "still under-watered, and the brown leaf edges fit cold damage —
+   move it off the windowsill."
+
+**It goes in `packages/llm`, inside the adapter.** The port stays `assess(photo, plantName,
+locale)`. The use case asks the same question and never learns that a lookup happened. If the port
+ever does need a new argument, that is one file changed, and every caller becomes a compile error
+the type system makes you fix. Nothing changes in silence.
+
+### The ladder, and the rung to stay on
+
+`docs/400-architecture/00-options.md` §8 has a four-rung ladder for how much AI machinery a feature
+uses:
+
+1. **Plain code** — no model. The file-type check, turning an interval into a date.
+2. **One model call** — where photo assessment sits today.
+3. **A fixed chain** — call the model, then call it again with the first answer. This doubles the
+   cost of every assessment, against a balance of a few hundred calls.
+4. **An agent** — the model decides which tools to run, in a loop. There are no tools to run here.
+
+The rule is to pick the lowest rung that works. **RAG does not move zamphora up this ladder.** It
+is still rung 2, one call, with more text in the prompt.
+
+**Reaching for an agent by default is the common mistake in this area.** An agent is the hardest
+thing to test, to debug, and to predict the cost of, because the model, not the code, decides how
+many calls it makes.
 
 ---
 
@@ -623,53 +667,53 @@ TypeScript 7.
 
 ---
 
-## 15. Does deployment still work?
+## 15. How this deploys
 
-Yes, but two things need care, and both are known before any code is written.
+Two parts deploy, and each has one trap that is already known.
 
-### The Lambda side
+### The Lambda side — bundle, never copy
 
-`apps/api` imports `packages/contracts` and `packages/llm`. Those are **links** in a pnpm workspace,
-not real folders full of files. Copying `node_modules` into a zip therefore copies links that point
-nowhere.
+`apps/api` imports `packages/contracts` and `packages/llm`. In a pnpm workspace those are **links**,
+not real folders full of files. Zipping `node_modules` would copy links that point nowhere.
 
-**The answer is to bundle, not to copy.** esbuild follows every import and writes one JavaScript file
-with everything inlined. Links stop existing at that point, so the problem disappears.
+**The answer is to bundle.** esbuild follows every import and writes one JavaScript file with
+everything inlined. The links stop mattering, because nothing is left to resolve at run time. This
+is also faster: `03-flow.md` budgets 800 ms for a cold start, and a bundled function starts quicker
+than one that unpacks a large `node_modules`.
 
-This is also what you want for another reason already written down: `03-flow.md` budgets 800 ms for a
-cold start, and a bundled function starts faster than one that unpacks a large `node_modules`.
+**Do not use `bundling.nodeModules` in AWS CDK's `NodejsFunction`.** That option asks CDK to install
+some packages instead of bundling them, and it is broken with pnpm 11 today — aws-cdk issue 37898,
+open since 2026-05-16. CDK writes an empty `pnpm-workspace.yaml` into its build folder, which erases
+the `allowBuilds` list pnpm 11 needs, and the escape hatch runs too early to put it back. Bundle
+everything, and re-check the issue before the first deploy.
 
-**One specific thing to avoid.** AWS CDK's `NodejsFunction` has an option called
-`bundling.nodeModules`, which asks CDK to install some packages instead of bundling them. **It is
-broken with pnpm 11 today** — aws-cdk issue 37898, open since 16 May 2026. CDK writes an empty
-`pnpm-workspace.yaml` into its build folder, which erases the `allowBuilds` list that pnpm 11
-requires, and the escape hatch runs too early to fix it.
+### The web side — a static export, decided in ADR-0010
 
-So: bundle everything, and do not use that option. This is a real trap, it is documented here so
-nobody rediscovers it, and it should be re-checked before the first deploy.
+`apps/web` is built with Next.js `output: 'export'` into a folder of plain files, put in a private S3
+bucket, and served through the same CloudFront distribution as the API. **There is no Node server
+for the web.** ADR-0010 settled this on 2026-08-26, and it follows from an earlier rule: a web app
+that holds no credentials, never reads the session, and always paints a skeleton first is a static
+site already.
 
-### The web side
+This removes a build problem before it starts. Next.js has a `standalone` mode that traces which
+files a server needs, and that tracing has a known open bug with pnpm workspace links. With no
+server there is nothing to trace, so `standalone` is not used.
 
-Next.js has a mode called `standalone` that traces which files the server needs. Tracing and pnpm
-links have a known open issue.
+**The two costs are named in ADR-0010, and neither is still open:**
 
-**But `docs/ADR/0010` may have removed the problem already.** It says the web app holds no
-credentials, never reads the session, fetches every value from `/api/*` in the browser, and always
-paints a skeleton first. That describes a static site.
+- **`next/image` with the default loader does not run in a static export.** It does not matter here,
+  because plant photos are served from the product's own bucket through CloudFront, signed by the
+  API — they never went through Next.js image optimisation. A custom loader stays available for
+  anything else.
+- **Choosing Hungarian or English on the first visit needs a place to decide**, because a static
+  export cannot read `Accept-Language` on the server. Both languages are prerendered as separate
+  routes; the redirect from `/` is a small CloudFront function or one line of client-side
+  JavaScript. That is a task for 500 Engineering, not an open decision.
 
-If a static export is workable, there is no server to trace, the build output is a folder of files in
-S3 behind the CloudFront distribution that ADR-0010 already requires, and this whole class of problem
-does not exist.
+### The layout does not move
 
-It is not free. A static export gives up Next.js image optimisation with the default loader, and
-needs an answer for choosing between Hungarian and English. **This is an open decision and it is the
-owner's.**
-
-### The good sign
-
-In every deployment path — static export, standalone, bundled Lambda — **the `apps/` and `packages/`
-layout is unchanged.** Deployment pressure changes how things are built, never where they live. A
-layout that survives every option is a layout that was not chosen by accident.
+Static export or bundled Lambda, the `apps/` and `packages/` folders are unchanged. Deployment
+pressure changes how a thing is built, never where it lives.
 
 ---
 
@@ -679,7 +723,7 @@ Nothing here is decided by feeling. Each row is a condition that can be checked.
 
 | Add this | When |
 | --- | --- |
-| Turborepo | The same task re-runs on unchanged inputs and that is the biggest part of CI time. Measure first |
+| Turborepo's remote cache (a paid service) | The GitHub Actions cache is measurably too slow and the same build repeats across machines. Turborepo itself is already in, from ADR-0012 |
 | `packages/config-typescript`, `config-eslint` | 4 or more packages copying the same base |
 | `packages/ui` | A second app renders React |
 | `packages/core` | A second runtime needs the same business rule |

@@ -101,7 +101,7 @@ fine.
 
 | Out | Why, and who owns it |
 | --- | --- |
-| **The screen that creates a pot** | No story in this run defines it, and US-01 AC-3 needs it to exist. This design ends at a link. Human gate 21 |
+| ~~**The screen that creates a pot**~~ | **No longer out of scope.** Gate 21 put US-15 in scope on 2026-08-25 and this row was not updated. `02-SPEC.md` §4 draws it as **SC-8** (written 2026-08-31) |
 | **The sign-in screen** | The protocol and the flow are 400 Architecture's decision. This design covers only the signed-out state of its own screens (US-07 AC-1) |
 | **Any admin screen** | `00-prd.md` section 6.1: the permission check and the kill-switch ship now, the screens do not. US-12 and US-13 have no screen in run 1 |
 | **A list of past assessments, and a plant's history over time** | Backbone feature 4, a later run. US-10 AC-4 needs a way back to one assessment; that way in is a seam, not a screen designed here |

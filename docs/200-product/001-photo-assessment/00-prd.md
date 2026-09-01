@@ -41,7 +41,7 @@ Nothing found by research and nothing thought up by a role sits above any of the
 | 2 | Soil replacement intervals per plant | Run 2 (planned) | Not this run |
 | 3 | Placement advice — where a plant goes for the right sun | Run 4 (planned) | Not this run |
 | 4 | Documenting how a plant is doing over time | Run 5 (planned) | Not this run |
-| 5 | **Photo assessment by AI** | **Run 1 — this run** | **US-01 to US-14, all of them** |
+| 5 | **Photo assessment by AI** | **Run 1 — this run** | **US-01 to US-15, all of them** |
 | 6 | Notifications when it is time to act | Run 3 (planned) | US-03 writes the task that feature 6 will later deliver. Delivery is not built here |
 
 Two of the owner's requirements are not features. They apply to every feature above: **two

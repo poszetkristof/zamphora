@@ -45,8 +45,40 @@ remember to write.
 | Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` | Band, verdict, next action, follow-up days, language, photo key, model id, cost |
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` | The pot, the assessment it came from, the action text |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` | One number |
+| **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` | The assessment id once it exists, and a time-to-live 10 minutes out |
 | A day's usage | `USAGE` | `<yyyy-mm-dd>` | Assessments started, model calls made, cost in millionths of a dollar |
 | The kill-switch | `CONFIG` | `AI_ENABLED` | On or off. **One field only** — see the note under this table |
+| **The circuit breaker** | `CONFIG` | `BREAKER` | How many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live |
+
+**Two rows were added on 2026-08-31.**
+
+**`IDEM#<requestId>` is what makes one tap one charge.** `POST /api/assessments` is the only path
+that spends money and it had no protection against running twice, while the design's own budget
+allows a 4,000 ms upload — which is exactly when a person taps again. The browser makes one UUID per
+photo; the API claims it with a conditional `PutItem` before anything else happens
+(`../500-engineering/03-api-spec.md` §4a). This closes F-13 in `001-photo-assessment/07-adversarial.md`.
+
+**`CONFIG / BREAKER` is the automatic cost guard** (gate 50, `../800-infra/02-cost-guardrails.md`
+§5.6). **It must never share a row with `AI_ENABLED`.** The kill-switch is a person's decision and
+the breaker is a machine's. If they shared a row, the machine could undo the human — and ADR-0009
+puts the human above the machine on purpose.
+
+### Every item carries a version, and this is how a shape changes
+
+**Added 2026-08-31.** DynamoDB has no schema and no migration tool, and an assessment row has **no
+clock** — ADR-0007 keeps the text as long as the pot exists. So an item written today can still be
+read in three years, and there was no rule at all for changing a shape.
+
+**Every item carries `v`, a whole number. It is `1` today.**
+
+The rules that go with it are three sentences, and they are cheaper now than the scan-and-rewrite
+they replace:
+
+1. **A reader ignores a field it does not know.** So adding a field is always safe.
+2. **Never rename a field and never change what one means.** Write a new field, stop writing the old
+   one, and leave the old one where it is.
+3. **Raise `v` only when a reader must behave differently**, and keep the code that reads the older
+   version until nothing on disk still uses it.
 
 **The kill-switch row holds one field, and this changed on 2026-08-26.** It used to hold who flipped
 it and when. The owner removed the admin route (gate 30), so nothing in the application ever writes

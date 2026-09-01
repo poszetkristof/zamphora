@@ -172,7 +172,7 @@ the range for production workloads
 ([Sedai](https://sedai.io/blog/what-is-cold-starts-in-lambda-understanding),
 [oneuptime](https://oneuptime.com/blog/post/2026-01-27-lambda-cold-start-optimization/view), both
 checked 2026-08-25). **These are secondary sources, not a measurement of this application**, and
-`03-flow.md` budgets the top of that range. Against a 30-second budget, 800 ms is under 3%.
+`03-flow.md` budgeted the top of that range until 2026-08-31 and now budgets **2,000 ms**, because those figures describe a plain Node handler and this is a bundled Nest+Express application (NFR-06). Against a 30-second budget, 2,000 ms is under 7%.
 
 There is a second and harder ceiling on A and D, and it is the reason neither scores 5. **An API
 Gateway HTTP API cuts a request off at 30 seconds and that cannot be raised** — the same number the

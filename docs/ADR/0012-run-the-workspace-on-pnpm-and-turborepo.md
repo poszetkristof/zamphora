@@ -77,13 +77,23 @@ its build folder, which erases the `allowBuilds` list pnpm 11 requires, and the 
 runs too early to put it back
 ([aws-cdk issue 37898](https://github.com/aws/aws-cdk/issues/37898), open since 2026-05-16, checked
 2026-08-26). The answer is to bundle everything with esbuild, which is what a Lambda wants anyway —
-`03-flow.md` budgets 800 ms for a cold start, and a bundled function starts faster than one that
+`03-flow.md` budgets 2,000 ms for a cold start, and a bundled function starts faster than one that
 unpacks a large `node_modules`.
 
 **Second cost: pnpm 11 needs Node 22 or newer.** The Lambda runtime and the CI image must both be on
-Node 22.
+**Node 24** (gate 60, owner, 2026-08-27). The deciding fact is support length: `nodejs24.x`
+deprecates 2028-04-30 and `nodejs22.x` deprecates 2027-04-30 (checked 2026-08-27). Node 24 is the
+number everywhere — `runtime` in CDK, `node-version` in CI, and the `engines` field.
 
-**Third cost: TypeScript must be pinned to 6.** TypeScript 7.0 was released on 2026-07-08 as a
+**Third cost: esbuild alone cannot build `apps/api`.** Nest.js reads constructor dependencies from
+`design:paramtypes`, and TypeScript only writes that metadata when `emitDecoratorMetadata` is on.
+**esbuild does not support `emitDecoratorMetadata`.** The function would deploy and then throw
+`Nest can't resolve dependencies` on its first request — a failure that is silent until run time.
+**So the API build is two steps: `nest build` first (that is `tsc`, which writes the metadata), then
+esbuild bundles the compiled `dist/main.js`.** Never point CDK's `NodejsFunction` at TypeScript
+source for `apps/api`. `apps/web` and `packages/*` are unaffected; they use no decorators.
+
+**Fourth cost: TypeScript must be pinned to 6.** TypeScript 7.0 was released on 2026-07-08 as a
 rewrite of the compiler in Go, and it is 8 to 12 times faster. It does not yet ship the stable
 programmatic API that other tools use to ask the compiler about your code — that arrives in 7.1. So
 `typescript-eslint@8.68.0` declares `typescript: ">=4.8.4 <6.1.0"` and its TypeScript 7 support issue
@@ -91,7 +101,7 @@ is closed as not planned (both read from the npm registry on 2026-08-26). Instal
 disable every type-aware lint rule, which is most of the border enforcement above. **Pin
 `typescript: 6.0.3` in the catalog. Revisit when typescript-eslint's peer range accepts 7.**
 
-**Fourth cost: Turborepo has nothing to cache yet**, at four packages and a build measured in
+**Fifth cost: Turborepo has nothing to cache yet**, at four packages and a build measured in
 seconds. It is adopted now anyway because the owner already knows it from previous work, adding it is
 one `turbo.json` and a changed script line, and doing it before there is code avoids a migration
 later. **If it turns out to earn nothing for six months, that is an acceptable outcome and not a
@@ -136,4 +146,7 @@ without renaming, but it is deliberately never publishable, and ADR-0001 keeps p
 > publish a package without an `exports` field. Do not put a pnpm setting in `.npmrc`; it belongs in
 > `pnpm-workspace.yaml`. Do not install TypeScript 7 — the catalog pins `6.0.3`, because
 > typescript-eslint cannot run on 7 yet. Do not use `bundling.nodeModules` in a CDK `NodejsFunction`;
-> bundle with esbuild instead. Do not add Nx.
+> bundle with esbuild instead. **Do not point a `NodejsFunction` at `apps/api`'s TypeScript source —
+> esbuild cannot emit `emitDecoratorMetadata`, so Nest.js dependency injection fails at run time.
+> Build `apps/api` with `nest build` first, then bundle `dist/main.js`.** Node is **24** everywhere:
+> the Lambda runtime, the CI image and `engines`. Do not add Nx.

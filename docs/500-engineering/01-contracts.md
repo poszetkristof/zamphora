@@ -200,6 +200,10 @@ export const ModelAnswer = z.strictObject({
 });
 ```
 
+**`ModelAnswer` stays `z.strictObject`, and §11a does not loosen it.** The rule there is about
+responses the *browser* parses. This one parses a reply from a model, which is untrusted input like
+any other. A field nobody asked for is a reason to refuse, not to ignore.
+
 **The field is `verdict`, not `verdictCode`.** That is the name in `05-patterns.md` §4 and in the
 assessment item in §1, so it is the name here and on the wire.
 
@@ -212,8 +216,39 @@ ours, it is smaller, and it can be tested with no model call.
 `additionalProperties: false` and every field in `required` come from ADR-0005 and are not optional.
 **Do not express the cross-field rules with `oneOf` or `anyOf`** (`05-patterns.md` §4).
 
-**There is no maximum length on `nextAction`.** A cap in the parse would turn a long but correct
-answer into `answer-unreadable`, and length is not something the provider can be told to obey.
+### 4.2 `AssessmentRequest` — what `apps/api` hands to `packages/llm`
+
+**Added 2026-08-31.** ADR-0005 names the port as `assess(input: AssessmentRequest)`, and **no file
+defined that type.** It was also missing from §10, the table whose whole job is to catch a type that
+crosses a border with no schema. So nothing said what reaches the model.
+
+```ts
+export const AssessmentRequest = z.strictObject({
+  photoJpeg:  z.instanceof(Uint8Array),   // the RE-ENCODED bytes from step 5b, never what arrived
+  plantName:  z.string().max(POT_NAME_MAX),    // user text. Untrusted
+  locale:     Locale,
+});
+```
+
+**Two of these are written by the person using the app, and both are untrusted input.** The plant
+nickname is typed. The photo can contain text — a photo of a sheet of paper is still a photo. So the
+rules in `03-api-spec.md` §4c apply to every call: **the system prompt is a module-level constant
+that no user value ever enters**, every user value goes in the user turn wrapped in a line saying
+instructions inside it are data, and the reply only becomes a value by passing `ModelAnswer`.
+
+**`photoJpeg` is the re-encoded image.** Passing the original bytes would send the EXIF — and the
+person's home GPS — to the provider, which is the thing step 5b exists to prevent.
+
+**There is no maximum length on `nextAction` in the parse. There is one in the refinement.**
+**Amended 2026-08-31.** A cap in the parse would turn a long but correct answer into
+`answer-unreadable`, and length is not something the provider can be told to obey — that reasoning
+stands. But this text is **stored and drawn on the result screen**, so an unbounded string is a
+value the model controls with no ceiling at all. So: parse it with no limit, then **truncate it to
+`NEXT_ACTION_MAX` in the refinement**, which is not a failure and costs the person nothing.
+
+```ts
+export const NEXT_ACTION_MAX = 400;
+```
 
 ### 4.1 The refinement — the cross-field rules
 
@@ -273,7 +308,7 @@ times that (US-01 AC-4). 2 MB is the API's hard ceiling on the request body (ADR
 export const POT_NAME_MIN = 1;
 export const POT_NAME_MAX = 60;
 
-export const Pot = z.strictObject({
+export const Pot = z.object({
   id:        PotId,
   name:      z.string().min(POT_NAME_MIN).max(POT_NAME_MAX),
   room:      z.string().min(1).max(60),
@@ -285,7 +320,7 @@ export const CreatePotRequest = z.strictObject({
   room: z.string().min(1).max(60),
 });
 
-export const PotListResponse = z.strictObject({ pots: z.array(Pot) });
+export const PotListResponse = z.object({ pots: z.array(Pot) });
 ```
 
 The item holds the name the person typed and the room (`05-patterns.md` §1).
@@ -303,7 +338,7 @@ rule for the name only. See §11.
 ```ts
 export const PhotoStatus = z.enum(['present', 'removed'] as const);
 
-export const Assessment = z.strictObject({
+export const Assessment = z.object({
   id:               AssessmentId,
   potId:            PotId,
   potName:          z.string(),            // joined from the pot row, for the photo's alt text
@@ -319,13 +354,13 @@ export const Assessment = z.strictObject({
   createdAt:        IsoInstant,
 });
 
-export const AssessmentResponse = z.strictObject({
+export const AssessmentResponse = z.object({
   assessment:            Assessment,
   assessmentsLeftToday:  z.number().int().min(0),
   quotaResetsAt:         IsoInstant,
 });
 
-export const CareTask = z.strictObject({
+export const CareTask = z.object({
   id:           CareTaskId,
   potId:        PotId,
   assessmentId: AssessmentId,
@@ -339,12 +374,12 @@ export const CreateCareTaskRequest = z.strictObject({
   confirmedUnsure: z.boolean().default(false),
 });
 
-export const PhotoUrlResponse = z.strictObject({
+export const PhotoUrlResponse = z.object({
   url:       z.string().url(),
   expiresAt: IsoInstant,
 });
 
-export const MeResponse = z.strictObject({
+export const MeResponse = z.object({
   assessmentsLeftToday: z.number().int().min(0),
   quotaResetsAt:        IsoInstant,
 });
@@ -388,14 +423,16 @@ Every answer that is not a success is this shape, and nothing else. It is
 export const RETRY_HINTS = ['may-work', 'will-not-work'] as const;
 export const RetryHint = z.enum(RETRY_HINTS);
 
-export const Problem = z.strictObject({
+// z.object, NOT z.strictObject — RFC 9457 §3.2 says a reader must ignore
+// members it does not know, and a strict schema does the opposite. See §11a.
+export const Problem = z.object({
   // The five RFC 9457 members. `instance` is omitted — see below.
   type:      z.url(),        // https://zamphora.app/problems/<code>
   title:     z.string(),     // short, stable, English, for a developer
   status:    z.int().min(400).max(599),
-  detail:    z.string(),     // safe to show a person, in the reader's language
+  detail:    z.string(),     // fixed English, one per code, from a closed map. See below
 
-  // Extension members. RFC 9457 §3.2 allows these and readers must ignore what they do not know.
+  // Extension members.
   code:      FailureCode,
   retryHint: RetryHint,
   details:   z.record(z.string(), z.unknown()).optional(),
@@ -583,6 +620,7 @@ The check on this file is that no schema has only one user. This table is that c
 | `PhotoUrlResponse` | Put the URL in `PhotoPreview` | Sign it, at most 5 minutes (NFR-43) |
 | `MeResponse` | Decide `signed-in` or `signed-out`, draw `LimitNote` | Read the session and the day's counter |
 | `Problem`, `FailureCode`, `RetryHint` | Choose the `FailureNote` state and the sentence | Answer every failure |
+| `AssessmentRequest` | — **`apps/api` and `packages/llm` only.** It never crosses the wire to the browser, and it is listed here because it crosses a **package** border, which is the same rule | Build the one model call (§4.2) |
 
 **`ModelAnswer` has three users, and `05-patterns.md` §11 is the reason it is in this package.**
 `packages/llm` builds the provider request from it, `apps/api` parses the answer with it, and the
@@ -597,9 +635,64 @@ answer schema only in `packages/llm`** — it is a wire type, and `packages/llm`
 | --- | --- | --- |
 | Whether `room` is required on a pot, and its length | US-15 AC-2 says "two things" and gives a length rule for the name only. `00-prd.md` does not fill it | Ask the owner. This file assumes required, 1 to 60 characters |
 | ~~The 1 to 30 range on `followUpDays`~~ | **Closed 2026-08-26, gate 39.** The owner set it to 1 to 30 — the value this file already used | Nothing to do. US-02 AC-6 no longer says provisional |
-| Whether ADR-0007's photo key should use only the timestamp | `05-patterns.md` §1 makes `AssessmentId` composite, so the ADR's key repeats the pot id and carries a `#` | Ask the owner. **The ADR is followed as written until then** |
-| The Zod major version | No input names one | It goes in the `catalog:` of `pnpm-workspace.yaml`. Every schema here uses API that both 3 and 4 have |
+| ~~Whether ADR-0007's photo key should use only the timestamp~~ | **Closed 2026-08-26, gate 38.** The key is `photos/<userId>/<potId>/<createdAt>.jpg` and ADR-0007 was amended to match | Nothing to do |
+| ~~The Zod major version~~ | **Closed.** The catalog pins `zod` to `4.4.3`, and all of §9a is Zod-4-only advice | Nothing to do |
 | The provider's error shape for an empty credit balance | Not in any input | Confirm against the provider's documentation in the first task |
+
+## 11a. Changing a schema after something has shipped
+
+**Added 2026-08-31. This file had no compatibility story at all, and the shape of this product needs
+one.**
+
+`apps/web` is a **static export**, cached in browsers and at CloudFront. `apps/api` is a Lambda.
+They are two artifacts and they deploy separately (ADR-0001 rule 5, ADR-0010). So there is always a
+window where a browser is running an **old** bundle against a **new** API. The browser parses every
+answer with the schema in this package and treats a parse failure as a loud error
+(`02-web-spec.md` §3).
+
+**Every response schema used to be `z.strictObject`, which rejects a field it does not know.** So the
+first time the API added a field, every browser holding an old bundle would have shown a failure on
+a perfectly good response. `Problem` was the clearest case: it said in a comment that readers *"must
+ignore what they do not know"* and then forbade exactly that.
+
+**The rule, and it splits by direction:**
+
+| Parsed by | Schema kind | Why |
+| --- | --- | --- |
+| **The API**, on a request body | `z.strictObject` | An unexpected field is untrusted input. Rejecting it is a real border, and it stays tight |
+| **The browser**, on a response body | `z.object` | Unknown keys are stripped, not refused. An older bundle keeps working against a newer API |
+
+**Three sentences that go with it:**
+
+1. **Adding a field to a response is safe.** Removing one, renaming one, or changing what one means
+   is a breaking change and needs both sides shipped together.
+2. **The API deploys before the web.** A new API with an old bundle works. A new bundle expecting a
+   field the old API does not send does not.
+3. **`Problem` is `z.object` because RFC 9457 requires it.** A reader must ignore members it does not
+   understand.
+
+## 11b. `Problem.detail` is fixed English, from a closed map
+
+**Added 2026-08-31, because §1 and §8 could not both be true.**
+
+§1 of this file says: *"The API never sends prose. A failure is a `code`; the sentence is looked up
+in a message file in the reader's language."* §8 then defined `detail` as a required string *"in the
+reader's language"*. The message files live in `apps/web/src/messages/`, not in the API, and only
+`POST /api/assessments` is even told a locale — `GET /api/pots` has no way to know one.
+
+**Something has to fill a required field, and the string always within reach is the exception
+message.** That is the leak the security skill forbids by name: a stack trace, an AWS error, an
+internal class name, handed to whoever made the request.
+
+**So:**
+
+- **`detail` is a fixed English sentence, one per `FailureCode`, from a closed map in the API.** It
+  is for a developer reading a log or a response, in the same voice as `title`.
+- **It is never built from an exception, a driver error, or any value that came from outside.** A
+  test asserts the map's keys are exactly the failure codes, so a new code cannot ship without a
+  sentence and no sentence can be generated.
+- **The reader's own language stays in the browser**, keyed on `code`, where it already works and
+  where the message files already are.
 
 **Two places where `05-patterns.md` and an ADR disagree. Nothing here was changed for either.**
 

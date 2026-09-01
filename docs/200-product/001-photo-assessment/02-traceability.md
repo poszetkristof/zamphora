@@ -140,7 +140,7 @@ backbone feature 5, and nothing found by research was allowed above it.
 | 2 Soil intervals | Same. Run 2 |
 | 3 Placement advice | Same. Run 4. Idea W-7 is a way of building it, not a replacement for it |
 | 4 Documenting a plant over time | Same. Run 5 |
-| 5 Photo assessment | **All fourteen stories** |
+| 5 Photo assessment | **All fifteen stories** |
 | 6 Notifications | `00-prd.md` section 3. Run 3. US-03 writes the task that it will deliver |
 
 ### 3.5 Every researched idea stayed out

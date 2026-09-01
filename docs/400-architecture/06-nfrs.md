@@ -39,17 +39,30 @@ it is testing is not a test.
 
 | # | The requirement | Number | Window | How it is tested | Job | Metric |
 | --- | --- | --- | --- | --- | --- | --- |
-| NFR-01 | Tap to something on screen | **≤ 30,000 ms**, p95 | Every assessment, measured over a rolling 20 | Playwright against a preview deploy, with the network throttled to 400 kbps up and a fixed 200 KB photo, and the model provider replaced by a stub that sleeps for the budgeted 8,000 ms | `perf-flow` | M-16 |
+| NFR-01 | Tap to something on screen | **≤ 30,000 ms**, p95 | Every assessment, measured over a rolling 20 | Playwright against a preview deploy, network throttled to 400 kbps up, a fixed 200 KB photo, the provider replaced by a stub. **Run twice: the stub sleeps 8,000 ms, then 18,000 ms. Both must pass** | `perf-flow` | **M-12** |
 | NFR-02 | The server's own share of that budget | **≤ 20,000 ms**, hard | Every request | Two tests. A unit test that the deadline constant is 20,000 and is below the 22,000 ms function timeout. An integration test with a stub that sleeps past it, asserting the app answers with `deadline-passed` and not a 504 | `test` | — |
 | NFR-03 | The model call's own timeout | **≤ 18,000 ms** | Every call | A unit test on the constant, plus an integration test with a stub that never answers. The number is what is left of the 20,000 ms deadline after the other steps — see `03-flow.md` §4 | `test` | — |
 | NFR-04 | Model calls per assessment | **exactly 1** | Every assessment | A stub provider counts calls. **Every** case gives 1 — timeout, 429, 503, refusal, truncation, bad request, empty balance, rejected photo. There is no retry in run 1 | `test` | M-22 |
-| NFR-05 | Retries of any kind | **0** | Always | A test that no failure path calls the provider twice, and that no wait-and-try-again code exists. Dropping the retry is what makes NFR-04 and NFR-10 agree | `test` | — |
-| NFR-06 | Cold start of the API function | **≤ 800 ms**, p95 | Rolling 7 days | **Not tested in CI.** Read from the `InitDuration` CloudWatch metric after a deploy | none — runtime only | — |
+| NFR-05 | Retries **of the model call** | **0** | Always | A test that no failure path calls the provider twice, and that no wait-and-try-again code wraps `LlmProvider`. Dropping the retry is what makes NFR-04 and NFR-10 agree. **This row is about `LlmProvider` only — AWS SDK retries stay at their defaults** | `test` | — |
+| NFR-06 | Cold start of the API function | **≤ 2,000 ms**, p95 | Rolling 7 days | **Not tested in CI.** There is no `InitDuration` CloudWatch metric — read it with the Logs Insights query in `03-observability.md` §4 after a deploy | none — runtime only | — |
 
 **NFR-06 is the honest one.** No job can enforce it, because a cold start is a property of the
-platform on the day. It is written down so that a run that regularly passes 800 ms is recognised as
-a change rather than as bad luck. The number comes from secondary sources, not from this
-application — see section 8.
+platform on the day. It is written down so that a run that regularly passes the number is recognised
+as a change rather than as bad luck.
+
+**The number was 800 ms and was raised to 2,000 ms on 2026-08-31.** The 200–800 ms range came from
+articles measuring a **plain Node.js handler**. This is not a plain handler: it is Nest.js plus
+Express plus multer plus Zod plus the AWS SDK clients plus the Anthropic SDK, all loaded before the
+handler runs. A published `InitDuration` for a bundled Nest mono-Lambda is about **905 ms for a
+near-empty application**. With this dependency list at 1024 MB on ARM64, a realistic p95 is 1,200 to
+2,500 ms.
+
+**The 30-second promise still holds, and here is the arithmetic redone.** `03-flow.md` §4 subtracted
+800 ms for the cold start and kept 4,480 ms of slack. With 2,000 ms the slack becomes **3,280 ms**
+and every other number is unchanged. Nothing else in the design moves.
+
+**Replace it with the first real reading**, as section 8 says. This is still an estimate, only an
+honest one about the right kind of application.
 
 ## 3. Money
 
@@ -151,7 +164,7 @@ what it actually was.
 | --- | --- | --- | --- |
 | 8,000 ms for the model call | NFR-01, NFR-03 | No source at all | The first real call |
 | 18,000 ms model timeout | NFR-03 | What is left of the 20,000 ms deadline after the other steps. The 8,000 ms guess sets how much slack that leaves, not the number itself | Re-derived once the real latency is known. **This row said 9,000 ms until 2026-08-26** — that belonged to the two-attempt rule the owner dropped |
-| 800 ms cold start | NFR-06 | Secondary sources, not this app | The `InitDuration` metric |
+| **2,000 ms cold start** | NFR-06 | Estimated for a bundled Nest+Express Lambda. Was 800 ms, from sources measuring a plain Node handler | The Logs Insights query in `03-observability.md` §4 — there is no `InitDuration` metric |
 | 1 in 100 unreadable answers | NFR-23 | Nobody has run one call yet | The first 100 attempts |
 | 170 KB for SC-1 | NFR-50 | No screen has been built | The measurement of the real screen |
 | 10 minutes of CI | NFR-51 | No pipeline exists | The first ten pull requests |

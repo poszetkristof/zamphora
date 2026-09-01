@@ -138,7 +138,9 @@ Every container in `02-containers.mmd` appears here. The CDK construct for each 
 
 - **Node 24**, in the Lambda runtime, in CI and on the developer's own machine (gate 60,
   `01-iac-plan.md` §4.4). One number, three places.
-- **The Cognito Lite feature plan** (gate 52, `01-iac-plan.md` §4.3).
+- **The Cognito Essentials feature plan** (gate 52, reopened and closed again 2026-08-31,
+  `01-iac-plan.md` §4.3). Lite does not include managed login or page branding; Essentials costs the
+  same $0 at this size.
 - The 180-day photo lifecycle rule (ADR-0007, NFR-40). A lifecycle rule is a rule inside S3 that
   deletes an object once it reaches a set age. A preview bucket carries the same rule, so the CDK
   assertion test in NFR-40 checks the same code that ships.
@@ -175,10 +177,27 @@ second table. ADR-0002's summary said *"Do not add a second table in run 1; it w
 25 units."* The two could not both hold.
 
 **Why splitting won.** The total stays at 25, so the free allowance is whole and no credit is spent.
-The split does contradict the ADR's exact words. **It does not contradict the ADR's stated reason**,
-because that reason was "do not spend credit" and no credit is spent. `prod` gives up a fifth of its
-spare capacity. At one user nobody notices that: 20 read units is still 20 strongly consistent reads
-a second, sustained, against a workload of ten assessments a day.
+`prod` gives up a fifth of its spare capacity. At one user nobody notices that: 20 read units is
+still 20 strongly consistent reads a second, sustained, against a workload of ten assessments a day.
+
+**Corrected 2026-08-31: the allowance is measured in unit-hours, not in units.** AWS bills
+provisioned capacity per **capacity-unit-hour**, so the free amount is not a ceiling that applies at
+every moment. It is about **18,250 unit-hours per Region per month**. `prod` at 20 units for a full
+month uses 14,600 of them, which leaves 3,650 — exactly enough for a 5-unit `preview` table to run
+for the **whole month**.
+
+Three things follow, and they change how this is operated:
+
+- **A `preview` table left running by accident does not take capacity away from `prod`.** It costs a
+  small amount of money at the end of the month. That is a much smaller problem than the one this
+  section originally feared.
+- **The "only one preview environment at a time" rule in `04-ci-cd.md` is no longer needed**, and it
+  is withdrawn. It brought `cancel-in-progress: true` with it, which can cut a `cdk deploy` in half
+  and leave a stack stuck in `UPDATE_IN_PROGRESS`. That is a worse risk than the one it avoided.
+- **The rejected option "both tables at 25/25" was rejected for a reason that was not true** —
+  "nobody verified the per-unit price". The price is public and small, about $0.00065 per
+  write-unit-hour. The 20/5 split is kept anyway, because it keeps the monthly total inside the free
+  allowance with no arithmetic to redo each time.
 
 **The two rejected options, so nobody re-opens this by accident:**
 
@@ -188,9 +207,10 @@ a second, sustained, against a workload of ten assessments a day.
 - **No preview environment at all.** It lost because it leaves NFR-01 — the 30-second promise made
   to the person standing in front of the plant — with no CI job behind it.
 
-**ADR-0002 has to be corrected in place to say this.** That file belongs to 400 Architecture, so
-this role names the change and does not make it. It is in the list in `04-ci-cd.md` §6.2, with every
-other change owed outside `docs/800-infra/`.
+**ADR-0002 was corrected in place on 2026-08-31** and now states the rule as a **total** across
+every table in the Region rather than a per-table 25/25, with the unit-hour arithmetic above. So the
+ADR and this section agree. `docs/context/stack.md` §3 and its gotcha table were corrected in the
+same pass.
 
 ## 6. The host — the free CloudFront hostname
 

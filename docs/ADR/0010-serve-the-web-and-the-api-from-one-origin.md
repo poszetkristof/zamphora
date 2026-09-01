@@ -50,7 +50,7 @@ using.
 **What it buys.**
 
 - Nothing runs between requests on the web side, so an untouched week costs nothing there either.
-- No second cold start in front of the one that already costs 800 ms.
+- No second cold start in front of the one that already costs about 2,000 ms (NFR-06).
 - The web CDK stack becomes a bucket and an origin — the smallest deployable thing in the product.
 - It removes a real build problem: Next.js traces which files a server needs, and that tracing has a
   known open bug with the symlinks a pnpm workspace uses. With no server, there is nothing to trace.
@@ -69,6 +69,41 @@ using.
 **What is given up but never wanted:** server components that read cookies, Server Actions, Next.js
 middleware, incremental static regeneration and draft mode. `02-SPEC.md` uses none of them, and
 ADR-0003 forbids the first two by putting the session entirely in the API.
+
+### Then why Next.js at all, and not Vite with a router
+
+The list above turns
+off most of what Next.js is known for. So the honest form of the question is: if the server half is
+unused, why keep the framework that exists to provide it?
+
+**Because the part being used is not the server half. It is the build.** `output: 'export'` is a
+supported, first-class Next.js mode, not a workaround. What it still does for this product:
+
+- **It prerenders both languages as real routes.** `/hu` and `/en` are two folders of files produced
+  by one build from one set of components. Both exist before anyone visits. In a client-only
+  single-page app the language would be chosen at run time by JavaScript, and the first paint of
+  every page would wait for that.
+- **The router is the file tree.** `app/[locale]/result/page.tsx` *is* the route. There is no route
+  table to keep in step with the folders, which removes a class of mistake rather than managing it.
+- **Splitting the JavaScript per route is the default.** NFR-50 sets a bundle budget and `size-limit`
+  enforces it in CI. Getting per-route splitting right by hand is work; here it is the starting
+  point.
+- **It is the same framework whether or not a server is used.** The day this product wants one — a
+  screen that must be indexed, or a first paint carrying real data — the change is a build setting
+  and the screens that need it, not a move to a different framework.
+
+**What Vite with a router would have given back**, so the trade is visible: a smaller dependency
+tree, a faster development server, and no unused framework surface for a reader to wonder about. All
+three are real, and all three are small at this size.
+
+**The deciding argument is the last bullet.** The two things this design trades away — a
+server-rendered first paint of signed-in data, and search indexing — are the two most likely to be
+wanted later. Next.js is the option where wanting them later is a setting rather than a migration.
+Vite would trade a little weight today for a change of framework on the day the requirement arrives.
+
+**One thing this does not claim.** Next.js is not kept here for performance, for server components
+or for its data-fetching model. None of those is used. **If a future run finds itself adding a Node
+server only to justify this choice, the choice was wrong and Vite is the answer.**
 
 ## Consequences
 
@@ -103,6 +138,13 @@ same trigger as ADR-0001's.
 
 ## Alternatives considered
 
+**Vite and a client-side router, instead of Next.js in export mode.** Rejected, and it is the closest
+call in this record. It is the honest answer for a product that will never want a server: fewer
+dependencies, a faster development server, nothing unused. It loses because the two things this
+design gives up — a server-rendered first paint of signed-in data, and search indexing — are the two
+most likely to be asked for later, and Next.js is the option where getting them back is a build
+setting rather than a change of framework. The full reasoning is in the Decision section above.
+
 **Two subdomains with CORS.** Rejected. It is the shape that needs the most configuration to be
 exactly right and gives nothing back at this size. Every browser rule about cookies gets harder:
 `__Host-` stops being usable across the pair, `SameSite=Strict` has to be reasoned about, and
@@ -132,5 +174,8 @@ processes that both validate a session, which is the same rule written twice —
 > a database client, an S3 client or any credential; it fetches everything from `/api/*`. Do not
 > validate the session in the Next.js server — there is no Next.js server. `apps/web` is built with
 > `output: 'export'` and served from a bucket, so do not add a Next.js route handler, Server Action,
-> middleware or server component that reads a cookie. Do not set a `Domain` attribute on either
-> cookie, and do not drop the `__Host-` prefix.
+> middleware or server component that reads a cookie. **Do not replace Next.js with Vite or another
+> builder** — it is kept for the export build, the file-based router and per-route splitting, and so
+> that adding a server later is a setting rather than a rewrite. **Do not add a Node server for the
+> web in order to justify keeping Next.js**; if one is ever needed it is a new decision with its own
+> record. Do not set a `Domain` attribute on either cookie, and do not drop the `__Host-` prefix.
