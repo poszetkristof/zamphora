@@ -4,14 +4,15 @@
 **Updated** 2026-08-27 with the owner's answers to gates 43 to 61.
 **Read next by** 900 Security, 600 QA.
 
-This file says where the logs go and which numbers are measured. It lists the ten alarms. It says
+This file says where the logs go and which numbers are measured. It lists the alarms. It says
 which questions can be answered afterwards. It solves one problem. Several requirements in
 `06-nfrs.md` are marked "runtime only", which means no test can check them. If nothing records them,
 they are not requirements at all.
 
 **The free CloudWatch allowance shapes this whole design, and that is said up front.** Ten custom
 metrics and ten alarms is the budget (`02-cost-guardrails.md` §2). Everything below is chosen inside
-it.
+it, **with one exception found on 2026-09-01: there are eleven alarms, not ten.** §5 says what that
+costs and who decides.
 
 ---
 
@@ -155,6 +156,16 @@ filter @type = "REPORT"
 **`06-nfrs.md` belongs to 400 Architecture**, so the correction to its wording is named in the list
 in `04-ci-cd.md` §6.2 rather than made here.
 
+**Expect a bigger number than ADR-0002 budgets, and know why before the first measurement lands.
+Added 2026-09-01.** ADR-0002 cites 200 to 800 ms for a Node.js cold start. That figure is for a
+plain Node.js function. This one is a Nest.js application, and a Nest.js cold start also has to
+build the dependency-injection container — work out the module graph and construct every provider —
+before it can answer anything. One published measurement of a Nest.js application in one Lambda
+function reports an init duration of about **1.0 to 1.1 seconds**. That is one app with its own
+module count, not a promise about this one, and NFR-06's 2,000 ms still leaves room. **The point is
+that a generic Node.js figure does not carry over.** When the query above returns a real number,
+write it into ADR-0002 and delete the 200-to-800 range.
+
 ### The six custom metrics
 
 Written with the CloudWatch embedded metric format, which means they are produced by writing a
@@ -182,10 +193,31 @@ use.
 **The same trap applies to a CloudWatch Logs metric filter**, which also creates a custom metric. Use
 a query, not a filter.
 
-## 5. The ten alarms
+## 5. The alarms — eleven of them, and the free allowance is ten
 
-**Ten is the free allowance, so there are exactly ten.** An eleventh alarm is a decision about
-spending money, not an addition.
+**Corrected 2026-09-01. This section said "exactly ten" and listed eleven.** Alarm 11 was added on
+2026-08-31 to close the CloudFront flood hole, and the heading, the opening sentence and two other
+files were never updated. So the true position is:
+
+- **The CloudWatch Always Free allowance is ten alarm metrics.** This list uses **eleven**.
+- **One of them is therefore charged.** A standard-resolution alarm is a small fixed amount per
+  alarm metric per month — cents, not dollars. *The exact figure was not confirmed first-party in
+  this pass.* AWS is clear on the shape of the charge: *"Each CloudWatch alarm incurs charges for
+  the metric it monitors."*
+- **This does not put the account at risk.** It is far below every other number in
+  `02-cost-guardrails.md` §4. It matters because the documents claimed $0 and claimed ten, and both
+  were wrong.
+
+**This is the owner's decision, not this document's** (`02-cost-guardrails.md` §9). Two ways out,
+and doing nothing is a legitimate third:
+
+1. **Keep eleven and pay cents a month.** Alarm 11 is the only warning of a flood that stops at the
+   edge and never reaches the throttled gateway. It is one of the four alarms this project actually
+   needs.
+2. **Drop one of alarms 1 to 5**, the ordinary ones any system has, and stay at ten.
+
+**Whatever is chosen, the rule from here is unchanged: an alarm is a decision, not an addition.**
+Whoever adds the twelfth has to say which one it replaces, or accept another charge.
 
 | # | Alarm | Fires when | Why it exists |
 | --- | --- | --- | --- |
@@ -261,6 +293,21 @@ before-first-deploy checklist in `00-environments.md` §10.
 
 **`treatMissingData: NOT_BREACHING` on all ten.** This product is idle most of the time. An alarm
 that goes red because nobody used the app last night is an alarm somebody learns to ignore.
+
+**Ten is a ceiling, not a comfortable number, and this list is already one past it** — see the top
+of this section. Adding an alarm is a decision, the same way adding a DynamoDB table is one in
+`01-iac-plan.md` §4.1: whoever adds one has to say which one it replaces, or accept the charge.
+**Composite alarms are not the way out.** A composite alarm combines several alarm states into one
+to cut down on emails. It is billed per alarm per hour from the first hour, and is counted
+separately from the free ten, so it would add cost rather than remove it.
+
+**The Region rule for anything touching CloudFront, stated once so the next person does not repeat
+the near-miss.** CloudFront publishes its own measurements **only to `us-east-1`**, and there is no
+setting that changes it. So: **any alarm or dashboard row whose metric is native to CloudFront lives
+in the `us-east-1` alarms stack. Everything else lives in `eu-central-1`.** A metric that comes from
+the origin behind CloudFront — the function, the gateway, the table — is not a CloudFront metric and
+stays in `eu-central-1`. This run found it the hard way with two alarms; the rule is written here so
+the eleventh metric does not find it again.
 
 **An alarm firing is not an incident.** Declaring an incident is a person's decision, always. **No
 alarm in this list takes an action.** The one thing in this product that acts by itself is the
@@ -345,15 +392,33 @@ console activity is the only place it appears, and it is a different place from 
 this system. **Look there first when model calls stop for no reason** — and check `BreakerOpened`
 before you do, because the circuit breaker stops calls too and **that** one does leave a log line.
 
+**That record has a name and a limit, and both were missing here until 2026-09-01.** It is
+**AWS CloudTrail**, the service that records who called which AWS API. It is on for every account
+with no setup, and it keeps **90 days** of management events at no charge — *"The first copy of
+management events is free"* ([CloudTrail pricing](https://aws.amazon.com/cloudtrail/pricing/),
+checked 2026-09-01). So the trail this document leans on twice reaches back **90 days and no
+further**. If a longer record is ever needed, a management-events-only trail is also free to create
+and only the S3 storage for the exported events costs anything — which would be tiny here. **Do not
+turn on Data events or Insights events.** Both bill from the first event.
+
 **2. The admin path.** `02-containers.mmd` draws the admin reaching the table directly through the
 AWS console, never through the API (gate 30). So no route, no guard and no application log sits on
-it. The same AWS console record is the trail.
+it. The same CloudTrail record is the trail, with the same 90-day limit.
 
 **3. Distributed tracing.** AWS X-Ray is not turned on in run 1. There is one function and one
-outside call, and the duration of every step is already in the log line
-(`03-api-spec.md` §11). Turning it on would add a permission, a sampling decision and a cost that
-was not verified. **The trigger to turn it on: a second compute unit joins the flow** — which is
-exactly what Option C in `00-options.md` §6 would add.
+outside call, and the duration of every step is already in the log line (`03-api-spec.md` §11).
+
+**Corrected 2026-09-01: the reason written here was cost, and cost is not the reason.** X-Ray is
+free at this size — 100,000 traces recorded a month sit inside CloudWatch's always-free tier, and
+this product would send a few dozen. X-Ray is also no longer sold on its own: its old pricing page
+now redirects into
+[CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) (checked 2026-09-01).
+**The real reason is that a service map of one node is not worth drawing.** X-Ray's value is showing
+where time went across several hops. This flow has one function calling one outside API, and the log
+line already gives every step duration. Turning it on would still add a permission and a sampling
+decision, for a picture with nothing in it. **The trigger to turn it on is unchanged and is still
+right: a second compute unit joins the flow** — which is exactly what Option C in `00-options.md` §6
+would add, and what the container shape in `../learn/aws-and-the-pipeline.md` §7 would add three of.
 
 **4. Anything about uptime.** §1.
 

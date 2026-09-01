@@ -218,8 +218,39 @@ The remaining three are shorter:
 - **Subagent** — runs in its own context and hands back only its result. Good for searching 40 files,
   bad when you need those files open to edit right after: you would read everything twice.
 - **MCP server** — gives the agent tools instead of text: a tracker, a database, a browser. Only add
-  one whose tools a role actually needs, and say which role may use it. This project has none, which
-  is the right answer until one job needs one.
+  one whose tools a role actually needs, and say which role may use it. This project has one, added
+  2026-09-01 — see below.
+
+#### The one MCP server in this repo
+
+`.mcp.json` in the repository root turns on **AWS Knowledge**, a server AWS runs itself at
+`https://knowledge-mcp.global.api.aws`. It needs no key and no AWS sign-in, so it is safe to commit.
+It is read-only: it reads documentation, it never touches the account and it cannot spend money.
+
+It gives five tools:
+
+| Tool | What it does |
+| --- | --- |
+| `aws___search_documentation` | search the AWS docs; each hit comes back with real page text, not a snippet |
+| `aws___read_documentation` | fetch one whole doc page as markdown |
+| `aws___list_regions` | every AWS region |
+| `aws___get_regional_availability` | whether a service exists in a region |
+| `aws___retrieve_skill` | an AWS-written workflow or reference file |
+
+**Why this repo needs it.** The cost rules are the sharpest rules here, and they rest on facts that
+change: what the free plan covers, what happens when it ends, which service is in `eu-central-1`. A
+model answers those from memory, and memory goes out of date without saying so. These tools return
+today's page with its URL, so an infra or security claim can carry a link.
+
+**Two limits, both worth knowing.**
+
+1. The file only loads at session start, and Claude Code asks you to approve the server the first
+   time. A session that started before the file existed does not have the tools.
+2. **The role subagents cannot use it.** Each generated agent declares a closed tool list —
+   `Read, Write, Glob, Grep, WebSearch, WebFetch` for 800 Infra — and an MCP tool that is not on that
+   list is not offered to it. So the tools work in your normal session, and in `/ai-factory:next-task`
+   work, but not inside `/ai-factory:run-role`. Giving a role these tools means editing the slot in
+   the `ai-factory` plugin repository and re-deriving the agents there, never here.
 
 **Remember:** the only real difference between the seven blocks is when the model sees the file.
 

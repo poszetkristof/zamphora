@@ -115,11 +115,14 @@ dynamodb.Table
   first read.
 - **No auto scaling.** Do not call `autoScaleReadCapacity` or `autoScaleWriteCapacity`. Auto scaling
   would raise the numbers past the free line without asking (ADR-0002).
-- **Use `dynamodb.Table`, not `dynamodb.TableV2`.** `TableV2` is the global-table construct. It
-  states provisioned write capacity as an auto-scaled range, which is exactly what ADR-0002 forbids.
-  *Nobody checked this reading of `TableV2` against AWS's own page in this run. Check it when the
-  stack is written. If fixed write capacity turns out to be possible on `TableV2`, either construct
-  is fine.*
+- **Use `dynamodb.Table`, never `dynamodb.TableV2`. Checked 2026-09-01, and the answer is settled.**
+  `TableV2` is the global-table construct. It can only state provisioned write capacity as an
+  **auto-scaled range**, never a fixed number — which is exactly what ADR-0002 forbids. This is an
+  open gap in CDK, tracked in
+  [aws-cdk#27378](https://github.com/aws/aws-cdk/issues/27378) and
+  [aws-cdk#27443](https://github.com/aws/aws-cdk/issues/27443). *An earlier version of this line
+  left the question open and said "if fixed write capacity turns out to be possible on `TableV2`,
+  either construct is fine". It is not possible, so there is no choice to make here.*
 - **No secondary index** (ADR-0002). The first one arrives in run 3.
 - **`RETAIN`.** `RETAIN` means CDK leaves the resource in place when the stack is deleted.
   `cdk destroy` must never be able to delete a person's plant history. The `preview` table is the
@@ -401,17 +404,24 @@ cloudfront.Distribution
   body nothing in this product wrote. That is the exact failure `03-flow.md` §4 exists to prevent,
   and F-4 in the pre-mortem named it. 25 seconds sits between the app's 20,000 ms deadline and the
   gateway's 30,000 ms cut-off, so the app is still the first thing to answer. **The full stack is
-  now four numbers and they are listed once, in `03-flow.md` §4.** Note the ceiling this sets:
-  CloudFront can never give more than 60 seconds, so "escape the 30-second limit later" is bounded
-  by this, not only by the gateway.
+  now four numbers and they are listed once, in `03-flow.md` §4.**
+  **The ceiling itself is not certain, and that is AWS's fault, not this document's.** Checked
+  2026-09-01: AWS's own pages disagree with each other on the maximum origin read timeout — some CDK
+  reference pages say 60 seconds, others say 120, and a support article says the console allows 180.
+  **Nothing here depends on which is right**, because 25 seconds sits far below all three. But
+  before anyone plans on "escape the 30-second limit later", read the real number off the live
+  account with `aws cloudfront get-distribution-config` rather than trusting a page.
 - **The photo bucket is not an origin here** (ADR-0007).
 - **A CloudFront Function on the viewer request, doing two small jobs.** First, add `index.html` to
   a path that names a folder, because a static export writes `/hu/index.html` and a bucket reached
   through origin access control answers 403 for `/hu`. Second, send `/` to `/hu` or `/en`.
   ADR-0010 named that redirect as an open task and said it is either a CloudFront function or a line
   of browser JavaScript. This plan takes the function, because it works before any JavaScript loads.
-  *Nobody checked the free allowance for CloudFront Function invocations against AWS's own page in
-  this run — see `02-cost-guardrails.md` §2.*
+  **Checked 2026-09-01: CloudFront Function invocations carry their own Always Free allowance of
+  2,000,000 a month** — *"1 TB of data transfer out, 10,000,000 HTTP/HTTPS requests, plus 2,000,000
+  CloudFront Functions invocations each month for free"*
+  ([CloudFront FAQ](https://aws.amazon.com/cloudfront/faqs/)). This product uses a few hundred a
+  month, so it was never a risk.
 - **A response headers policy carrying a Content Security Policy.** A Content Security Policy tells
   the browser which sources it may load code and images from. ADR-0011 raised this on 2026-08-27 and
   sent it here. A static export behind CloudFront should send one, and nothing in the repository
@@ -423,7 +433,8 @@ cloudfront.Distribution
 
 ### 4.7 `ZamphoraOpsStack` — the watching
 
-An SNS topic, the ten alarms and one dashboard. SNS is the AWS service that sends the alarm emails.
+An SNS topic, the alarms and one dashboard. SNS is the AWS service that sends the alarm emails.
+**There are eleven alarms against a free allowance of ten** — `03-observability.md` §5.
 Everything in this stack is listed in `03-observability.md`. It is a separate stack so that a change
 to an alarm cannot fail a deploy of the product.
 

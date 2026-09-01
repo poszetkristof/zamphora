@@ -17,6 +17,27 @@ One Nest.js application, compiled into **one** Lambda function behind an API Gat
 the Express adapter (ADR-0002). One function, not one per route, so there is one place to look and
 one cold start to pay.
 
+**Three packages sit in that sentence, and the third one was missing until 2026-09-01.** Naming it
+here matters, because the wrong choice fails on the first real request in production, not at build
+time.
+
+| Piece | Package | What it does |
+| --- | --- | --- |
+| The framework | `@nestjs/core` | The application itself |
+| The HTTP adapter | `@nestjs/platform-express` | Lets Nest.js speak Express |
+| **The Lambda bridge** | **`@codegenie/serverless-express`** | Turns the API Gateway event into the Express request and response pair |
+
+**Why the third is needed at all.** Express expects a network socket. Lambda does not give one — it
+hands the handler an event object. Something has to translate between them, and
+`@nestjs/platform-express` does not do it. Without this package there is no working handler.
+
+**Why this package.** It is the maintained successor to `aws-serverless-express` and
+`@vendia/serverless-express`, both of which are effectively finished, and it ships a working Nest.js
+example. `serverless-http` is the other reasonable choice and appears in more tutorials; either
+works, but the project commits to one so that `apps/api/src/main.ts` is not a decision made alone by
+whoever writes it first. **Prove it with a smoke test on `GET /api/health` before any other route is
+written** — that one call is what shows the event actually reaches Nest.js.
+
 It owns everything the browser is not allowed to own: the session, the ownership rule, the daily
 limit, the kill-switch and the one model call (ADR-0010). It is the only part of the product with
 credentials.

@@ -4,6 +4,8 @@
 
 Written 2026-08-27, after 800 Infra ran and the owner closed 17 decisions.
 Rewritten 2026-08-31, after a full review of the pack. The running system now comes first.
+Section 7 extended 2026-09-01, after an outside review of the compute choice: how the one function
+scales, where it really hurts, and what the system would look like if cost were not a constraint.
 
 This is the third learning note. `ai-native-delivery.md` is about the **process**.
 `monorepo-architecture.md` is about the **shape of the code**. This one is about the **running
@@ -66,6 +68,12 @@ resource is written in CDK and kept in git: a lost account is one deploy away fr
 
 So **API Gateway, S3 and Route 53 bill from the very first request.** The amounts are tiny at one
 user — under a cent a month — but "the whole stack is free" was never true, and the plan says so.
+
+**S3 is on that list because of a date, and this is worth remembering rather than re-deriving.**
+AWS replaced the old S3 free tier on **2025-07-15**. Accounts opened after that date get the
+one-time credit instead. This account was opened 2026-07-01, so it gets no S3 allowance at all. An
+account opened before that date would still have one. So if you ever read "S3 gives you 5 GB free"
+somewhere, check when the account was created before believing it.
 
 **Second, the DynamoDB free amount is measured in hours, not in a ceiling.** This is the fact that
 is easiest to get wrong, and it changed a decision here. The free amount is not "25 capacity units,
@@ -425,13 +433,54 @@ mistake. The alternative — one function per route — was rejected here becaus
 starts across a flow that already has a 30-second budget, and gives one developer many small things
 to look at instead of one.
 
+**It also scales, and this is worth knowing before you worry about it.** Lambda answers more
+requests by starting more copies of the function. AWS states the limit **per function**, not per
+account: *"for each function, your concurrency scaling rate is 1,000 execution environment
+instances every 10 seconds"*
+([Lambda scaling behavior](https://docs.aws.amazon.com/lambda/latest/dg/scaling-behavior.html),
+checked 2026-09-01). The account starts at **1,000 copies at the same time**, and that number is
+raised by asking AWS, at no cost
+([Understanding Lambda function scaling](https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html),
+checked 2026-09-01).
+
+So one function holding twelve routes scales exactly as well as twelve small functions would.
+Lambda adds copies. It does not care how many routes live inside one copy.
+
+**The table gives up first, and it gives up long before the function does.** 20 read units is about
+20 reads a second (section 5). The default Lambda limit already allows roughly 125 assessment
+requests a second. **DynamoDB throttles at about one sixth of a limit AWS has not even raised yet.**
+That is not a fault. It is the free-plan choice from section 5, and ADR-0002 records that
+provisioned can be switched to on demand in minutes, with no downtime and no data touched.
+
+**So "will the Lambdalith scale" is the wrong thing to watch.** In order, the things that break
+first are: the $200 credit, the Anthropic balance, the table's 20 units, the account's 1,000 copies,
+and only then anything about the shape of the function.
+
+**Where it really does hurt, and it needs eleven users, not ten thousand.** Every route shares one
+function and one reserved concurrency number. Reserved concurrency is **10**. An assessment holds
+its copy for six to eight seconds. So ten assessments at the same time fill all ten slots, and for
+those seconds every other route — the plant list, the health check — is refused with a 429. The
+fast routes queue behind the slow one. This is called the **noisy neighbour** problem, and it is the
+first real reason to split, well before scale is.
+
 **The honest price is IAM.** One function means **one execution role**. `GET /api/health` runs with
 the same DynamoDB and S3 permissions as the route that spends money. One function per route would
 let each carry only what it needs, which is what least privilege asks for.
 
-That is given up on purpose. The border doing the real work is the key design in section 5: the
-owner id comes from the session and the key builder will not compile without it, so a bug in one
-route still cannot read another person's data. **If the API is ever split, split the role with it.**
+That is given up on purpose. **Two different problems are being talked about here, and it is worth
+keeping them apart.** The key design in section 5 answers the first one: a route that forgot to
+check ownership still cannot read another person's data, because the owner id comes from the session
+and the key builder will not compile without it. It does **not** answer the second one. If code
+inside the function is ever made to run something it should not — a poisoned dependency, a bad image
+fed to the decoder — that code holds the whole role, over every row and every object. At that point
+there is no "route" any more. The trade is accepted because this is one developer, one function and
+plant photos, not because the key design covers it. **If the API is ever split, split the role with
+it.**
+
+**The first split to make, when the time comes, is the assessment route.** It is the slow one, the
+paid one, and the one that needs the most memory. Moving it to its own function fixes the noisy
+neighbour, stops every health check paying for image-sized memory, and gives the paid route its own
+smaller role — three problems with one change. Splitting the small read routes buys almost nothing.
 
 ### The build trap that fails silently
 
@@ -457,6 +506,119 @@ JavaScript, which needs no decorator support at all.
 that every build path in the project emits it. This project already knew the failure sentence — it
 had switched the same setting on for the test runner — and still missed it on the deploy path,
 because those are two different builds and nobody compared them.
+
+### If money were no object: the same product as a container
+
+**Written 2026-09-01.** Everything above is shaped by one rule: the account closes instead of
+billing, so nothing may run while nobody is using the app. This part answers a different question.
+**If cost were not a constraint at all, what is the better system?** It is written down because the
+answer is not "the same thing, bigger". It is a different shape, and knowing the shape tells you
+what you are giving up today and what would have to change to get it.
+
+**The service is Amazon ECS on Fargate.** ECS is the service that runs containers. Fargate is the
+mode where AWS runs the machine for you, so there is no server to patch. Your Nest.js app becomes a
+normal long-running HTTP server in a container, exactly like it is on your laptop.
+
+```mermaid
+flowchart TD
+    U["Plant keeper, on a phone"] --> CF["CloudFront + AWS WAF<br/>front door and rate limit"]
+
+    CF -->|"everything except /api/*"| WEB[("S3 bucket<br/>the pages")]
+    CF -->|"/api/* only"| ALB["Application Load Balancer<br/>always on"]
+
+    subgraph VPC ["A VPC — a private network inside AWS"]
+        ALB --> API["ECS Fargate: the API<br/>2+ copies, always running"]
+        API --> Q["SQS queue<br/>one message per assessment"]
+        Q --> W["ECS Fargate: the worker<br/>does the slow model call"]
+        API --> PG[("Aurora Serverless v2<br/>PostgreSQL")]
+        W --> PG
+        API --> RD[("ElastiCache Redis<br/>sessions, counters")]
+        W --> NAT["NAT Gateway<br/>the only way out"]
+    end
+
+    API --> PH[("S3<br/>photos")]
+    W --> PH
+    NAT --> ANT["Anthropic API"]
+
+    style PG fill:#e8f4ea
+    style RD fill:#e8f4ea
+    style PH fill:#e8f4ea
+    style WEB fill:#e8f4ea
+```
+
+**The one change that matters most is the queue, and it is not about scale.** Today the phone waits
+while the model thinks. That is why section 4 has four stacked clocks and why the whole product is
+bounded by a 30-second ceiling it does not control. In the container version,
+`POST /api/assessments`
+writes a message to **SQS** — a queue, a list of jobs waiting to be picked up — and answers `202`
+straight away with an id. A separate worker picks the job up and does the slow call. The phone asks
+again a moment later, or is told over a socket.
+
+**All four clocks disappear.** There is no 30-second gateway cut-off, no 20-second app deadline, no
+CloudFront read timeout to sit under. The model may take two minutes if it needs to. A retry becomes
+safe again, because a retry no longer eats a deadline — SQS is built to redeliver a job that failed.
+The rule in section 8, "no retry, anywhere", exists because of the clock, not because retries are
+bad.
+
+**What each piece replaces, and what it buys.**
+
+| Today | If money were no object | What that buys |
+| --- | --- | --- |
+| One Lambda function | ECS Fargate, 2+ copies always running | No cold start ever. One long-lived process, so a database connection pool works normally |
+| API Gateway HTTP API | Application Load Balancer | No 30-second ceiling |
+| The phone waits for the model | SQS + a worker service | The slow work leaves the request. Retries become safe |
+| DynamoDB, one table, owner-keyed | Aurora Serverless v2 PostgreSQL | Joins, reports and ad-hoc questions. Section 5's "no report over a large set" stops being a limit |
+| A value in the function's memory | ElastiCache Redis | A cache shared by every copy, so sessions and counters agree across them |
+| No VPC | A VPC with a NAT Gateway | The database and the cache are unreachable from the internet |
+| Reserved concurrency 10, and an alarm | AWS WAF rate rules | A flood is turned away at the edge, not counted after the fact |
+| One log line per request | X-Ray or OpenTelemetry tracing | Now there are three hops — API, queue, worker — so a trace finally draws something worth looking at |
+
+**What does not change, and this is the payoff of the borders already in the code.** The Zod
+contracts, every screen, the domain rules, and the `LlmProvider` port all stay exactly as they are.
+Only two things get rewritten: the repository layer, because DynamoDB keys become SQL, and the
+handler, because a Lambda event becomes an HTTP request. ADR-0002 already predicted the first one
+and accepted it.
+
+**Now the number, because it is the whole reason this is not the design.** Rough monthly cost with
+nobody at all using the app, and these are **order-of-magnitude estimates, not checked against AWS's
+own pages** — the shape of the number is the point, not the number:
+
+| Piece | Roughly, per month, idle |
+| --- | --- |
+| Application Load Balancer | ~$18 |
+| NAT Gateway | ~$32, plus data |
+| Fargate, API and worker | ~$30 |
+| Aurora Serverless v2, at its smallest | ~$45 |
+| ElastiCache, smallest node | ~$12 |
+| AWS WAF | ~$6 |
+| **Total, before a single request** | **~$150** |
+
+Today the same product costs about **two cents** a month, and most of that is API Gateway. So the
+container version is roughly **7,000 times more expensive while nobody is using it**. On an account
+with $200 that closes when the credit runs out, it would take the account down in about six weeks of
+doing nothing. That is why `00-options.md` scored this shape at 12 against 16 and it lost.
+
+**But it wins later, and there is a real crossing point.** Lambda charges per request; a container
+charges per hour whether or not anyone calls it. Below a certain steady traffic level Lambda is
+cheaper, and above it the container is cheaper **and** faster, because there is no cold start and
+the connection pool stays warm. The move is right when two things are both true: the account is off
+the free plan, and traffic is steady rather than a few requests a day.
+
+**One cheap thing makes that move easier later, and it is worth knowing the name.** The
+**AWS Lambda Web Adapter** is a small extension you copy into the function image. It turns the
+Lambda event into a real HTTP request and passes it to your app listening on a port — so the app is
+a plain HTTP server with no Lambda-shaped code in it, and the **same container image also runs on
+Fargate unchanged**:
+
+```
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+ENV PORT=3000
+```
+
+**It is not used here, and that is on purpose.** A container image cold-starts more slowly than a
+zip bundle, and it needs ECR, whose storage cost on this account has not been checked. It is written
+down as the escape hatch, not as a plan. The point is that "we picked wrong" would become "we change
+where the image runs", which is a much smaller sentence.
 
 ---
 
@@ -535,6 +697,15 @@ Eleven alarms and one dashboard, in `ZamphoraOpsStack`. Most are the ordinary on
 | **Runaway spend** | more than $0.10 in an hour | At $5 of balance, a dollar an hour empties it in an evening |
 | **The breaker opened** | 5 model calls failed in a row | The product stopped calling the model on its own |
 | **Front door flood** | more than 50,000 CloudFront requests in an hour | The only warning of a flood that never reaches the throttled gateway |
+
+**Eleven is one past the free allowance, and nobody noticed until 2026-09-01.** CloudWatch gives ten
+alarm metrics free. The eleventh alarm was added on 2026-08-31 to close the flood hole, and three
+files kept saying "the ten alarms" afterwards. So one alarm is charged — cents a month, far below
+everything else in section 8, but the documents claimed $0 and claimed ten.
+
+**The lesson is not about alarms.** A number that appears in a heading, in a sentence and in two
+other files is a number that will disagree with itself the first time it changes. When a count is
+also a limit, write it in one place and point at it from the others.
 
 **Two things about measurements that are easy to get wrong, and both were found here.**
 

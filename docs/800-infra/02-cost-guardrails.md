@@ -52,16 +52,16 @@ request, against the credit.
 | **Amazon CloudFront** | Always Free. "This always free service is on the Free and paid plan" | "1 TB of Data Transfer Out", "10 Million HTTP or HTTPS Requests" ([AWS free networking](https://aws.amazon.com/free/networking/), checked 2026-08-27) | Charged per GB and per 10,000 requests |
 | **Amazon Cognito** | Free tier that "does not automatically expire at the end of your 12-month AWS Free Tier term" | 10,000 monthly active users, on **Lite** and on Essentials ([Cognito pricing](https://aws.amazon.com/cognito/pricing/), checked 2026-08-25 in ADR-0003) | Charged per monthly active user. **The tier is Essentials** (gate 52, corrected 2026-08-31). Lite has only the older classic hosted UI — AWS: *"The Essentials plan is the lowest plan level that unlocks access to managed login"*. Both tiers give the same 10,000 free users, so Essentials costs **$0.00** here. Past 10,000, Lite is **$0.0055** and Essentials **$0.015** (same page, checked 2026-08-28) |
 | **Amazon API Gateway** | **No Always Free offer.** The free amount is a twelve-month trial ([API Gateway pricing](https://aws.amazon.com/api-gateway/pricing/), checked 2026-08-26 in ADR-0002) | **Nothing** | **Bills from the first request**, at $1.00 per million HTTP API calls |
-| **Amazon S3** | **No Always Free offer.** "5 GB of Amazon S3 Standard storage, 20,000 Get Requests, 2,000 Put Requests… each month for one year" ([S3 free tier](https://aws.amazon.com/free/storage/s3/), checked 2026-08-27) | **Nothing** | **Bills from the first object.** The per-GB and per-request prices were **not verified first-party** in this run |
-| **Amazon CloudWatch** | Free tier, described with no twelve-month qualifier | 5 GB of log data (ingestion, archive storage and Logs Insights scanning together), 10 custom metrics, 10 alarm metrics, 3 dashboards, 1 million API requests ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/), checked 2026-08-27) | Charged per GB and per metric. **Whether these are Always Free on a Free account plan was not verified first-party.** Treat the numbers as a budget, not as a promise |
-| **AWS Systems Manager Parameter Store** | Standard parameters have no charge | Standard tier only. Advanced parameters are charged | **Not verified first-party in this run.** Never create an advanced parameter |
-| **Amazon SNS** | Free tier for email notifications | Used only for alarm emails. **The exact free number was not verified first-party in this run** | A handful of alarm emails a month is far below any published figure |
-| **CloudFront Functions** | Free allowance for invocations | Used for the URL rewrite (`01-iac-plan.md` §4.6). **Not verified first-party in this run** | Charged per million invocations |
+| **Amazon S3** | **No Always Free offer**, and the reason is a date. AWS changed the S3 offer on **2025-07-15**: accounts opened after it get the one-time credit instead of the old rolling free tier ([S3 FAQs](https://aws.amazon.com/s3/faqs/), checked 2026-09-01). This account opened 2026-07-01, so it is on the wrong side of that line | **Nothing** | **Bills from the first object.** The per-GB and per-request prices are still **not verified first-party** |
+| **Amazon CloudWatch** | Always Free. *"This always free service is available on the Free and Paid plan"* | 5 GB of log data (ingestion, archive storage and Logs Insights scanning together), 10 custom metrics, 10 alarm metrics, 3 dashboards, 1 million API requests ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/), checked 2026-09-01) | Charged per GB and per metric. **The ten alarm metrics are already passed: `03-observability.md` §5 lists eleven alarms**, so one is charged. Cents a month, and it is the owner's call whether to drop one — see §9 |
+| **AWS Systems Manager Parameter Store** | Standard parameters have no charge, and no monthly limit is named ([Systems Manager pricing](https://aws.amazon.com/systems-manager/pricing/), checked 2026-09-01) | Standard tier only. Advanced parameters are charged | Never create an advanced parameter |
+| **Amazon SNS** | Always Free. *"This always free service is available on the Free and Paid plan"* | 1,000,000 publishes, 100,000 HTTPS deliveries and **1,000 email deliveries** a month ([SNS on the free tier](https://aws.amazon.com/pm/sns/), checked 2026-09-01) | A handful of alarm emails a month is far below 1,000 |
+| **CloudFront Functions** | Always Free | **2,000,000 invocations a month** ([CloudFront FAQ](https://aws.amazon.com/cloudfront/faqs/), checked 2026-09-01) | Used for the URL rewrite (`01-iac-plan.md` §4.6), a few hundred a month. Charged per million past the allowance |
 | **AWS KMS** | AWS-managed and AWS-owned keys have no monthly charge | **This design creates no key of its own** | Not applicable — see §6 |
 | **Amazon Route 53** | **No free tier for hosted zones.** "$0.50 per hosted zone per month" ([Route 53 pricing](https://aws.amazon.com/route53/pricing/), checked 2026-08-27) | **Not used.** Gate 45 chose the free CloudFront hostname, so no hosted zone exists | Not applicable |
 | **AWS Certificate Manager** | Public certificates have no charge | **Not used.** No domain, so no certificate | Not applicable |
 | **NAT Gateway** | None. There is no free offer | **This design has no VPC and therefore no NAT Gateway** | Not applicable — see §6 |
-| **DynamoDB point-in-time recovery** | None. Charged per gigabyte | **Off** (gate 46, §8) | Not applicable |
+| **DynamoDB point-in-time recovery** | None. **$0.20 per GB per month** ([DynamoDB provisioned pricing](https://aws.amazon.com/dynamodb/pricing/provisioned/), checked 2026-09-01) | **Off** (gate 46, §8) | This table holds no photo bytes — text, counters and short strings only. At a few hundred MB that is **a few cents a month**, not a real trade. §8 states the reason as cost; that reason does not hold. **Re-open with the owner** |
 | **GitHub Actions** | Not AWS. Free and unlimited on a public repository | Unlimited minutes, and CodeQL scanning at no charge (gate 47) | Not applicable while the repository is public |
 | **Anthropic Messages API** | Not AWS. A separate account | About $5, topped up by hand | The feature answers `no-credit` and never retries |
 
@@ -72,13 +72,21 @@ request, against the credit.
    three still apply. The third does not, because gate 45 removed the hosted zone entirely. A hosted
    zone is where Route 53 keeps the DNS records for one domain.
 2. **The amounts are tiny at one user.** §4 does the arithmetic.
-3. **Five rows in that table carry a "not verified first-party" mark, and between them they hold six
-   numbers.** The five rows are S3, CloudWatch, Parameter Store, SNS and CloudFront Functions. Five
-   rows but six numbers, because the S3 row names two prices: one for storage and one for requests.
-   First-party means checked against the provider's own page, not against a blog post or a memory.
-   Each unchecked number is small enough that it does not change a decision. They are marked anyway,
-   because a number nobody checked and a number somebody checked look identical once they are
-   written down.
+3. **Five rows once carried a "not verified first-party" mark. All five were checked on 2026-09-01,
+   and every number in them was already right.** The five were S3, CloudWatch, Parameter Store, SNS
+   and CloudFront Functions. First-party means checked against the provider's own page, not against
+   a blog post or a memory. Two of the five turned out to be better than assumed: CloudWatch and SNS
+   are both stated by AWS as *"available on the Free and Paid plan"*, so they are Always Free here,
+   not a hopeful budget. **One number is still unchecked** — S3's per-GB and per-request prices —
+   and it stays marked, because a number nobody checked and a number somebody checked look identical
+   once they are written down.
+
+   **Two things the check changed rather than confirmed.** S3's zero allowance turns out to be about
+   a **date**, not the old free-tier wording: AWS replaced the S3 offer on 2025-07-15, and this
+   account opened after it. Write that down, because the same conclusion would be **false** for an
+   older account and a reader would otherwise have to work it out again. And the ten CloudWatch
+   alarm metrics are not a comfortable number — `03-observability.md` §5 spends **all ten**. The
+   eleventh alarm either replaces one of them or starts costing money.
 
 ## 3. Where the free allowances actually get spent, and the settings that stop it
 
@@ -132,8 +140,8 @@ the total settles at roughly 36 MB.
 | Lambda | $0 | Far inside 1 million requests and 400,000 GB-seconds |
 | DynamoDB | $0 | Inside 20/20 plus 5/5, and inside 25 GB |
 | CloudFront | $0 | Inside 1 TB and 10 million requests |
-| Cognito | $0 | One monthly active user against 10,000, on Lite |
-| CloudWatch | $0 | Inside 5 GB, 10 metrics, 10 alarms |
+| Cognito | $0 | One monthly active user against 10,000, **on Essentials** (gate 52). Both tiers give the same 10,000 |
+| CloudWatch | Cents | Inside 5 GB and 10 custom metrics. **Eleven alarms against a free ten**, so one is charged — `03-observability.md` §5 |
 | **Route 53** | **$0** | **No hosted zone. Gate 45 chose the free CloudFront hostname** |
 | **GitHub Actions** | **$0** | Unlimited on a public repository (gate 47) |
 | API Gateway | About $0.002 | $1.00 per million calls, at roughly 2,000 calls a month |
@@ -358,14 +366,35 @@ per-account daily limit.**
 
 ### The AWS credit
 
+- **AWS already sends an alert, free, with no setup, and this run did not know it.** Checked
+  2026-09-01: *"You also receive periodic email alerts regarding your credit balance and when you
+  are approaching the end of your free account plan period"*
+  ([Tracking your AWS Free Tier usage](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/tracking-free-tier-usage.html)).
+  **This does not replace the weekly check.** "Periodic" is not a promised frequency, and a fast
+  runaway would outrun it. But the owner is not the only line of defence.
 - **A weekly look at the Billing console's remaining-credit figure, on a fixed day.** One person, one
-  minute. It is written here as a routine because there is no reliable automatic version of it. The
-  usual billing alarm watches an estimated *charge*, and on a Free account plan the credit goes down
-  instead of a charge appearing. **Whether an alarm can watch the credit going down on this plan was
-  not verified first-party in this run.**
-- **An AWS Budget with an alert.** The first budgets carry no charge on most accounts, and this
-  would need one. **The exact free number was not verified first-party.** Worth setting up once the
-  account details are settled.
+  minute. It stays, for the reason above. The usual billing alarm watches an estimated *charge*, and
+  on a Free account plan the credit goes down instead of a charge appearing.
+- **An AWS Budget with an alert, and no action, is free with no count limit.** Checked 2026-09-01:
+  *"Budgets without actions are free"*
+  ([AWS Budgets FAQs](https://aws.amazon.com/aws-cost-management/aws-budgets/faqs/)). The
+  two-free limit applies only to **action-enabled** budgets, which this product must not use — see
+  the next point. Worth setting one at a small number, notifying the same SNS topic the alarms use.
+- **One question is still open, and no page can answer it.** A Budget tracks *spend rising* against
+  a threshold. On this plan the *credit falls* instead. Whether a Budget notices the second the way
+  it notices the first needs a small live test: set a $1.00 budget, run some model calls, see what
+  arrives. Creating the budget costs nothing either way. **Until that test is done, do not treat a
+  Budget as the thing that protects this account.**
+- **AWS Budget *actions* cannot protect this architecture, and that is worth writing down so the
+  question is not asked again.** A Budget action can do two things: attach an IAM or service-control
+  policy to a principal, or stop an EC2 or RDS instance. **None of this product's costs are either
+  of those.** Lambda invocations, DynamoDB capacity, API Gateway requests and CloudFront requests
+  cannot be paused by a Budget action. At most it would lock the owner out of their own console
+  while a flood kept billing. The structural guardrails in §5 and §6 are the real protection.
+- **AWS Cost Anomaly Detection is free and is not used yet.** AWS describes it as coming *"at no
+  cost to our customers"*. It watches for a spending pattern nobody wrote a threshold for, which is
+  exactly the gap the ten fixed alarms leave. It is one console opt-in pointed at the existing SNS
+  topic. **Turning it on is the owner's decision** — see §9.
 - **The strongest signal is free and needs no setup:** the DynamoDB throttle alarms in
   `03-observability.md` §5. A table that is being throttled is a workload that has gone wrong. The
   alarm fires long before the credit moves.
@@ -392,6 +421,14 @@ every resource in code from the first one, and it is worth more here than on a p
 allowance. At one user with test data, losing rows is survivable, and that is what made it
 acceptable.
 
+**Corrected 2026-09-01: the cost half of that reasoning does not hold, and the number is now
+checked.** Point-in-time recovery is **$0.20 per GB per month**. This table stores no photo bytes —
+the photos are in S3 — so it holds text, counters and short strings. At a few hundred megabytes that
+is **a few cents a month**, against a $200 credit. That is not a trade-off; it is a rounding error.
+Whatever the right answer is, "it costs too much" is not the reason. If the decision is to keep it
+off, the honest reason is one fewer setting to think about while there is nothing worth recovering.
+**Gate 46 should be re-opened with the real number in front of the owner.**
+
 What does not come back:
 
 - Every assessment and every pot in the DynamoDB table.
@@ -413,3 +450,13 @@ Whether any cost is acceptable · whether the account moves to a paid plan · wh
 kill-switch, which is the owner · when to declare an incident · which failure codes count as a
 breaker failure, which is confirmed when the breaker's row shape is written into
 `docs/400-architecture/05-patterns.md` — see the list in `04-ci-cd.md` §6.2.
+
+**Three things this run added to that list, on 2026-09-01.** Each is free or nearly free, and each
+is still the owner's call because each turns something on in the account:
+
+- **Decide what to do about the eleventh alarm.** `03-observability.md` §5 lists eleven against a
+  free ten, so one is charged. Keep it and pay cents, or drop one of the ordinary alarms 1 to 5.
+- **Re-open gate 46, point-in-time recovery**, now that the price is known to be cents (§8).
+- **Turn on AWS Cost Anomaly Detection**, pointed at the existing alarm topic (§7).
+- **Create one alert-only AWS Budget**, and use it to run the live test in §7 that settles whether a
+  Budget can see a falling credit at all.

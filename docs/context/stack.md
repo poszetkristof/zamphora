@@ -25,6 +25,7 @@ on **2026-08-27**.
 | Web framework | **Next.js**, built with `output: 'export'` | **`16.3.3`** | ADR-0010 |
 | UI library | **React** | **`19.2.8`** | with Next.js |
 | API framework | **Nest.js**, Express adapter, one Lambda function | **`11.2.3`** | ADR-0002 |
+| Lambda bridge for the API | **`@codegenie/serverless-express`**. Turns the gateway event into an Express request — Nest.js alone cannot do this | latest | `03-api-spec.md` §1 |
 | Shared types | **Zod**, in `packages/contracts` | **`4.4.3`** | `factory/feature.md` |
 | Components | **shadcn/ui**, which uses **Base UI** underneath. Styled with Tailwind | **`@base-ui/react` `1.7.0`** | ADR-0011 |
 | Infrastructure | **AWS CDK**, one stack per deployable unit | latest | ADR-0001 rule 5 |

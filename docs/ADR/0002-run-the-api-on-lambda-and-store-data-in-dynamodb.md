@@ -11,6 +11,13 @@
   because `06-nfrs.md` needs a preview environment. This record still said "fixed at 25/25" and
   "do not add a second table", which contradicted the built system. The rule is now a total, not a
   per-table number. See "The capacity mode" below. Nothing had been built on the old text.
+- **Corrected 2026-09-01, after an outside review of the compute choice. The decision does not
+  change; two pieces of reasoning do.** First, the "fifth cost" said ADR-0004 does the work of least
+  privilege. It does not — it answers a different threat, and the text now says which. Second, the
+  cold-start figure quotes a plain Node.js number that does not carry over to a Nest.js application.
+  Both are in "Consequences" below. The review also confirmed the shape of this decision against
+  outside practice: a whole framework in one function is a named, recommended pattern at this size,
+  and it scales per function, not per account. Nothing had been built on the old text.
 
 ## Context
 
@@ -152,6 +159,13 @@ optimised Node.js cold start at roughly 200 to 800 ms
 ([Sedai](https://sedai.io/blog/what-is-cold-starts-in-lambda-understanding), checked 2026-08-25).
 Secondary source, budgeted at the top of the range in `03-flow.md`.
 
+**Corrected 2026-09-01: expect more than that, and the range above is the wrong kind of
+measurement.** It is for a plain Node.js function. This is a Nest.js application, whose cold start
+also has to build the dependency-injection container before it can answer. A published measurement
+of a Nest.js application in one Lambda function reports about **1.0 to 1.1 seconds**. That is one
+app, not a promise about this one, and NFR-06's 2,000 ms still leaves room. **Replace this whole
+paragraph with the measured number** once `03-observability.md` §4's query returns one.
+
 **Third cost:** the repository layer is written against DynamoDB's key model. Moving to a relational
 store later would mean rewriting it. That cost is accepted because the eleven questions would map
 onto a relational store without changing a screen or a contract.
@@ -165,10 +179,24 @@ checked 2026-08-25). So no rule may depend on a TTL firing on time — see NFR-3
 `GET /api/health` runs with the same DynamoDB and S3 permissions as `POST /api/assessments`. One
 function per route would let each one carry only the permissions it needs, which is what least
 privilege asks for. That is given up here on purpose: the trade is a real one, and at one developer
-with one function the reading cost of many small roles is worse than the risk. **The border that
-does the work instead is ADR-0004** — the owner id comes from the session and the key builder will
-not compile without it, so a bug in one route still cannot read another person's data. If the API is
-ever split, split the role with it.
+with one function the reading cost of many small roles is worse than the risk.
+
+**Reworded 2026-09-01, because the old text claimed more cover than it had.** It said the border
+doing the work instead is ADR-0004. Two different problems are being mixed there, and they need
+separating:
+
+- **A route with a missing ownership check.** ADR-0004 answers this one, and answers it well. The
+  owner id comes from the session and the key builder will not compile without it, so a bug in one
+  route still cannot read another person's data.
+- **A compromised execution context** — a poisoned dependency, or a crafted image reaching the
+  decode path. **ADR-0004 does nothing here.** That code holds the whole role, over every row and
+  every object, because at that point there is no "route" left to constrain. Least privilege exists
+  for exactly this case, and OWASP's serverless guidance names role-per-function for it.
+
+**The trade is still accepted, and now for the stated reason:** one developer, one function, and
+data that is plant photos and care schedules. It is not accepted because ADR-0004 covers it. **900
+Security owns this when that role runs**, and should look at it with the `sharp` decode path in
+`01-iac-plan.md` §4.4 in mind. If the API is ever split, split the role with it.
 
 ## Alternatives considered
 
@@ -178,12 +206,37 @@ matters most here: a load balancer and a database are charged by the hour and ne
 spend the credit through every night the app is untouched. It also needs a network with subnets, a
 patch window and backups — several new things before the first assessment works.
 
+**This is the right answer once cost stops being the binding constraint, so it is written out in
+full rather than only rejected.** `docs/learn/aws-and-the-pipeline.md` §7 draws the whole container
+shape — load balancer, a queue so the phone stops waiting for the model, Postgres, a cache — and
+puts a rough monthly number on it. The short version: roughly $150 a month while nobody uses the
+app, against about two cents today. The move becomes right when the account is off the free plan
+**and** traffic is steady rather than a few requests a day — the same trigger as gates 5 and 31.
+
 **A relational store on serverless compute.** Rejected on the same cost shape. It also puts a
 connection pool in front of a function that scales by starting more copies of itself, which is a
 known sharp edge and would need a proxy to solve.
 
 **One Lambda per route.** Rejected. It multiplies cold starts across a flow that already has a
 30-second budget, and it gives one developer many small things to look at instead of one.
+
+**Added 2026-09-01: the trigger to revisit this, and which route goes first.** Scale is not the
+trigger. AWS states the scaling rate **per function** — 1,000 more copies every 10 seconds — so one
+function holding twelve routes scales as well as twelve functions would
+([Lambda scaling behavior](https://docs.aws.amazon.com/lambda/latest/dg/scaling-behavior.html),
+checked 2026-09-01). The table gives up first: 20 read units is about 20 reads a second, roughly one
+sixth of what the default 1,000-copy account limit already allows through.
+
+The real trigger is **one function's copies being shared by routes with very different shapes**. An
+assessment holds its copy for six to eight seconds; reserved concurrency is 10; so ten assessments
+at once refuse every other route with a 429 for those seconds. **When that shows up, split
+`POST /api/assessments` out first, and only that one.** It fixes three things at once: the fast
+routes stop queueing behind the slow one, every other route stops paying for image-sized memory, and
+the paid route gets its own smaller IAM role — the "fifth cost" above. Splitting the small read
+routes buys almost nothing and should not be done for symmetry.
+
+**Do not read this as permission to split now.** It is the written trigger so that the decision is
+made by a measurement rather than a feeling.
 
 **Single-table design with overloaded generic keys (`GSI1PK`, `entityType`).** Rejected. It is the
 clever path, and `00-context-brief.md` §5.3 asks for the documented one. Readable prefixes give the
@@ -205,3 +258,7 @@ same table with none of the reading cost.
 > Do not let any request run past the 20,000 ms application deadline — the gateway cuts the request
 > off at 30 seconds and answers with a 504 the app did not write. Do not rely on DynamoDB TTL to
 > delete anything on time; always check the expiry in code.
+> Do not split the API into more than one function in run 1, and do not argue for it from scaling —
+> Lambda scales per function, and the table's 20 units give up first. The one written trigger is
+> fast routes being refused while assessments hold the reserved concurrency, and the only route to
+> split then is `POST /api/assessments`.
