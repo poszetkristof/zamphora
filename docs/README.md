@@ -28,10 +28,18 @@ it is a slot that has not run yet. See `/ai-factory:factory-run`.
 changed file says so under its title, and the 900 files list their corrections in a section at the
 bottom, as their own rule asks.
 
-**One folder here has no role and never will:** `learn/` holds three notes: `ai-native-delivery.md`
-explains the method, `monorepo-architecture.md` the shape of the code, `aws-and-the-pipeline.md`
-the running system. **No subagent may write to it.** It is updated by a person, or by
-`/ai-factory:learn`, which lists its sections first.
+**One folder here has no role and never will:** `learn/`. It holds four notes:
+
+| Note | Subject |
+| --- | --- |
+| `backend-concepts.md` | **The ideas underneath, explained on their own.** 74 concepts, each with the question it answers, the real tool, what this project does, how else it is done, and the trap |
+| `ai-native-delivery.md` | The method — how the factory line works |
+| `monorepo-architecture.md` | The shape of the code |
+| `aws-and-the-pipeline.md` | The running system on AWS |
+
+**No subagent may write to that folder.** It is updated by a person, or by `/ai-factory:learn`, which
+lists its sections first. **`backend-concepts.md` is the one to read first** if a term in any other
+document is unfamiliar: the other three explain *this project*, and it explains *the idea*.
 
 ## Three rules that apply to every file here
 

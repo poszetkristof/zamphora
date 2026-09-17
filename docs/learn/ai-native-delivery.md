@@ -16,6 +16,12 @@ developer could build from, and nothing is explained before you have seen why it
 project is real: **`zamphora`**, a plant-care app for someone whose houseplants keep dying. The file
 names, the numbers and the mistakes are the ones you will actually meet.
 
+**This note is about the process, not about backend engineering.** Where it names a technical idea in
+passing — a threat model, an NFR, a golden set, the lethal trifecta — **that idea is explained on its
+own in `backend-concepts.md`**, with what it is, how else it is done, and the trap. The ones this note
+leans on are **41** trust boundaries and threat modelling · **42** OWASP · **58** NFRs and ADRs ·
+**71** evals and the golden set · **70** prompt injection · **57** SLI, SLO and SLA.
+
 ---
 
 ## Contents
@@ -86,7 +92,8 @@ flowchart LR
   end
 ```
 
-Phase 1 is **the line**: eight AI roles run one after another, each writing documents the next one
+**How to read it.** It is a **flowchart** read left to right, and the two halves are two different
+machines. Phase 1 is **the line**: eight AI roles run one after another, each writing documents the next one
 reads. Phase 2 is **the backlog**: a task list generated from those documents, worked one task at a
 time, each task pointing at the spec section it must follow.
 
@@ -218,8 +225,8 @@ The remaining three are shorter:
 - **Subagent** — runs in its own context and hands back only its result. Good for searching 40 files,
   bad when you need those files open to edit right after: you would read everything twice.
 - **MCP server** — gives the agent tools instead of text: a tracker, a database, a browser. Only add
-  one whose tools a role actually needs, and say which role may use it. This project has one, added
-  2026-09-01 — see below.
+  one whose tools a role actually needs, and say which role may use it. This project has one — see
+  below.
 
 #### The one MCP server in this repo
 
@@ -565,7 +572,7 @@ The PRD also carries a **guardrail metric**: the number that must *not* move whi
 goes up. Photo uploads rising is good; the model bill rising with them is what you watch. This run
 adds a second — the share of `cannot-tell`: a model hiding there is never wrong and never useful.
 
-### What the real run showed, 2026-08-24
+### What the real run showed
 
 Two things role 200 did here matter more than the 14 stories it wrote.
 
@@ -727,9 +734,9 @@ architecture.
 ### The timed flow, and the simplest shape that works
 
 `001-photo-assessment/03-flow.md` lists every step with a number, in two columns — the run most
-people get, and the run the design has to survive. The table below is the run-1 version; the file
-was rewritten on 2026-09-17 with twenty steps and two budgets, and the shape of the argument is the
-same:
+people get, and the run the design has to survive. The table below is the first version of it. The
+file has since been redrawn for the background shape, with twenty steps and two budgets, and the
+shape of the argument is unchanged:
 
 ```
 typical   8,191 ms   warm function, decent signal
@@ -740,8 +747,8 @@ budget   15,245 ms   cold function, weak signal, first call of the day
 **The point is that the numbers must add up.** A ten-second check that catches a design nobody
 totalled — one published example claimed 87 ms when its own steps came to 92.
 
-**A third row used to sit under those two: a retry at 25,230 ms.** The owner deleted the retry on
-2026-08-26 once the pre-mortem showed it broke the cost ceiling and squeezed the time budget. **The
+**A third row used to sit under those two: a retry at 25,230 ms.** The owner deleted the retry once
+the pre-mortem showed it broke the cost ceiling and squeezed the time budget. **The
 table is the thing that made that visible** — the retry was not obviously wrong until somebody added
 it up next to the ceiling it had to fit under.
 
@@ -771,10 +778,10 @@ clock cannot run until the cold start has finished. **Anything that happens befo
 budgeted outside your deadline, not inside it.**
 
 **And the stack itself was taken apart three weeks later, which is the last lesson of this
-section.** On 2026-09-17 the owner moved the model call out of the request and into a background
-workflow (ADR-0014). The gateway's 30 seconds is no longer on the paid path, the retry that was
-deleted on 2026-08-26 came back with a cap of two, and the table above is now history. None of that
-makes the lesson wrong. The table is what showed that the phone waiting on the model was the real
+section.** The owner moved the model call out of the request and into a background workflow
+(ADR-0014). The gateway's 30 seconds is no longer on the paid path, the retry that had been deleted
+came back with a cap of two, and the table above is now history. None of that makes the lesson
+wrong. The table is what showed that the phone waiting on the model was the real
 constraint, and a table that shows a constraint that clearly is also what lets you see when a
 different shape removes it. **A finding is not a commitment to the shape it was found in.**
 
@@ -959,7 +966,7 @@ One more habit: **check a package is real before you add it.** Models invent pla
 the same invented name comes back across sessions, and attackers register it and wait. The name for
 this is **slopsquatting**.
 
-### What the real run showed, 2026-09-01
+### What the real security run showed
 
 The section above is what the role is *for*. This is what it actually did, because the run turned
 out to teach more than the description does.
@@ -1000,8 +1007,8 @@ confident.
 
 ### A control can be copied for its shape and not for what it does
 
-**Found on 2026-09-17, by auditing the pack against itself.** This is a different failure from the
-stale number in section 11, and it is harder to see.
+**This one was found by reading the pack against itself, not by a test.** It is a different failure
+from the stale number in section 11, and it is harder to see.
 
 The product has to delete an account that has not been used for twelve months. There was already a
 good pattern in the repository for deleting on a clock: the photo is removed by an **S3 lifecycle
@@ -1114,6 +1121,8 @@ flowchart RL
   ARCH -->|"its inputs were fine.<br/>Stop here"| END["the finding<br/>belongs to 400"]
 ```
 
+**How to read it.** Each row is one role, and the arrow between two roles is a **seam** — the
+handover, and the place a fact goes missing. The label on an arrow is what actually crossed it.
 Security had nothing to be specific about. Architecture had everything it needed and still left the
 target out, so **the finding belongs to Architecture.** Fix it at QA instead and you invent a number on
 the spot — worse than no test, because from then on the number looks agreed.

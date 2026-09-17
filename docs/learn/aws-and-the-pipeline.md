@@ -2,17 +2,17 @@
 
 **How this project runs on AWS, and how the build reaches AWS without any password existing.**
 
-Written 2026-08-27, after 800 Infra ran and the owner closed 17 decisions.
-Rewritten 2026-08-31, after a full review of the pack. The running system now comes first.
-Section 7 extended 2026-09-01, after an outside review of the compute choice: how the one function
-scales, where it really hurts, and what the system would look like if cost were not a constraint.
-Sections 2, 3, 4, 7, 8 and 14 updated 2026-09-17, when the owner moved the assessment into a
-background workflow (ADR-0014 to ADR-0016). Where a section keeps the old shape as a story, it says
-so, because the lesson in it is still the lesson.
+This note is one of four. `backend-concepts.md` explains **the ideas on their own**, away from this
+project. `ai-native-delivery.md` is about the **process**. `monorepo-architecture.md` is about the
+**shape of the code**. This one is about the **running system** — what is in the cloud, who is
+allowed to change it, and what stops it costing money.
 
-This is the third learning note. `ai-native-delivery.md` is about the **process**.
-`monorepo-architecture.md` is about the **shape of the code**. This one is about the **running
-system** — what is in the cloud, who is allowed to change it, and what stops it costing money.
+**If a term here is unfamiliar, it is defined in `backend-concepts.md`**, which is a dictionary
+rather than a walkthrough. This note says what *this system* does; that one says what the *idea* is,
+how else it is done, and the trap. The concepts this note leans on hardest are **46** servers,
+containers and serverless · **47** cold starts · **50** the CDN and the edge · **39** least privilege
+and IAM · **45** infrastructure as code · **55** observability · **59** cost as a correctness
+property · **43** defence in depth · **64** CI and CD.
 
 **Part A is the system.** Read it in order, once. It is the part worth understanding six months from
 now, because the shape of the running system is what you have to hold in your head before you can
@@ -108,8 +108,8 @@ That one Region is **eu-central-1**, Frankfurt, because a photo of the inside of
 data and it should stay under EU rules. The exception is explained at the end of this section, and
 it holds no data at all.
 
-The newest of the eight is **`ZamphoraWorkflowStack`**, which arrived on 2026-09-17 when the
-assessment moved into the background.
+The newest of the eight is **`ZamphoraWorkflowStack`**, which arrived when the assessment moved
+into the background.
 
 ```mermaid
 flowchart TD
@@ -163,11 +163,18 @@ flowchart TD
     style PH fill:#e8f4ea
 ```
 
+**How to read it.** It is a **flowchart**: boxes are things that exist, arrows are calls, and each
+dashed outline is one CDK stack — one group of resources created and destroyed together. Start at the
+top left with the phone and follow the arrows down. **The two things worth noticing are absences:**
+the `web` box has **no arrow to the table or the bucket**, because the pages hold no credentials and
+reach nothing; and only `assess` has an arrow to Anthropic, because it is the only function that can
+read the model key.
+
 One of the eight is **`ZamphoraOpsStack`** — the alarms, the dashboard and the notification topic.
 It is not part of the product. It watches it, and it is not in the picture above for that reason.
 Section 9 covers what it can see.
 
-**What changed on 2026-09-17, in one paragraph.** Until then the `api` function made the model call
+**Why there are three functions and not one.** The `api` function used to make the model call
 itself, while the phone waited. Now the `api` function does the checks, writes the assessment row
 as `queued`, starts a **Step Functions** workflow and answers `202` — "accepted" — in about a second.
 Step Functions is the AWS service that runs a list of steps with retries and error handling written
@@ -235,7 +242,12 @@ flowchart LR
     style B2 fill:#e8f4ea
 ```
 
-**The stream path is new on 2026-09-17, and its order matters.** CloudFront tries behaviours in
+**How to read it.** This is a **routing** flowchart, and **the order of the branches is the
+meaning**, not decoration. CloudFront tries each rule from the top and takes the first that matches,
+so a rule written lower can be unreachable. Every arrow label is a URL pattern: that is the whole
+public surface of the product in four lines.
+
+**The stream path's position in that list is not decoration.** CloudFront tries behaviours in
 order and takes the first match, so the events path has to be listed before `/api/*` or it never
 matches. It goes to a **Lambda Function URL** — an HTTPS address a function can have on its own,
 with no gateway — because the API Gateway HTTP API cannot stream a response, and the older REST API
@@ -277,8 +289,8 @@ cookie protections were available.
 ## 4. Four clocks, stacked — and then taken apart
 
 This is the most useful thing in the note for any project, not only this one. **The first half is
-the shape run 1 had until 2026-09-17.** It is kept because the lesson is the lesson whatever the
-shape. The second half says what the clocks look like now.
+the shape this project started with**, kept because the lesson holds whatever the shape. The second
+half says what the clocks look like now.
 
 The product promises **30 seconds** from the tap that takes the photo to something on screen. The
 slowest part is a call to a model, which takes several seconds and has no fixed length. So the
@@ -332,7 +344,7 @@ So there was a constant, `WRITE_BUDGET_MS = 1500`, and the model's abort fired a
 `min(18,000, time left − 1,500)`. The rule behind it is still the rule: **once the model has
 answered, the write always finishes, because the money is already spent.**
 
-### What the clocks look like since 2026-09-17
+### What the clocks look like now
 
 The model call left the request. The `api` function now answers `202` in about a second, and the
 call runs inside a Step Functions workflow where **every step has its own clock and the platform
@@ -460,6 +472,11 @@ flowchart LR
     style X fill:#fde8e8
 ```
 
+**How to read it.** Follow one photo from left to right: it arrives at the API, is re-encoded, is
+written to the bucket, and is read back later through a signed link. **The arrow that is not there is
+the point:** nothing goes from the browser to the bucket directly, and nothing reads the bucket
+through a cache.
+
 **Four decisions in that picture.**
 
 **The photo goes through the API, not straight from the browser to S3.** The usual pattern is a
@@ -497,7 +514,7 @@ never by trusting that the row is gone.
 
 ## 7. The function itself, and the build that nearly did not work
 
-One Lambda function, `api`, holds the entire Nest.js API. Since 2026-09-17 two more functions are
+One Lambda function, `api`, holds the entire Nest.js API. Two more functions are
 built from the same codebase, each with one job.
 
 | Setting | `api` | `assess` | `watch` | Why |
@@ -597,8 +614,9 @@ because those are two different builds and nobody compared them.
 
 ### The second build trap, and it is the same shape
 
-**Written 2026-09-17, found by auditing the pack rather than by a deploy.** The first trap above is
-about information the compiler has to emit. This one is about code the bundler cannot touch at all.
+**This one was found by reading the plan, not by a failed deploy**, which is the only reason it is
+not a story about an afternoon lost. The first trap above is about information the compiler has to
+emit. This one is about code the bundler cannot touch at all.
 
 `sharp` is the library that decodes and re-encodes the photo. It is a **native module**: most of it
 is JavaScript, but the real work happens in a compiled binary, a `.node` file, that the JavaScript
@@ -633,8 +651,7 @@ not JavaScript is your problem, and it will not tell you.
 
 ### If money were no object: the same product as a container
 
-**Written 2026-09-01.** Everything above is shaped by one rule: the account closes instead of
-billing, so nothing may run while nobody is using the app. This part answers a different question.
+Everything above is shaped by one rule: the account closes instead of billing, so nothing may run while nobody is using the app. This part answers a different question.
 **If cost were not a constraint at all, what is the better system?** It is written down because the
 answer is not "the same thing, bigger". It is a different shape, and knowing the shape tells you
 what you are giving up today and what would have to change to get it.
@@ -670,7 +687,7 @@ flowchart TD
     style WEB fill:#e8f4ea
 ```
 
-**The one change that matters most is the queue, and it is not about scale.** Until 2026-09-17 the
+**The one change that matters most is the queue, and it is not about scale.** Originally the
 phone waited while the model thought. That is why section 4 had four stacked clocks and why the
 whole product was bounded by a 30-second ceiling it did not control. In the container version,
 `POST /api/assessments` writes a message to **SQS** — a queue, a list of jobs waiting to be picked
@@ -679,9 +696,9 @@ slow call. The phone is told over an open connection.
 
 **All four clocks disappear.** There is no 30-second gateway cut-off, no 20-second app deadline, no
 CloudFront read timeout to sit under. The model may take two minutes if it needs to. A retry becomes
-safe again, because a retry no longer eats a deadline. **This is exactly the gain the project took
-on 2026-09-17, without the container**: Step Functions plays the part of the queue and the worker,
-and it is free at this size. The subsection below says how.
+safe again, because a retry no longer eats a deadline. **This is exactly the gain the project took,
+without the container**: Step Functions plays the part of the queue and the worker, and it is free at
+this size. The subsection below says how.
 
 **What each piece replaces, and what it buys.**
 
@@ -746,8 +763,7 @@ smaller sentence.
 
 ### The free asynchronous shape, and how it was chosen
 
-**Written 2026-09-17.** The container shape above is the answer when money is no object. There is a
-different question, and it has a different answer: **what does the same product look like if the
+The container shape above is the answer when money is no object. There is a different question, and it has a different answer: **what does the same product look like if the
 phone stops waiting, and the account stays free?** Two shapes answered it, drawn and scored in
 `docs/400-architecture/00-options.md` §11, with the long reasoning in `08-async-options.md`. **The
 owner chose Option E the same day** (gate 72, ADR-0014 to ADR-0016), and section 2 now draws it.
@@ -852,9 +868,38 @@ plan ends. That is written down plainly rather than implying a protection that i
 
 ---
 
-## 9. What you can see when it breaks
+## 9. What you can see when it breaks — observability
 
-Eleven alarms and one dashboard, in `ZamphoraOpsStack`. Most are the ordinary ones any system has.
+**The topic has a name, and it is worth knowing as a name.** **Observability** is a standard backend
+subject and close to a non-functional requirement: **can you tell what the running system is doing,
+without attaching a debugger to it?** You cannot debug a Lambda function that ran once at 3 a.m. for
+somebody else and no longer exists. Observability is what replaces that.
+
+**It is three things, and all three are expected in an answer:**
+
+| Part | The question it answers | The AWS tool | Where it is here |
+| --- | --- | --- | --- |
+| **Logs** | **What happened in this one request?** Which route, which outcome, that it ended in a `400` or a `409`, and why | **CloudWatch Logs** | One structured line per request, with a failure code |
+| **Metrics** | **How many, how often, how fast?** How many requests, how many succeeded, how long the slowest 5% took | **CloudWatch Metrics** | AWS's own, plus six custom ones |
+| **Traces** | **Which services did this one request pass through, and where did the time go?** | **AWS X-Ray** | `api` → Step Functions → `assess` → Anthropic |
+
+**The difference that decides where something belongs.** A **log line is per event and is billed per
+gigabyte**. A **metric is a number aggregated over time and is cheap to keep for a year**. So "how
+many calls failed today" has to be a metric — answering it by reading a year of log lines is slow and
+expensive. Most of the traps later in this section are that distinction being got wrong.
+
+**Why traces only started to matter once the work was split.** Inside one program, a stack trace
+shows the whole path. Once a request crosses four pieces — `api`, the workflow, `assess`, the provider — **no
+single machine has seen the whole thing**. A trace gives the request an id that travels with it, and
+each piece reports its own part against that id. It is the only one of the three that answers *which
+step was slow*. Before the split there was one function, so there was nothing to trace.
+
+`docs/learn/backend-concepts.md` 55 has the same three parts away from AWS, with the alternatives —
+OpenTelemetry, Prometheus, Grafana — and 56 covers alerting.
+
+### What is actually watched here
+
+Twelve alarms and one dashboard, in `ZamphoraOpsStack`. Most are the ordinary ones any system has.
 **Four are the ones this project actually needs**, and they are the ones about a balance:
 
 | Alarm | Fires when | What it means |
@@ -864,14 +909,16 @@ Eleven alarms and one dashboard, in `ZamphoraOpsStack`. Most are the ordinary on
 | **The breaker opened** | 5 model calls failed in a row | The product stopped calling the model on its own |
 | **Front door flood** | more than 50,000 CloudFront requests in an hour | The only warning of a flood that never reaches the throttled gateway |
 
-**Eleven is one past the free allowance, and nobody noticed until 2026-09-01.** CloudWatch gives ten
-alarm metrics free. The eleventh alarm was added on 2026-08-31 to close the flood hole, and three
-files kept saying "the ten alarms" afterwards. So one alarm is charged — cents a month, far below
-everything else in section 8, but the documents claimed $0 and claimed ten.
+**The count is past the free allowance, and it drifted twice.** CloudWatch gives **ten** alarm
+metrics free. An eleventh was added to close the flood hole, and three files kept saying "the ten
+alarms" afterwards. A twelfth arrived with the background run, and the heading still said eleven
+until somebody read it against the table. So **two alarms are charged** — cents a month, far below
+everything else in section 8, but the documents claimed $0 and claimed the wrong number, twice.
 
-**The lesson is not about alarms.** A number that appears in a heading, in a sentence and in two
-other files is a number that will disagree with itself the first time it changes. When a count is
-also a limit, write it in one place and point at it from the others.
+**The lesson is not about alarms, and the fact that it happened twice is the proof.** A number that
+appears in a heading, in a sentence and in two other files is a number that will disagree with itself
+the first time it changes. When a count is also a limit, write it in one place and point at it from
+the others.
 
 **Two things about measurements that are easy to get wrong, and both were found here.**
 
@@ -1136,9 +1183,8 @@ job's result itself.
 that sleeps for the budgeted 8,000 ms — and 8,000 ms is the weakest guess in the whole design, with
 no source behind it. So the job could never fail for the reason the architecture itself names as its
 biggest risk. It now runs **twice**: once at 8,000 ms and once at **18,000 ms**, the model's own
-abort point. Both must confirm the run inside 30 seconds and show the result inside 60. Since
-2026-09-17 a third run makes the stub fail twice and then answer, which is the only way to prove the
-retry cap is real.
+abort point. Both must confirm the run inside 30 seconds and show the result inside 60. A third run
+makes the stub fail twice and then answer, which is the only way to prove the retry cap is real.
 
 **A test that can only pass is not a test.** Give it the value that would break the design and see
 whether it still holds.
@@ -1184,7 +1230,7 @@ Come back to this table. Do not try to remember it.
 | Required checks | **One aggregate check, `ci-ok`** | Eleven separate entries: a new job you forget to add becomes a check nobody enforces |
 | Actions | **Pinned to exact commits** | Moving labels: easier to read, and the code can change under you |
 | Node version | **24 everywhere** | Node 22: patched for a year less, and the decision would come back in 2027 |
-| Asynchronous assessment | **Option E, chosen 2026-09-17**: a Step Functions workflow, the result over server-sent events, a retry cap of 2, a refund when no call was made (gate 72, ADR-0014 to ADR-0016) | Keeping the phone waiting: the 30-second ceiling, no retry, one role over everything. Option F, direct upload and a stream of events: nothing planned needs it. The paid container shape: about $150 a month idle |
+| Asynchronous assessment | **Option E**: a Step Functions workflow, the result over server-sent events, a retry cap of 2, a refund when no call was made (gate 72, ADR-0014 to ADR-0016) | Keeping the phone waiting: the 30-second ceiling, no retry, one role over everything. Option F, direct upload and a stream of events: nothing planned needs it. The paid container shape: about $150 a month idle |
 
 **Still open, on purpose:**
 

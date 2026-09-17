@@ -19,7 +19,9 @@ Three things are already loaded — never re-ask what they answer:
 - **State** — the files on disk, which `/ai-factory:start` reads for you.
 
 If the user wants to understand the process rather than run it, it is one note:
-`docs/learn/ai-native-delivery.md`.
+`docs/learn/ai-native-delivery.md`. **If they ask what a backend or infrastructure term means**, the
+answer is `docs/learn/backend-concepts.md`, which explains the idea away from this project. Answer
+from it, and add to it when a new concept comes up.
 
 ## What this is
 
@@ -35,8 +37,9 @@ docs/            The specs, one folder per role. docs/context/stack.md first
 docs/ADR/        Decisions. Each ends in an instruction you must follow
 factory/         feature.md (this run's one feature) and the cost limits. The line itself is
                  the ai-factory plugin, in its own repo
-docs/learn/       Three notes. ai-native-delivery.md is the method; monorepo-architecture.md is the
-                 repository shape; aws-and-the-pipeline.md is the running system. Keep all current
+docs/learn/       Four notes. backend-concepts.md explains the ideas on their own;
+                 ai-native-delivery.md is the method; monorepo-architecture.md is the repository
+                 shape; aws-and-the-pipeline.md is the running system. Keep all four current
 apps/            web (Next.js) and api (Nest.js)
 packages/        contracts (Zod) and anything else shared
 infra/           CDK

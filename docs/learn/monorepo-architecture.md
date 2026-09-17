@@ -4,9 +4,14 @@
 infrastructure. This note explains how that is arranged, which tools do which job, and why each
 choice was made. It assumes you know React and TypeScript. It assumes nothing about workspaces.
 
-**Written 2026-08-26**, from research with checked sources. Every version number below was read from
-the npm registry on that date. **Updated 2026-08-28:** the task runner is now **Turborepo**, decided
-in ADR-0012. Sections 2, 7 and 16 changed.
+**Every version number below was read from the npm registry on 2026-08-26.** Versions go stale, so
+re-check them before trusting one.
+
+**The concepts underneath this note are explained on their own** in `backend-concepts.md`: **63**
+monorepo and polyrepo, with the measured cost of the alternative · **60** clean architecture, ports
+and adapters · **61** dependency injection · **62** monolith against microservices · **66** the
+testing pyramid · **73** RAG, for section 13. This note says what *this repository* does; that one
+says what the *idea* is and how else it is done.
 
 ---
 
@@ -77,8 +82,8 @@ flowchart LR
 **pnpm does not compete with Turborepo.** They compete with npm and with Nx respectively. A project
 using Turborepo still needs a package manager underneath it, and most of them use pnpm.
 
-zamphora picks **pnpm** for slot 1 and **Turborepo** for slot 2. ADR-0012 recorded both on
-2026-08-26. Section 7 explains why Turborepo was added at the start and not later.
+zamphora picks **pnpm** for slot 1 and **Turborepo** for slot 2, both recorded in ADR-0012.
+Section 7 explains why Turborepo was added at the start and not later.
 
 ---
 
@@ -428,7 +433,8 @@ flowchart LR
     A["application<br/>use cases<br/><i>knows the steps</i>"] --> D["domain<br/>rules and types<br/><i>knows nothing else</i>"]
 ```
 
-Read the arrows as "is allowed to import". The domain imports nothing. Infrastructure and
+**How to read it.** It is a **flowchart**, and the only thing it shows is direction. Read the arrows
+as "is allowed to import". The domain imports nothing. Infrastructure and
 presentation both point inwards and never at each other.
 
 ### What each layer holds
@@ -538,7 +544,9 @@ flowchart LR
     AD --> API["Anthropic Messages API"]
 ```
 
-The dotted arrows mean "is one of these". The use case never learns which.
+**How to read it.** A solid arrow is "uses". A **dotted arrow means "is one of these"** — it points
+from an implementation to the interface it satisfies. The use case never learns which one it got. That
+is the whole of what "a port and two adapters" means, drawn.
 
 **Four reasons this is a package and not a folder:**
 
@@ -681,7 +689,7 @@ not real folders full of files. Zipping `node_modules` would copy links that poi
 **The answer is to bundle.** esbuild follows every import and writes one JavaScript file with
 everything inlined. The links stop mattering, because nothing is left to resolve at run time. This
 is also faster: NFR-06 allows 2,000 ms for a cold start, and a bundled function starts quicker than
-one that unpacks a large `node_modules`. Since 2026-09-17 the same build produces three bundles
+one that unpacks a large `node_modules`. The same build produces three bundles
 from three entry files — `main.js`, `assess.js`, `watch.js` — and each becomes its own function.
 The shared modules are bundled into each one, so a rule written once ships three times.
 
@@ -695,7 +703,7 @@ everything, and re-check the issue before the first deploy.
 
 `apps/web` is built with Next.js `output: 'export'` into a folder of plain files, put in a private S3
 bucket, and served through the same CloudFront distribution as the API. **There is no Node server
-for the web.** ADR-0010 settled this on 2026-08-26, and it follows from an earlier rule: a web app
+for the web.** ADR-0010 settled this, and it follows from an earlier rule: a web app
 that holds no credentials, never reads the session, and always paints a skeleton first is a static
 site already.
 

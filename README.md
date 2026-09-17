@@ -15,7 +15,7 @@ the backlog is generated from them, and the code is written against the backlog.
 way round is what produces documentation nobody trusts.
 
 **Current state (2026-09-17):** seven of the eight roles have run on the first feature, the photo
-assessment. `docs/` holds their output, sixteen ADRs and three learning notes. 600 QA has not run.
+assessment. `docs/` holds their output, sixteen ADRs and four learning notes. 600 QA has not run.
 On 2026-09-17 the owner moved the assessment into a background workflow (ADR-0014 to ADR-0016), and
 every document was updated for it in the same pass.
 
@@ -68,7 +68,7 @@ enforces this.
 ```
 factory/          feature.md — this run's one feature — and the run cost limits
 docs/             where the roles write, one folder per role
-docs/learn/       three notes: the method, the shape of the code, the running system
+docs/learn/       four notes: the concepts, the method, the shape of the code, the running system
 docs/ADR/         decisions, each ending in an explicit "do not"
 context/cold/     reasoning that only ever existed in a conversation
 .claude/          rules, memory, this project's skills, settings
@@ -106,6 +106,10 @@ down, and the fix belongs in that earlier file — not in an answer typed into t
 The full explanation is one document: **[`docs/learn/ai-native-delivery.md`](docs/learn/ai-native-delivery.md)**.
 Part one is the idea. Part two follows one complete run, from an empty folder to finished
 specifications, explaining each term at the moment the run needs it.
+
+**If a backend or infrastructure term in any of these files is unfamiliar**, it is explained on its
+own in **[`docs/learn/backend-concepts.md`](docs/learn/backend-concepts.md)** — 74 concepts, each
+with the question it answers and the real tool that answers it.
 
 `/ai-factory:learn` lists its sections before adding to it.
 
