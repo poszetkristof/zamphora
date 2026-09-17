@@ -129,16 +129,21 @@ text on both surfaces.
 `WorkingIndicator` is a single moving mark, not a full-screen spinner. Under
 `prefers-reduced-motion: reduce` it does not move; the step text carries the meaning instead.
 
-`StepList` is three lines that say what is happening now, in words: making the photo smaller,
-sending it, asking the model. The current line is `--color-verdict`, the finished lines are
-`--color-muted`, the future lines are `--color-muted`. Each finished line gets a small tick shape,
-so progress is not only colour.
+`StepList` is four lines that say what is happening now, in words: making the photo smaller,
+sending it, confirmed, waiting for the answer. The current line is `--color-verdict`, the finished
+lines are `--color-muted`, the future lines are `--color-muted`. Each finished line gets a small
+tick shape, so progress is not only colour.
 
-**States:** `resizing` · `uploading` · `asking` · `finished` · `failed`. **Five, not six.**
+**States:** `resizing` · `uploading` · `confirmed` · `waiting` · `finished` · `failed`.
 
-**`retrying` was removed on 2026-08-26**, when the owner dropped the retry. It said the app was
-trying once more and that the second try also counted against the daily limit. There is no second
-try now, so a state that announced one would be a lie on screen. **Do not build it.**
+**`confirmed` and `waiting` were added on 2026-09-17** (ADR-0014, ADR-0015). The assessment now
+runs in the background: the API answers at once, and the result is pushed to the phone over one open
+connection. `confirmed` is the moment the API answered, and it is what keeps the 30-second promise.
+`waiting` is the open connection.
+
+**`retrying` was removed on 2026-08-26 and stays removed.** The background workflow may retry the
+model call at most twice, but that happens out of sight and costs the person no extra attempt. A
+line on screen announcing a retry would only worry them. **Do not build it.**
 
 ### 3.9 VerdictGroup
 
@@ -304,7 +309,7 @@ with `PhotoPreview` · `LimitNote` if it applies · `PrimaryButton` (send) fixed
 | 3 | `ready` | A pot is picked, no photo yet | Both photo buttons live. Send is `disabled` with the reason "add a photo first" |
 | 4 | `photo-chosen` | A photo passed the on-device checks | The photo in the well, the pot name, send `enabled` |
 | 5 | `resizing` | A photo was chosen | `PhotoWell` shows `resizing`. Send is `busy`. A copy is made whose longer side is at most 1000 px (US-01 AC-4) |
-| 6 | `wrong-format` | The file is not JPEG, PNG, GIF or WebP | `InlineRefusal` under the photo well, naming those four formats. **No model call is made** (US-01 AC-2). The photo is not kept |
+| 6 | `wrong-format` | The file is not JPEG, PNG or WebP (GIF was dropped on 2026-09-17, gate 68) | `InlineRefusal` under the photo well, naming those threr formats. **No model call is made** (US-01 AC-2). The photo is not kept |
 | 7 | `too-small` | The shorter side is under 200 px | `InlineRefusal` saying the photo is too small. **No model call is made** (US-01 AC-5) |
 | 8 | `camera-permission-denied` | The operating system refused the camera | See section 5 |
 | 9 | `no-camera` | The device has no camera | See section 5 |
@@ -318,28 +323,29 @@ with `PhotoPreview` · `LimitNote` if it applies · `PrimaryButton` (send) fixed
 
 ### SC-2 — Working
 
-**Purpose.** Hold the person honestly for up to 30 seconds (US-01 AC-8). This is the second worst
-step in `00-journey-map.md`.
+**Purpose.** Hold the person honestly. Within 30 seconds the screen confirms the assessment is
+running (US-01 AC-8). Within 60 seconds the answer arrives on its own, or the screen gives up. This
+is the second worst step in `00-journey-map.md`.
 
 **Layout:** the photo in the well at the top, small · `WorkingIndicator` · `StepList` · one line
-saying the wait cannot be stopped because the call is already paid for.
+saying the wait cannot be stopped because the model call is paid the moment it runs.
 
 | # | State | What starts it | What is on screen |
 | --- | --- | --- | --- |
 | 1 | `resizing` | Send was tapped | Step 1 of the `StepList` is current |
 | 2 | `uploading` | The smaller copy exists | Step 2 is current |
-| 3 | `asking` | The photo reached the API | Step 3 is current |
-| 5 | `timed-out` | 30 seconds passed with nothing on screen | `FailureNote` in state `retry-may-work` (US-01 AC-8, US-09 AC-3). No care task is created |
-| 6 | `provider-error` | The model provider answered with an error | `FailureNote` in state `retry-may-work` (US-09 AC-3) |
+| 3 | `confirmed` | The API answered that the assessment is running | Step 3 is current. **This is the moment that keeps the 30-second promise** (added 2026-09-17, ADR-0014) |
+| 4 | `waiting` | The phone opened its connection for the result | Step 4 is current. Nothing else changes until the answer arrives or 60 seconds pass (added 2026-09-17, ADR-0015) |
+| 5 | `timed-out` | 30 seconds passed with no confirmation, or 60 seconds passed with no answer | `FailureNote` in state `retry-may-work` (US-01 AC-8, US-09 AC-3). No care task is created |
+| 6 | `provider-error` | The run ended with a provider error, after its own retries | `FailureNote` in state `retry-may-work` (US-09 AC-3) |
 | 7 | `not-retryable` | A bad request, a rejected photo, or an empty credit balance | `FailureNote` in state `retry-will-not-work`. The name still matters: it tells the **person** that tapping again is pointless, which is different from a timeout, where tapping again may work |
-
-**State numbering note, 2026-08-26.** State 4 was `retrying` and it is gone with the retry. The
-remaining states keep their old numbers so that every reference elsewhere still resolves. **The two
-`retry-...` names in the `FailureNote` are about what the person should do, not about anything the
-app does automatically.**
 | 8 | `offline` | The network dropped mid-flight | `FailureNote` in state `offline`. Back on SC-1 the photo is still there (US-09 AC-2) |
-| 9 | `answered` | A well-formed answer arrived | Moves to SC-3, SC-4 or SC-5 by band |
-| 10 | `answer-unreadable` | A missing field, a verdict code outside the ten, or a band outside the three | **`FailureNote` in state `retry-may-work`. It does not reach SC-5** (corrected 2026-08-31). No verdict, no task, another photo offered. The answer is stored as a **failure record**, not as an assessment, so QA can count it (US-02 AI Eval Card) |
+| 9 | `answered` | A well-formed answer arrived over the connection | Moves to SC-3, SC-4 or SC-5 by band |
+| 10 | `answer-unreadable` | A missing field, a verdict code outside the ten, or a band outside the three | **`FailureNote` in state `retry-may-work`. It does not reach SC-5.** No verdict, no task, another photo offered. The answer is stored as a **failure record**, not as an assessment, so QA can count it (US-02 AI Eval Card) |
+
+**The two `retry-...` names in the `FailureNote` are about what the person should do, not about
+anything the screen does automatically.** The screen never retries. The background workflow may
+retry the model call at most twice, and the person sees only the final outcome.
 
 **There is no cancel button.** See `00-journey-map.md` section 5.
 
@@ -513,8 +519,9 @@ message not in this table has not been designed.
 | No pot picked | Trying again will not work now | No. Pick or create a pot | US-01 AC-3 |
 | Upload failed | Trying again may work | Yes. The photo is still there | US-09 AC-2 |
 | Network dropped | Trying again may work | Yes. The photo is still there | US-09 AC-2 |
-| Timed out at 30 seconds | Trying again may work | Yes | US-01 AC-8, US-09 AC-3 |
-| Provider error, a 429 or a 503 | Trying again may work | Yes, and the person does it — **there is no automatic retry**, 2026-08-26 | US-09 AC-3, AC-5 |
+| No confirmation in 30 seconds, or no answer in 60 | Trying again may work | Yes | US-01 AC-8, US-09 AC-3 |
+| Provider error, a 429 or a 503, after the workflow's own two retries | Trying again may work | Yes, and the person does it — the screen never retries | US-09 AC-3, AC-5 |
+| The run could not be started | Trying again may work | Yes. The attempt was given back (ADR-0016) | US-09 AC-3 |
 | Bad request to the provider | Trying again will not work now | No | US-09 AC-5 |
 | Answer could not be read | Trying again may work | Yes. **On the failure path, not on SC-5** (corrected 2026-08-31) | US-02 AI Eval Card |
 | Daily limit of 10 reached | Trying again will not work now | No. It says when it resets | US-08 AC-1, AC-2 |
@@ -546,8 +553,9 @@ an engineer's judgement. Each line can be tested and failed.
 9. No photo is sent whose longer side is over 1000 px.
 10. No failure that retrying cannot fix shows a try-again button. That is: a rejected photo, the
     daily limit, the feature switched off, an empty credit balance, and a bad request.
-11. No screen starts an automatic retry of any kind. **One model call per assessment, 2026-08-26.**
-    A failure shows a message and the person decides whether to tap again.
+11. No screen starts an automatic retry of any kind. The only retry in the product is inside the
+    background workflow, at most twice, out of sight (ADR-0014). On screen, a failure shows a
+    message and the person decides whether to tap again.
 12. No screen queues a photo to send later when the device is offline.
 
 **About the task**

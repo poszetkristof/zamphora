@@ -1,6 +1,9 @@
 # ADR-0002 — Run the API as a function, and put the data in DynamoDB
 
-- **Status:** Accepted
+- **Status:** Accepted. **The compute half is superseded in part by ADR-0014 (2026-09-17):** the
+  model call now runs in its own function, `assess`, inside a Step Functions workflow, and the
+  result stream runs in a third function, `watch` (ADR-0015). The `api` function still holds every
+  other route. The DynamoDB half of this record is unchanged.
 - **Date:** 2026-08-25
 - **Corrected 2026-08-26:** the capacity mode was written as **on demand**, which is outside the
   free allowance. It is now **provisioned, fixed at 25/25**. See "The capacity mode" below. Nothing
@@ -258,7 +261,7 @@ same table with none of the reading cost.
 > Do not let any request run past the 20,000 ms application deadline — the gateway cuts the request
 > off at 30 seconds and answers with a 504 the app did not write. Do not rely on DynamoDB TTL to
 > delete anything on time; always check the expiry in code.
-> Do not split the API into more than one function in run 1, and do not argue for it from scaling —
-> Lambda scales per function, and the table's 20 units give up first. The one written trigger is
-> fast routes being refused while assessments hold the reserved concurrency, and the only route to
-> split then is `POST /api/assessments`.
+> The model call is not in the `api` function any more: ADR-0014 moved it to `assess`, and ADR-0015
+> gave the result stream to `watch`. Do not split the remaining routes into more functions, and do
+> not argue for it from scaling — Lambda scales per function, and the table's 20 units give up
+> first. ADR-0001 holds the only trigger for a further split.

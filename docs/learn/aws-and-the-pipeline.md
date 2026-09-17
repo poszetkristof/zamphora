@@ -6,6 +6,9 @@ Written 2026-08-27, after 800 Infra ran and the owner closed 17 decisions.
 Rewritten 2026-08-31, after a full review of the pack. The running system now comes first.
 Section 7 extended 2026-09-01, after an outside review of the compute choice: how the one function
 scales, where it really hurts, and what the system would look like if cost were not a constraint.
+Sections 2, 3, 4, 7, 8 and 14 updated 2026-09-17, when the owner moved the assessment into a
+background workflow (ADR-0014 to ADR-0016). Where a section keeps the old shape as a story, it says
+so, because the lesson in it is still the lesson.
 
 This is the third learning note. `ai-native-delivery.md` is about the **process**.
 `monorepo-architecture.md` is about the **shape of the code**. This one is about the **running
@@ -27,9 +30,9 @@ that, it mostly looks after itself.
 **Part A — the running system**
 
 1. [The account, and why that changes everything](#1-the-account-and-why-that-changes-everything)
-2. [The seven stacks, and the picture they make](#2-the-seven-stacks-and-the-picture-they-make)
+2. [The nine stacks, and the picture they make](#2-the-nine-stacks-and-the-picture-they-make)
 3. [The path of one request](#3-the-path-of-one-request)
-4. [Four clocks, stacked](#4-four-clocks-stacked)
+4. [Four clocks, stacked — and then taken apart](#4-four-clocks-stacked--and-then-taken-apart)
 5. [One table, and the "wrong" choice made on purpose](#5-one-table-and-the-wrong-choice-made-on-purpose)
 6. [The photo path](#6-the-photo-path)
 7. [The function itself, and the build that nearly did not work](#7-the-function-itself-and-the-build-that-nearly-did-not-work)
@@ -95,14 +98,18 @@ was withdrawn, because it was protecting against something that does not happen.
 
 ---
 
-## 2. The seven stacks, and the picture they make
+## 2. The nine stacks, and the picture they make
 
 Everything is CDK. A **stack** is one group of AWS resources that is created, updated and deleted
-together. There are seven, and each is a separate deployable unit — so one can be replaced without
-touching the others.
+together. There are nine, and each is a separate deployable unit — so one can be replaced without
+touching the others. **Eight of them are in one Region and one is not.**
 
-One Region: **eu-central-1**, Frankfurt, because a photo of the inside of a home is personal data
-and it should stay under EU rules. There is one exception, and it is explained below.
+That one Region is **eu-central-1**, Frankfurt, because a photo of the inside of a home is personal
+data and it should stay under EU rules. The exception is explained at the end of this section, and
+it holds no data at all.
+
+The newest of the eight is **`ZamphoraWorkflowStack`**, which arrived on 2026-09-17 when the
+assessment moved into the background.
 
 ```mermaid
 flowchart TD
@@ -117,7 +124,14 @@ flowchart TD
     end
 
     subgraph APIS ["ZamphoraApiStack"]
-        GW["API Gateway<br/>HTTP API"] --> FN["Lambda<br/>the whole Nest.js API<br/>in one function"]
+        GW["API Gateway<br/>HTTP API"] --> FN["Lambda: api<br/>every route<br/>answers 202 in about a second"]
+    end
+
+    subgraph WF ["ZamphoraWorkflowStack — the background run"]
+        SM["Step Functions<br/>claim · assess · persist · rollup"]
+        AS["Lambda: assess<br/>the one model call<br/>the only function with the key"]
+        WA["Lambda: watch<br/>streams the result<br/>server-sent events"]
+        SM --> AS
     end
 
     subgraph DATA ["ZamphoraDataStack"]
@@ -134,37 +148,61 @@ flowchart TD
 
     CF -->|"everything except /api/*"| WEB
     CF -->|"/api/* only"| GW
+    CF -->|"the one stream path"| WA
+    FN -->|"starts the run"| SM
     FN --> DDB
     FN --> PH
     FN --> COG
-    FN --> ANT["Anthropic API<br/>one call per assessment"]
+    SM --> DDB
+    AS --> PH
+    WA --> DDB
+    AS --> ANT["Anthropic API<br/>one call per assessment<br/>at most three"]
 
     style WEB fill:#e8f4ea
     style DDB fill:#e8f4ea
     style PH fill:#e8f4ea
 ```
 
-The seventh stack is **`ZamphoraOpsStack`** — the alarms, the dashboard and the notification topic.
-It is not part of the product. It watches it. Section 9 covers what it can see.
+One of the eight is **`ZamphoraOpsStack`** — the alarms, the dashboard and the notification topic.
+It is not part of the product. It watches it, and it is not in the picture above for that reason.
+Section 9 covers what it can see.
+
+**What changed on 2026-09-17, in one paragraph.** Until then the `api` function made the model call
+itself, while the phone waited. Now the `api` function does the checks, writes the assessment row
+as `queued`, starts a **Step Functions** workflow and answers `202` — "accepted" — in about a second.
+Step Functions is the AWS service that runs a list of steps with retries and error handling written
+as configuration. It runs a small second function, `assess`, which makes the one model call, and it
+writes the result straight into the table. A third function, `watch`, holds one open connection to
+the phone and pushes the result when it lands. Section 4 has the clocks and section 7 has why.
 
 **Four things to notice, because each one is a decision and not an accident.**
 
 - **The web pages hold no credentials and reach no database.** They are plain files, built ahead of
   time and put in a bucket. Every piece of data goes through the API. That is why the browser only
   ever has one cookie, and why a bug in the web app cannot read or write anything.
-- **There is one Lambda, not one per route.** One deployable unit is easier to reason about, one
-  cold start is paid instead of many, and the free amount is a million requests a month. The honest
-  price is in section 7.
+- **There is one Lambda for every route, not one per route.** One deployable unit is easier to
+  reason about, one cold start is paid instead of many, and the free amount is a million requests a
+  month. The two other functions are split by **job**, not by route: one makes the paid call, one
+  streams the answer. The honest price is in section 7.
 - **There is no VPC.** A VPC is a private network inside AWS. It would need a NAT Gateway to reach
   Anthropic, and a NAT Gateway is charged by the hour with no free offer. It would be the largest
   line in the whole product.
-- **The API is the only thing with credentials.** It holds the Cognito client secret, the Anthropic
-  key, and the permissions on the table and the bucket. Nothing else in the product holds any.
+- **The web holds no credentials, and the model key is in exactly one function.** The `api`
+  function holds the Cognito client secret and the permissions on the table and the bucket. Only
+  `assess` can read the Anthropic key, and `assess` never decodes a photo. That split is what
+  closed the biggest open security question of run 1 (gate 70).
 
-**The one thing outside eu-central-1.** CloudFront publishes its measurements only to **us-east-1**,
-and there is no way to change that. So the two alarms that watch the front door live in a small
-extra stack in that Region. It holds alarms and nothing else — no function, no table, no bucket. The
-rule "one Region for everything that serves a request" still holds.
+**The ninth stack, and the one thing outside eu-central-1.** CloudFront publishes its measurements
+only to **us-east-1**, and there is no way to change that. An alarm has to be created in the same
+Region as the metric it watches, so the two alarms on the front door live in
+**`ZamphoraCloudFrontAlarmsStack`**, a small stack in that Region that holds alarms and nothing else
+— no function, no table, no bucket, and nothing a person's data ever passes through. The rule "one
+Region for everything that serves a request" still holds.
+
+**This is worth remembering as a shape, not as a CloudFront fact.** Some AWS services report from
+one fixed Region whatever you do. When that happens, the thing that *watches* moves and the thing
+that *runs* stays. An alarm written in the wrong Region does not fail — it deploys, and then never
+fires. That is how this one was nearly missed.
 
 **The host name is CloudFront's own**, like `d111111abcdef8.cloudfront.net`. A bought domain needs a
 Route 53 hosted zone at **$0.50 every month**, which at this size would cost more than the compute,
@@ -175,7 +213,7 @@ the storage and the gateway put together. A hosted zone is the DNS record set fo
 ## 3. The path of one request
 
 Everything arrives at one CloudFront distribution, on one host name. CloudFront then looks at the
-path and sends the request to one of two places. That single routing rule is the whole reason the
+path and sends the request to one of three places. That single routing rule is the whole reason the
 product has no CORS configuration anywhere.
 
 **CORS** is the set of browser rules for talking to a different host than the page came from. Every
@@ -185,14 +223,25 @@ everything here is one host, none of them exists.
 ```mermaid
 flowchart LR
     R["A request"] --> CF{"CloudFront<br/>looks at the path"}
+    CF -->|"/api/assessments/*/events<br/>listed first"| B0["Behaviour 0<br/>GET only, caching: OFF<br/>signed for the Function URL"]
     CF -->|"/api/*"| B1["Behaviour 1<br/>caching: OFF<br/>forward everything except Host<br/>readTimeout: 25 s"]
     CF -->|"everything else"| B2["Behaviour 2<br/>caching: ON<br/>a CloudFront Function<br/>fixes the path first"]
-    B1 --> GW["API Gateway → Lambda"]
+    B0 --> WA["Lambda: watch<br/>a Function URL"]
+    B1 --> GW["API Gateway → Lambda: api"]
     B2 --> S3[("The web bucket")]
 
+    style B0 fill:#fdf3e8
     style B1 fill:#fdf3e8
     style B2 fill:#e8f4ea
 ```
+
+**The stream path is new on 2026-09-17, and its order matters.** CloudFront tries behaviours in
+order and takes the first match, so the events path has to be listed before `/api/*` or it never
+matches. It goes to a **Lambda Function URL** — an HTTPS address a function can have on its own,
+with no gateway — because the API Gateway HTTP API cannot stream a response, and the older REST API
+that can would corrupt the photo upload. The URL only accepts requests signed by this distribution.
+That signing needs a hash of the body on a `POST`, which a browser cannot supply through CloudFront,
+so this path is `GET` only and every `POST` stays on the gateway.
 
 **Three traps live in that small picture, and all three are silent.**
 
@@ -225,9 +274,11 @@ cookie protections were available.
 
 ---
 
-## 4. Four clocks, stacked
+## 4. Four clocks, stacked — and then taken apart
 
-This is the most useful thing in the note for any project, not only this one.
+This is the most useful thing in the note for any project, not only this one. **The first half is
+the shape run 1 had until 2026-09-17.** It is kept because the lesson is the lesson whatever the
+shape. The second half says what the clocks look like now.
 
 The product promises **30 seconds** from the tap that takes the photo to something on screen. The
 slowest part is a call to a model, which takes several seconds and has no fixed length. So the
@@ -277,10 +328,45 @@ has to check the answer, validate it, work out the cost and write two rows. If t
 left for that, the call was **already paid for**, one of the person's ten attempts was **already
 spent**, and the result is thrown away.
 
-So there is a constant, `WRITE_BUDGET_MS = 1500`, and the model's abort fires at
-`min(18,000, time left − 1,500)`. The rule behind it, written down so nobody deletes the constant
-later: **once the model has answered, the write always finishes, because the money is already
-spent.**
+So there was a constant, `WRITE_BUDGET_MS = 1500`, and the model's abort fired at
+`min(18,000, time left − 1,500)`. The rule behind it is still the rule: **once the model has
+answered, the write always finishes, because the money is already spent.**
+
+### What the clocks look like since 2026-09-17
+
+The model call left the request. The `api` function now answers `202` in about a second, and the
+call runs inside a Step Functions workflow where **every step has its own clock and the platform
+has none**. That is the whole gain: the two red boxes above are no longer on the paid path.
+
+```mermaid
+flowchart TD
+    A["<b>18,000 ms</b> — the model call, per attempt<br/>an AbortSignal in the assess function"]
+    B["<b>25,000 ms</b> — the Assess task<br/>Step Functions, with a Catch"]
+    C["<b>30,000 ms</b> — the assess function<br/>the Lambda setting. The net"]
+    D["<b>none</b> — the state machine<br/>a machine timeout would skip every Catch"]
+    W["<b>60,000 ms</b> — the waiting screen<br/>the phone gives up on its own"]
+
+    A --> B --> C --> D
+    W -.->|"watches from outside"| D
+
+    style A fill:#e8f4ea
+    style D fill:#fde8e8
+```
+
+**Three things this changed, and one it did not.**
+
+- **The 30-second promise is kept by the waiting screen.** The screen confirms the run started
+  inside 30 seconds, and the result arrives on its own inside 60. Two client timers, not one.
+- **A retry is allowed again, with a cap.** While the phone waited, a second call ate the same
+  clock. Now the workflow retries a timeout, a 429 or a 503 at most twice, after 2 and 4 seconds.
+  The cap is one line in CDK and a test reads it back. Every retry is a paid call, so the cap is a
+  cost control.
+- **Nothing on the machine as a whole.** A timeout on the whole state machine ends the run without
+  running any error handler, so the row would stay `running` for ever. Each task has a timeout and
+  a `Catch`; the machine has none. This is the trap of the new shape, the way the CloudFront clock
+  was the trap of the old one.
+- **The cold start still sits outside every deadline**, only now it sits in front of the `202`
+  instead of in front of the answer.
 
 ---
 
@@ -411,20 +497,22 @@ never by trusting that the row is gone.
 
 ## 7. The function itself, and the build that nearly did not work
 
-One Lambda function holds the entire Nest.js API.
+One Lambda function, `api`, holds the entire Nest.js API. Since 2026-09-17 two more functions are
+built from the same codebase, each with one job.
 
-| Setting | Value | Why |
-| --- | --- | --- |
-| Runtime | `nodejs24.x` | Patched until 2028-04-30. Node 22 stops a year earlier |
-| Architecture | `ARM_64` | Cheaper per second of compute |
-| Memory | 1024 MB | Lambda gives CPU in proportion to memory. This is a starting value, to be measured |
-| Timeout | 22 seconds | The net under the app's own 20-second deadline (section 4) |
-| Reserved concurrency | **10** in prod, 2 in preview | A cost guard, not a performance setting |
+| Setting | `api` | `assess` | `watch` | Why |
+| --- | --- | --- | --- | --- |
+| Runtime | `nodejs24.x` | same | same | Patched until 2028-04-30. Node 22 stops a year earlier |
+| Architecture | `ARM_64` | same | same | Cheaper per second of compute |
+| Memory | 1024 MB | 1024 MB | 512 MB | Lambda gives CPU in proportion to memory. Starting values, to be measured |
+| Timeout | 22 seconds | 30 seconds | 60 seconds | Each is the net under its own smaller clock (section 4) |
+| Reserved concurrency | **10** in prod, 2 in preview | **1** | 5 | A cost guard, not a performance setting |
+| Holds the model key | no | **yes** | no | The key is in the function with no route |
 
 **Reserved concurrency is the one worth understanding.** It is the largest number of copies of the
-function that may run at the same time. Set it to 10 and a runaway loop cannot start a thousand
-copies that each wait 18 seconds on a **paid** model call. Ten is the largest number any written
-requirement asks for.
+function that may run at the same time. Set `assess` to 1 and a runaway loop cannot start a
+thousand copies that each wait 18 seconds on a **paid** model call. One at a time is all one user
+needs, and it also makes the circuit breaker's test call exactly one call.
 
 ### The pattern has a name: Lambdalith
 
@@ -507,6 +595,42 @@ that every build path in the project emits it. This project already knew the fai
 had switched the same setting on for the test runner — and still missed it on the deploy path,
 because those are two different builds and nobody compared them.
 
+### The second build trap, and it is the same shape
+
+**Written 2026-09-17, found by auditing the pack rather than by a deploy.** The first trap above is
+about information the compiler has to emit. This one is about code the bundler cannot touch at all.
+
+`sharp` is the library that decodes and re-encodes the photo. It is a **native module**: most of it
+is JavaScript, but the real work happens in a compiled binary, a `.node` file, that the JavaScript
+loads at run time. **A bundler cannot inline a binary.** esbuild will happily produce a bundle that
+mentions `sharp` and contains none of it, and the function then deploys cleanly and throws
+`Cannot find module 'sharp'` on the first photo somebody sends. That is the same failure shape as
+the decorator trap: green build, green deploy, broken on first real use.
+
+There are three normal ways out and this project takes the third:
+
+- **`bundling.nodeModules: ['sharp']`** tells CDK to install the module beside the bundle instead of
+  inlining it. It is the documented answer and it is **banned here** (ADR-0012), because CDK writes
+  an empty `pnpm-workspace.yaml` into its build folder, which erases the settings pnpm 11 needs.
+- **A Lambda layer** is a separate zip of dependencies that several functions can share. It works.
+  It was rejected because it is a second resource with its own version, and with one developer a
+  second version is a second thing that drifts.
+- **Mark it external and copy it in after the bundle.** `externalModules: ['sharp']` keeps esbuild
+  away from it, and a `commandHooks.afterBundling` step copies the real folder into the asset. The
+  code is in `docs/800-infra/01-iac-plan.md` §4.4.
+
+**The half that is easy to miss is `@img`.** Since version 0.33, `sharp` does not ship its binaries
+inside its own folder. It declares a set of **optional dependencies** — `@img/sharp-linux-arm64`,
+`@img/sharp-darwin-arm64` and so on — and your package manager installs only the one that matches
+the machine. So copying `node_modules/sharp` on its own gives you a loader with nothing to load.
+`node_modules/@img` has to travel with it, and it has to be the **Linux arm64** one, which is why
+the build runs on `ubuntu-24.04-arm` and not on the default runner.
+
+**The general lesson, and it is the same sentence as the first trap:** when something in the build
+depends on a step other than compiling — emitted metadata, a native binary, a platform-specific
+package — check every build path separately. A bundler's job is to read JavaScript. Anything that is
+not JavaScript is your problem, and it will not tell you.
+
 ### If money were no object: the same product as a container
 
 **Written 2026-09-01.** Everything above is shaped by one rule: the account closes instead of
@@ -546,19 +670,18 @@ flowchart TD
     style WEB fill:#e8f4ea
 ```
 
-**The one change that matters most is the queue, and it is not about scale.** Today the phone waits
-while the model thinks. That is why section 4 has four stacked clocks and why the whole product is
-bounded by a 30-second ceiling it does not control. In the container version,
-`POST /api/assessments`
-writes a message to **SQS** — a queue, a list of jobs waiting to be picked up — and answers `202`
-straight away with an id. A separate worker picks the job up and does the slow call. The phone asks
-again a moment later, or is told over a socket.
+**The one change that matters most is the queue, and it is not about scale.** Until 2026-09-17 the
+phone waited while the model thought. That is why section 4 had four stacked clocks and why the
+whole product was bounded by a 30-second ceiling it did not control. In the container version,
+`POST /api/assessments` writes a message to **SQS** — a queue, a list of jobs waiting to be picked
+up — and answers `202` straight away with an id. A separate worker picks the job up and does the
+slow call. The phone is told over an open connection.
 
 **All four clocks disappear.** There is no 30-second gateway cut-off, no 20-second app deadline, no
 CloudFront read timeout to sit under. The model may take two minutes if it needs to. A retry becomes
-safe again, because a retry no longer eats a deadline — SQS is built to redeliver a job that failed.
-The rule in section 8, "no retry, anywhere", exists because of the clock, not because retries are
-bad.
+safe again, because a retry no longer eats a deadline. **This is exactly the gain the project took
+on 2026-09-17, without the container**: Step Functions plays the part of the queue and the worker,
+and it is free at this size. The subsection below says how.
 
 **What each piece replaces, and what it buys.**
 
@@ -616,9 +739,43 @@ ENV PORT=3000
 ```
 
 **It is not used here, and that is on purpose.** A container image cold-starts more slowly than a
-zip bundle, and it needs ECR, whose storage cost on this account has not been checked. It is written
-down as the escape hatch, not as a plan. The point is that "we picked wrong" would become "we change
-where the image runs", which is a much smaller sentence.
+zip bundle, and it needs ECR, whose private-repository free offer is a 12-month trial and so worth
+nothing on this plan (checked 2026-09-17). It is written down as the escape hatch, not as a plan.
+The point is that "we picked wrong" would become "we change where the image runs", which is a much
+smaller sentence.
+
+### The free asynchronous shape, and how it was chosen
+
+**Written 2026-09-17.** The container shape above is the answer when money is no object. There is a
+different question, and it has a different answer: **what does the same product look like if the
+phone stops waiting, and the account stays free?** Two shapes answered it, drawn and scored in
+`docs/400-architecture/00-options.md` §11, with the long reasoning in `08-async-options.md`. **The
+owner chose Option E the same day** (gate 72, ADR-0014 to ADR-0016), and section 2 now draws it.
+
+- **Option E, chosen.** It keeps everything else and moves only the model call: the API answers
+  `202` at once, an **AWS Step Functions** workflow runs the call in its own small function with its
+  own role, and the phone holds one open connection — server-sent events, the same mechanism the
+  model provider uses to stream — until the result is pushed to it. The four stacked clocks became
+  one clock per step, and the "no retry" rule became a retry with a cap written in one place. Step
+  Functions gives 4,000 free workflow steps a month, forever; this product uses about 200.
+- **Option F, not taken.** It went further: the phone uploads straight to S3 with a short-lived
+  permission for one exact object, S3 announcing the new object starts the workflow, and every
+  write to the table becomes an event that other small functions react to. It lost because nothing
+  the project plans to build needs it. Every later feature — the 12-month sweep, reminders, open
+  sign-up — is served by E plus two timer rules, and E keeps every upload check on the API where
+  ADR-0007 put it.
+- **On the four constraints the project scores on, the old design was still ahead by one point.**
+  Only a fifth constraint, what a shape gives later runs, put E in front. That is why the choice was
+  the owner's and not a role's, and why it is recorded as a gate.
+
+Two lessons worth carrying from that file into any project. **An asynchronous shape moves the
+runaway risk from "a loop in my code" to "a retry a service does on its own".** Lambda retries an
+async call twice by default, EventBridge and its Scheduler retry a target for 24 hours, a stream
+consumer retries a bad batch for a day, and Step Functions bills every retry as a step. Each has a
+setting, and §8 of that file lists all thirteen. And **a review by a session with no context found
+three blockers in the first draft** — a workflow that started itself from its own output, an upload
+permission that let one attempt become many, and a retry that could never fire. The file says so
+at the top, on purpose.
 
 ---
 
@@ -640,7 +797,8 @@ flowchart TD
     L4 --> L5{"Daily limit<br/>10 per account per day"}
     L5 -->|"the 11th"| D4["Refused before any money is spent"]
     L5 --> L6{"Circuit breaker<br/>5 failures in a row"}
-    L6 --> M["The model call"]
+    L6 --> L7{"The workflow<br/>assess runs 1 at a time<br/>retry cap 2, in CDK"}
+    L7 --> M["The model call"]
 
     style A1 fill:#fdf3e8
     style D1 fill:#e8f4ea
@@ -663,6 +821,14 @@ costs a gateway request and an invocation.
 
 Reserved concurrency does **not** help here. It caps the function's work. It does not cap billed
 gateway requests. Those are different meters.
+
+**The background run added one layer and three traps, all with a setting.** The layer: `assess`
+runs one copy at a time and the workflow retries at most twice, so the most one photo can cost is
+three calls. The traps, each a default that is wrong on this account: the CDK task adds a hidden
+six-attempt retry unless `retryOnServiceExceptions` is off; an EventBridge rule retries a broken
+target for 24 hours unless it is told 2 attempts and 5 minutes; and a queue that a function reads
+costs requests even when it is empty, so the one queue here is a dead-letter queue nobody reads.
+`docs/800-infra/02-cost-guardrails.md` §6 has the full list.
 
 **One layer has no automatic defence, and it is written down as such.** A flood that stops at the
 CloudFront edge is billed once the 10 million free requests are used, and nothing on this account
@@ -969,8 +1135,10 @@ job's result itself.
 **One test that could never fail, and the fix.** The performance job replaces the model with a stub
 that sleeps for the budgeted 8,000 ms — and 8,000 ms is the weakest guess in the whole design, with
 no source behind it. So the job could never fail for the reason the architecture itself names as its
-biggest risk. It now runs **twice**: once at 8,000 ms and once at **18,000 ms**, the point where the
-server's own deadline is about to fire. Both must finish under 30 seconds.
+biggest risk. It now runs **twice**: once at 8,000 ms and once at **18,000 ms**, the model's own
+abort point. Both must confirm the run inside 30 seconds and show the result inside 60. Since
+2026-09-17 a third run makes the stub fail twice and then answer, which is the only way to prove the
+retry cap is real.
 
 **A test that can only pass is not a test.** Give it the value that would break the design and see
 whether it still holds.
@@ -993,7 +1161,7 @@ Come back to this table. Do not try to remember it.
 
 | Question | Chosen | What lost, and why |
 | --- | --- | --- |
-| Compute | **One Lambda holding the whole Nest.js API** | One function per route: many cold starts in a 30-second budget, many small things to look at. A container: charged by the hour, so it spends credit every night nobody uses the app |
+| Compute | **One Lambda holding every route, plus two split by job: `assess` and `watch`** | One function per route: many cold starts, many small things to look at. A container: charged by the hour, so it spends credit every night nobody uses the app |
 | Database | **One DynamoDB table, provisioned, fixed** | On demand: AWS recommends it, and the free amount does not cover it. It also serves a runaway loop instead of refusing it |
 | Preview database | **Split the units**: prod 20/20, preview 5/5 | Two full tables at 25/25 — rejected on a price nobody had checked. No preview at all — three tests would have nothing to run against |
 | Photo upload | **Through the API** | Presigned PUT straight to S3: validates nothing, so size, type and contents all go unchecked |
@@ -1016,6 +1184,7 @@ Come back to this table. Do not try to remember it.
 | Required checks | **One aggregate check, `ci-ok`** | Eleven separate entries: a new job you forget to add becomes a check nobody enforces |
 | Actions | **Pinned to exact commits** | Moving labels: easier to read, and the code can change under you |
 | Node version | **24 everywhere** | Node 22: patched for a year less, and the decision would come back in 2027 |
+| Asynchronous assessment | **Option E, chosen 2026-09-17**: a Step Functions workflow, the result over server-sent events, a retry cap of 2, a refund when no call was made (gate 72, ADR-0014 to ADR-0016) | Keeping the phone waiting: the 30-second ceiling, no retry, one role over everything. Option F, direct upload and a stream of events: nothing planned needs it. The paid container shape: about $150 a month idle |
 
 **Still open, on purpose:**
 

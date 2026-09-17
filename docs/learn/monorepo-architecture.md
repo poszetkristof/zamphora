@@ -352,7 +352,7 @@ zamphora/
 │
 ├── apps/                     things that deploy. One CDK stack each
 │   ├── web/                  Next.js 16.3.3
-│   └── api/                  Nest.js 11.2.3, compiled into one Lambda
+│   └── api/                  Nest.js 11.2.3, three Lambda entry points from one codebase
 │
 ├── packages/                 things that are imported, never deployed
 │   ├── contracts/            Zod schemas for everything crossing the wire
@@ -403,7 +403,9 @@ where most of the code will live. That needs its own shape.
 
 ```
 apps/api/src/
-├── main.ts                     the Lambda handler and bootstrap
+├── main.ts                     the Lambda handler for every route, and the Nest bootstrap
+├── assess.ts                   the handler the workflow invokes: the one model call (ADR-0014)
+├── watch.ts                    the handler behind the Function URL: streams the result (ADR-0015)
 ├── app.module.ts
 ├── shared/                     guards, filters, interceptors, config
 └── modules/
@@ -678,8 +680,10 @@ not real folders full of files. Zipping `node_modules` would copy links that poi
 
 **The answer is to bundle.** esbuild follows every import and writes one JavaScript file with
 everything inlined. The links stop mattering, because nothing is left to resolve at run time. This
-is also faster: `03-flow.md` budgets 800 ms for a cold start, and a bundled function starts quicker
-than one that unpacks a large `node_modules`.
+is also faster: NFR-06 allows 2,000 ms for a cold start, and a bundled function starts quicker than
+one that unpacks a large `node_modules`. Since 2026-09-17 the same build produces three bundles
+from three entry files — `main.js`, `assess.js`, `watch.js` — and each becomes its own function.
+The shared modules are bundled into each one, so a rule written once ships three times.
 
 **Do not use `bundling.nodeModules` in AWS CDK's `NodejsFunction`.** That option asks CDK to install
 some packages instead of bundling them, and it is broken with pnpm 11 today — aws-cdk issue 37898,

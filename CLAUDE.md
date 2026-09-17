@@ -92,7 +92,7 @@ surprises you or you are about to argue with a rule.
 | **Any `.ts` / `.tsx`, or any new file or folder** | **`coding-standards`** | `docs/500-engineering/00-conventions.md` |
 | Tests | **`testing-patterns`** | `docs/600-qa/00-test-plan.md` *(not written yet)* |
 | JSX, forms, dialogs, lists, ARIA | **`accessibility`** | `docs/300-design/03-tokens.md` |
-| Auth, uploads, user input, AI calls, any response body | **`security`** | `docs/900-security/02-mitigations.md` *(not written yet)* |
+| Auth, uploads, user input, AI calls, any response body | **`security`** | `docs/900-security/02-mitigations.md` §8 is the short list of "do not" instructions. Read it before the rule, not after |
 | The web app | `coding-standards` | `docs/500-engineering/02-web-spec.md` |
 | **A screen** | `coding-standards`, `accessibility` | `docs/300-design/<slug>/02-SPEC.md` is the contract. Then open `docs/design-preview.html` — the mockup is a **reference**, so where the two disagree the spec wins |
 | The API | `coding-standards`, `security` | `docs/500-engineering/03-api-spec.md` |
@@ -100,8 +100,19 @@ surprises you or you are about to argue with a rule.
 | Anything under `infra/` | — | `docs/800-infra/01-iac-plan.md` is the resource list. `02-cost-guardrails.md` before adding any service |
 | "Why is it like this?" | — | `docs/ADR/` |
 
-**Two of those docs do not exist yet.** 600 QA and 900 Security have not run. The skills stand on
-their own until they do.
+**One of those docs does not exist yet.** 600 QA has not run, so the testing skill stands on its
+own until it does.
+
+**900 Security ran on 2026-09-01.** `docs/900-security/` holds the asset list, the threat model,
+the mitigations and the evidence pack. Two things in it change what you may write:
+
+- **`02-mitigations.md` §8 is a list of instructions, each with an explicit "do not".** It has the
+  same weight as an ADR. If a change would break one, stop and name it.
+- **Three questions are open and belong to the owner** — gates 64, 69 and 71 in
+  `factory/runs/001-photo-assessment/human-gates.md`. **Gates 69 and 71 are hard stops before the
+  first deploy, not before the first line of code.** Gate 65, which blocked the photo path, was
+  answered on 2026-09-17: sending the photo outside the EU is accepted for run 1, and the trigger to
+  re-open it is the day a second person uses the app.
 
 ## Hard rules
 

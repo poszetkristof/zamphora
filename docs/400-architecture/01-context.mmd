@@ -1,31 +1,29 @@
 %% C4 level 1 — system context for zamphora.
-%% Written by 400 Architecture, run 1 (001-photo-assessment), 2026-08-25.
-%% Matches Option A in 00-options.md. Every box below has at least one arrow.
-%%
+%% Written by 400 Architecture, 2026-08-25. Updated 2026-09-17 for ADR-0014.
 %% Read this with 02-containers.mmd. This file says who talks to the product and
-%% which outside services it depends on. It says nothing about what is inside.
+%% which outside services it depends on.
 
 C4Context
-    title System context — zamphora, run 1
+    title System context — zamphora
 
     Person(keeper, "Plant keeper", "Keeps houseplants in an apartment. Signs in. Photographs a pot that looks unwell. Reads Hungarian or English. Account type USER.")
-    Person(admin, "Admin", "In run 1 this is the developer, and nobody else. Reads usage and cost figures and switches the AI feature off. Reaches NEITHER through the product: there is no admin screen and no admin route in run 1. Account type ADMIN exists and no route uses it.")
+    Person(admin, "Admin", "The developer. Reads usage figures and flips the kill-switch in the AWS console. No admin screen and no admin route in run 1.")
 
-    System(zamphora, "zamphora", "Remembers what each pot needs. Assesses a photo of a sick plant and turns the next action into a dated care task.")
+    System(zamphora, "zamphora", "Remembers what each pot needs. Assesses a photo of a sick plant in the background and turns the next action into a dated care task.")
 
     System_Ext(cognito, "Amazon Cognito user pool", "Holds the accounts and the passwords. Runs the sign-in pages. Issues the ID token that zamphora reads once, at sign-in.")
-    System_Ext(anthropic, "Anthropic Messages API", "Looks at one photo and returns one verdict, one confidence band, one next action and a follow-up in whole days. Paid from the owner's own Anthropic credit, not from AWS.")
-    System_Ext(mail, "Email delivery", "Sends the warning at 11 months of no sign-in, before the account is deleted at 12. NAMED IN factory/feature.md AND NOT BUILT IN RUN 1 - the owner moved it to the notifications run on 2026-08-26, gate 29. See seam 12 in the run ledger.")
-    System_Ext(console, "AWS Management Console", "AWS's own website. The only way an admin acts in run 1. AWS keeps its own record of who signed in and what they changed, which is why the product records nothing about the kill-switch.")
+    System_Ext(anthropic, "Anthropic Messages API", "Looks at one photo and returns one verdict, one band, one next action and a follow-up in days. Paid from the owner's own Anthropic credit.")
+    System_Ext(mail, "Email delivery", "The 11-month warning. Not built in run 1 (gate 29). Planned as SES in the notifications run.")
+    System_Ext(console, "AWS Management Console", "The admin's only way in. AWS keeps its own record of who changed what.")
 
-    Rel(keeper, zamphora, "Adds a pot, sends one photo, reads the result, keeps the care task", "HTTPS")
-    Rel(admin, console, "Edits the kill-switch row. Reads the usage figures out of the table", "HTTPS, by hand, with AWS credentials")
-    Rel(console, zamphora, "Changes the one config row and reads the rollups, straight in the data store", "AWS API")
+    Rel(keeper, zamphora, "Adds a pot, sends one photo, waits on one open stream, reads the result, keeps the care task", "HTTPS")
+    Rel(admin, console, "Edits the kill-switch row. Reads the usage rows", "HTTPS, by hand")
+    Rel(console, zamphora, "Changes one config row and reads the rollups, straight in the table", "AWS API")
 
-    Rel(keeper, cognito, "Signs in on Cognito's own pages, then is sent back", "HTTPS redirect, OpenID Connect")
-    Rel(zamphora, cognito, "Swaps the one-time code for an ID token and checks its signature", "HTTPS, OpenID Connect authorization code with PKCE")
+    Rel(keeper, cognito, "Signs in on Cognito's own pages", "HTTPS redirect, OpenID Connect")
+    Rel(zamphora, cognito, "Swaps the one-time code for an ID token and checks it", "OpenID Connect, code with PKCE")
 
-    Rel(zamphora, anthropic, "Sends the resized photo and the plant name. Asks exactly once and never retries", "HTTPS, structured output")
-    Rel(zamphora, mail, "Warns an account that has not signed in for 11 months", "Not built in run 1")
+    Rel(zamphora, anthropic, "Sends the resized photo and the plant name. At most three calls per photo", "HTTPS, structured output")
+    Rel(zamphora, mail, "Warns an account idle for 11 months", "Not built in run 1")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")

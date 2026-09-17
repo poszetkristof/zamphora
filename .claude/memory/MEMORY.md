@@ -12,6 +12,7 @@ already in `CLAUDE.md`.
 
 - [Who the user is](user-profile.md) — senior frontend growing into backend and AWS; and why the private reasons stay out of the repo.
 - [Write plain B1 English](write-plain-b1-english.md) — short sentences, common words, and a banned-word list that applies to chat too.
+- [Essentials only](essentials-only.md) — every document short; cut history, restated context and boilerplate; keep section numbers; a short file plus a pointer beats a long one.
 - [Learning style](learning-style.md) — 80/20, context sentence then bullets, real values, the 6-month test.
 - [Be the copilot during a factory run](copilot-during-factory-runs.md) — explain the why before each role and the result after it. One role per session.
 - [Keep the learning notes current](keep-learning-notes-current.md) — when work is worth learning from, write the note in the same session, and where it goes.

@@ -14,10 +14,13 @@ This repository is currently a **specification factory** and nothing else. The s
 the backlog is generated from them, and the code is written against the backlog. Working the other
 way round is what produces documentation nobody trusts.
 
-**Current state:** the factory is wired and verified. No role has run yet, so `docs/` is empty.
+**Current state (2026-09-17):** seven of the eight roles have run on the first feature, the photo
+assessment. `docs/` holds their output, sixteen ADRs and three learning notes. 600 QA has not run.
+On 2026-09-17 the owner moved the assessment into a background workflow (ADR-0014 to ADR-0016), and
+every document was updated for it in the same pass.
 
 ```
-/ai-factory:start      # → Next role to run: 100-consulting
+/ai-factory:start      # reads the real state off disk and names the one next action
 ```
 
 The factory itself is not in this repository. It is a Claude Code plugin,
@@ -65,7 +68,7 @@ enforces this.
 ```
 factory/          feature.md — this run's one feature — and the run cost limits
 docs/             where the roles write, one folder per role
-docs/learn/       the note that explains the whole method
+docs/learn/       three notes: the method, the shape of the code, the running system
 docs/ADR/         decisions, each ending in an explicit "do not"
 context/cold/     reasoning that only ever existed in a conversation
 .claude/          rules, memory, this project's skills, settings
@@ -73,8 +76,10 @@ context/cold/     reasoning that only ever existed in a conversation
 
 The line itself — the role contracts, the checks, the generated agents — is in the plugin repo.
 
-`apps/`, `packages/` and `infra/` do not exist yet. **How this repository is arranged is role 400's
-decision**, written up as `docs/ADR/0001-repository-layout.md` before anything is installed.
+`apps/`, `packages/` and `infra/` do not exist yet. **How this repository is arranged was role
+400's decision**, written up as ADR-0001 in `docs/ADR/` before anything is installed. The shape of
+the running system is in `docs/context/stack.md` §3, and the full picture is
+`docs/learn/aws-and-the-pipeline.md`.
 
 ---
 
@@ -115,7 +120,7 @@ Decided before the line ran, and recorded in `.claude/memory/decisions-made.md`:
 | Web | Next.js (React) |
 | API | Nest.js |
 | Shared types | Zod schemas in `packages/contracts` — the only place a wire type is defined |
-| Cloud | AWS, free account plan, everything in CDK |
+| Cloud | AWS, free account plan, everything in CDK. One Lambda for the API, a Step Functions workflow for the model call, the result streamed to the phone (ADR-0014, ADR-0015) |
 | Model | Anthropic, behind an `LlmProvider` port so another provider is one adapter away |
 
 **Cost is a correctness property here, not an accounting one.** The AWS free account plan cannot

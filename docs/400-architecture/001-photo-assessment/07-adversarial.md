@@ -1,5 +1,10 @@
 # Pre-mortem — why this feature failed
 
+> **Historical record, 2026-08-26.** Written against Option A. On 2026-09-17 the owner chose
+> Option E (ADR-0014 to ADR-0016), which removes the four stacked clocks and the "no retry" rule
+> that several findings below are about. Read it for what a fresh session can find. Do not read it
+> as the current design.
+
 **Written by** a fresh reviewer with no history on this project. **Date:** 2026-08-25.
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA, and the owner.
 

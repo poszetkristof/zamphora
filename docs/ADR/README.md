@@ -13,10 +13,10 @@ carry the weight:
 | #   | Decision | Status |
 | --- | -------- | ------ |
 | [0001](0001-keep-one-product-repository.md) | Keep one product repository | Accepted. Package manager half superseded by 0012 |
-| [0002](0002-run-the-api-on-lambda-and-store-data-in-dynamodb.md) | Run the API as a function, and put the data in DynamoDB | Accepted |
+| [0002](0002-run-the-api-on-lambda-and-store-data-in-dynamodb.md) | Run the API as a function, and put the data in DynamoDB | Accepted. Compute half superseded in part by 0014 |
 | [0003](0003-sign-in-with-openid-connect-and-keep-tokens-on-the-server.md) | Sign in with OpenID Connect through Cognito, and keep every token on the server | Accepted |
 | [0004](0004-refuse-every-route-by-default-and-key-data-by-owner.md) | Refuse every route by default, and put the owner in the partition key | Accepted |
-| [0005](0005-one-model-call-behind-a-port-with-structured-output.md) | Make one model call, behind one port, with structured output | Accepted |
+| [0005](0005-one-model-call-behind-a-port-with-structured-output.md) | Make one model call, behind one port, with structured output | Accepted. "No retry" superseded in part by 0014 |
 | [0006](0006-choose-the-model-by-measuring-it.md) | Choose the model by measuring it, and run on Haiku 4.5 until the measurement exists | Accepted |
 | [0007](0007-keep-photos-in-one-private-bucket-with-a-lifecycle-rule.md) | Keep photos in one private bucket, and let a lifecycle rule delete them | Accepted |
 | [0008](0008-count-the-daily-limit-with-an-atomic-conditional-write.md) | Count the daily limit with one atomic conditional write in the API | Accepted |
@@ -25,10 +25,14 @@ carry the weight:
 | [0011](0011-build-the-components-on-base-ui.md) | Build the components on Base UI, delivered by shadcn/ui | Accepted 2026-08-26 |
 | [0012](0012-run-the-workspace-on-pnpm-and-turborepo.md) | Run the workspace on pnpm and Turborepo | Accepted 2026-08-26. Supersedes part of 0001 |
 | [0013](0013-run-every-test-on-vitest.md) | Run every test on Vitest, in all three packages | Accepted 2026-08-26 |
+| [0014](0014-run-the-assessment-as-a-step-functions-workflow.md) | Run the assessment as a Step Functions workflow | Accepted 2026-09-17. Supersedes part of 0002 and 0005 |
+| [0015](0015-deliver-the-result-over-one-server-sent-events-stream.md) | Deliver the result over one server-sent-events stream | Accepted 2026-09-17 |
+| [0016](0016-refund-an-attempt-when-no-call-was-made.md) | Refund an attempt when no model call was made | Accepted 2026-09-17 |
 
 **0001 to 0011** were written by the 400-architecture role on 2026-08-25, from the chosen direction
 in `docs/400-architecture/00-options.md`. **0012** was written on 2026-08-26 after the owner chose
-pnpm and Turborepo.
+pnpm and Turborepo. **0014 to 0016** were written on 2026-09-17 after the owner chose Option E, the
+background assessment, in `docs/400-architecture/00-options.md` §11.
 
 **Two records changed on 2026-08-26 and both are worth knowing about:**
 

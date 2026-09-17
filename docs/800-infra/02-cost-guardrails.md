@@ -2,6 +2,8 @@
 
 **Written by** 800 Infra, run 1 (`001-photo-assessment`). **Date:** 2026-08-27.
 **Updated** 2026-08-28 with the owner's answers to gates 43 to 63. §5 was rewritten by gate 50.
+**Updated 2026-09-17** for ADR-0014 to ADR-0016: three new rows in §2, guardrails 1, 3 and 4 in §5
+rewritten, and the traps of a background run added to §6.
 **Read next by** 900 Security, 600 QA.
 
 This file lists every service in the plan with its free allowance. It says what happens when an
@@ -50,20 +52,25 @@ request, against the credit.
 | **AWS Lambda** | Always Free | "one million requests and 400,000 GB-seconds per month" ([Lambda pricing](https://aws.amazon.com/lambda/pricing/), checked 2026-08-25 in ADR-0002) | Charged per request and per GB-second, against the credit |
 | **Amazon DynamoDB** | Always Free | 25 GB of storage, 25 write and 25 read capacity units, **per Region, per payer account**. Provisioned capacity and the Standard table class only ([DynamoDB provisioned pricing](https://aws.amazon.com/dynamodb/pricing/provisioned/), checked 2026-08-26 in ADR-0002) | Capacity above 25 is charged. **A burst past the table's own units is refused, not served** — that is the guardrail, see §6 |
 | **Amazon CloudFront** | Always Free. "This always free service is on the Free and paid plan" | "1 TB of Data Transfer Out", "10 Million HTTP or HTTPS Requests" ([AWS free networking](https://aws.amazon.com/free/networking/), checked 2026-08-27) | Charged per GB and per 10,000 requests |
-| **Amazon Cognito** | Free tier that "does not automatically expire at the end of your 12-month AWS Free Tier term" | 10,000 monthly active users, on **Lite** and on Essentials ([Cognito pricing](https://aws.amazon.com/cognito/pricing/), checked 2026-08-25 in ADR-0003) | Charged per monthly active user. **The tier is Essentials** (gate 52, corrected 2026-08-31). Lite has only the older classic hosted UI — AWS: *"The Essentials plan is the lowest plan level that unlocks access to managed login"*. Both tiers give the same 10,000 free users, so Essentials costs **$0.00** here. Past 10,000, Lite is **$0.0055** and Essentials **$0.015** (same page, checked 2026-08-28) |
+| **Amazon Cognito** | Free tier that "does not automatically expire at the end of your 12-month AWS Free Tier term" | 10,000 monthly active users, on Lite and on **Essentials**, which is the tier this project uses ([Cognito pricing](https://aws.amazon.com/cognito/pricing/), checked 2026-08-25 in ADR-0003; the tier was corrected on 2026-08-31, `01-iac-plan.md` §4.3) | Charged per monthly active user. **The tier is Essentials** (gate 52, corrected 2026-08-31). Lite has only the older classic hosted UI — AWS: *"The Essentials plan is the lowest plan level that unlocks access to managed login"*. Both tiers give the same 10,000 free users, so Essentials costs **$0.00** here. Past 10,000, Lite is **$0.0055** and Essentials **$0.015** (same page, checked 2026-08-28) |
 | **Amazon API Gateway** | **No Always Free offer.** The free amount is a twelve-month trial ([API Gateway pricing](https://aws.amazon.com/api-gateway/pricing/), checked 2026-08-26 in ADR-0002) | **Nothing** | **Bills from the first request**, at $1.00 per million HTTP API calls |
 | **Amazon S3** | **No Always Free offer**, and the reason is a date. AWS changed the S3 offer on **2025-07-15**: accounts opened after it get the one-time credit instead of the old rolling free tier ([S3 FAQs](https://aws.amazon.com/s3/faqs/), checked 2026-09-01). This account opened 2026-07-01, so it is on the wrong side of that line | **Nothing** | **Bills from the first object.** The per-GB and per-request prices are still **not verified first-party** |
 | **Amazon CloudWatch** | Always Free. *"This always free service is available on the Free and Paid plan"* | 5 GB of log data (ingestion, archive storage and Logs Insights scanning together), 10 custom metrics, 10 alarm metrics, 3 dashboards, 1 million API requests ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/), checked 2026-09-01) | Charged per GB and per metric. **The ten alarm metrics are already passed: `03-observability.md` §5 lists eleven alarms**, so one is charged. Cents a month, and it is the owner's call whether to drop one — see §9 |
 | **AWS Systems Manager Parameter Store** | Standard parameters have no charge, and no monthly limit is named ([Systems Manager pricing](https://aws.amazon.com/systems-manager/pricing/), checked 2026-09-01) | Standard tier only. Advanced parameters are charged | Never create an advanced parameter |
 | **Amazon SNS** | Always Free. *"This always free service is available on the Free and Paid plan"* | 1,000,000 publishes, 100,000 HTTPS deliveries and **1,000 email deliveries** a month ([SNS on the free tier](https://aws.amazon.com/pm/sns/), checked 2026-09-01) | A handful of alarm emails a month is far below 1,000 |
 | **CloudFront Functions** | Always Free | **2,000,000 invocations a month** ([CloudFront FAQ](https://aws.amazon.com/cloudfront/faqs/), checked 2026-09-01) | Used for the URL rewrite (`01-iac-plan.md` §4.6), a few hundred a month. Charged per million past the allowance |
+| **AWS Step Functions, Standard** | Always Free. *"4,000 state transitions per month"*, and it does not expire ([Step Functions pricing](https://aws.amazon.com/step-functions/pricing/), checked 2026-09-17) | About 7 transitions per assessment, so 310 a month at the daily cap uses about 2,200 of 4,000 | $0.025 per 1,000 transitions after. **Express has no free amount and is never used** (`01-iac-plan.md` §4.4b) |
+| **Lambda Function URL** | Lambda pricing, nothing extra ([Function URLs](https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html), checked 2026-09-17) | Inside Lambda's 1 million requests. A stream of 55 seconds is billed as one long invocation, about 0.06 GB-seconds at 1024 MB | Charged as any Lambda call. One open stream per assessment |
+| **Amazon SQS** | Always Free, 1,000,000 requests ([SQS pricing](https://aws.amazon.com/sqs/pricing/), checked 2026-09-17) | Used only as the dead-letter queue, which nothing reads. Near zero | Never a queue a function polls, because polling an idle queue costs requests |
+| **AWS X-Ray** | Always Free, 100,000 traces recorded a month ([X-Ray pricing](https://aws.amazon.com/xray/pricing/), checked 2026-09-17) | A few hundred a month | Charged per million traces past that. Sampling is left at the default |
+| **Amazon EventBridge** | Events from AWS services are free ([EventBridge pricing](https://aws.amazon.com/eventbridge/pricing/), checked 2026-09-17) | One rule on Step Functions status changes. Zero | Custom events would cost $1 per million. The product sends none |
 | **AWS KMS** | AWS-managed and AWS-owned keys have no monthly charge | **This design creates no key of its own** | Not applicable — see §6 |
 | **Amazon Route 53** | **No free tier for hosted zones.** "$0.50 per hosted zone per month" ([Route 53 pricing](https://aws.amazon.com/route53/pricing/), checked 2026-08-27) | **Not used.** Gate 45 chose the free CloudFront hostname, so no hosted zone exists | Not applicable |
 | **AWS Certificate Manager** | Public certificates have no charge | **Not used.** No domain, so no certificate | Not applicable |
 | **NAT Gateway** | None. There is no free offer | **This design has no VPC and therefore no NAT Gateway** | Not applicable — see §6 |
 | **DynamoDB point-in-time recovery** | None. **$0.20 per GB per month** ([DynamoDB provisioned pricing](https://aws.amazon.com/dynamodb/pricing/provisioned/), checked 2026-09-01) | **Off** (gate 46, §8) | This table holds no photo bytes — text, counters and short strings only. At a few hundred MB that is **a few cents a month**, not a real trade. §8 states the reason as cost; that reason does not hold. **Re-open with the owner** |
 | **GitHub Actions** | Not AWS. Free and unlimited on a public repository | Unlimited minutes, and CodeQL scanning at no charge (gate 47) | Not applicable while the repository is public |
-| **Anthropic Messages API** | Not AWS. A separate account | About $5, topped up by hand | The feature answers `no-credit` and never retries |
+| **Anthropic Messages API** | Not AWS. A separate account | About $5, topped up by hand | The feature answers `no-credit`. That failure is never retried; only a timeout, a 429 or a 503 is, at most twice (ADR-0014) |
 
 **Three findings from that table are worth saying in words.**
 
@@ -141,12 +148,13 @@ the total settles at roughly 36 MB.
 | DynamoDB | $0 | Inside 20/20 plus 5/5, and inside 25 GB |
 | CloudFront | $0 | Inside 1 TB and 10 million requests |
 | Cognito | $0 | One monthly active user against 10,000, **on Essentials** (gate 52). Both tiers give the same 10,000 |
-| CloudWatch | Cents | Inside 5 GB and 10 custom metrics. **Eleven alarms against a free ten**, so one is charged — `03-observability.md` §5 |
+| CloudWatch | Cents | Inside 5 GB and 10 custom metrics. **Twelve alarms against a free ten**, so two are charged — `03-observability.md` §5 |
 | **Route 53** | **$0** | **No hosted zone. Gate 45 chose the free CloudFront hostname** |
 | **GitHub Actions** | **$0** | Unlimited on a public repository (gate 47) |
 | API Gateway | About $0.002 | $1.00 per million calls, at roughly 2,000 calls a month |
 | S3 | A fraction of a cent | About 36 MB and about 30 PUTs. **Price not verified first-party** |
-| **Anthropic** | **About $0.11** | 30 assessments at $0.0035 each (ADR-0005) |
+| Step Functions | $0 | About 210 transitions against 4,000 |
+| **Anthropic** | **About $0.11** | 30 assessments at $0.0035 each (ADR-0005). A retried timeout adds one call; the worst month is about three times this |
 
 **The whole AWS side is under a cent a month at expected use.** That is the direct result of gate
 45. With a bought domain, the $0.50 hosted zone would have been the largest AWS line in the product.
@@ -165,25 +173,31 @@ about the bad case.
 `POST /api/assessments` is the only route in the product that costs anything per call. Every AI
 endpoint needs all seven of these. Here is each one, where it is written, and how honest it is.
 
-### 1. Time budget — three deadlines, stacked
+### 1. Time budget — one clock per task, and none on the machine
+
+**Rewritten 2026-09-17 (ADR-0014).** The model call is no longer inside a request, so the gateway's
+30 seconds is not on the paid path. The clocks on that path are all set by this plan:
 
 ```
-30,000 ms   API Gateway cuts the request off. Cannot be raised
-22,000 ms   The Lambda function's own timeout        <- set by this plan
-20,000 ms   REQUEST_DEADLINE_MS, the app gives up and answers `deadline-passed`
-18,000 ms   MODEL_TIMEOUT_MS, the ceiling on the one call
+30,000 ms   The assess function's own timeout        <- the net
+25,000 ms   The Assess task's timeout, per attempt, with a Catch
+18,000 ms   MODEL_TIMEOUT_MS, the abort on the one call
+   none     The state machine. A machine timeout skips every Catch
 ```
 
-The function timeout sits **above** the application deadline, so the app always answers for itself.
-It sits **below** the gateway's cut, so the person never sees a 504 that nothing in this product
-wrote (ADR-0002, `03-api-spec.md` §7, NFR-02).
+The model always fails first, and by name, so the workflow can decide whether to retry. The task
+timeout sits above it as a net, and the function timeout above that. **No timeout on the machine**,
+because a machine timeout ends the run without running any `Catch`, and a row left `running` for
+ever is a person waiting for nothing (`01-iac-plan.md` §4.4b).
 
-**One clock per request**, checked before every step that can block. The abort signal handed to the
-model adapter fires at whichever comes first: 18,000 ms, or the time left on the request deadline.
+The `api` function keeps its own clocks — 22 seconds on the function, 20 seconds in the app, below
+the gateway's 30 — but the assessment route answers `202` in about a second, so they are a net,
+not a budget. Full table: `docs/400-architecture/05-patterns.md` §7.
 
 ### 2. Cost cap — measured, not estimated
 
-- **$0.0040 per assessment** on Haiku 4.5 (NFR-10).
+- **$0.0040 per call, and $0.012 per photo** on Haiku 4.5 (NFR-10), because a photo may take three
+  calls when the provider is slow (guardrail 3).
 - **Computed from the `usage` block the API returns**, never from an estimate (ADR-0006).
 - **Stored in millionths of a dollar as a whole number**, because the day rollup uses an atomic
   `ADD` and adding decimal numbers loses precision (`03-api-spec.md` §8).
@@ -198,36 +212,53 @@ number to watch, not a number that is enforced. NFR-14 also carries the arithmet
 daily limit does not guarantee it: one person using all ten every day for 184 days spends about
 $6.44.
 
-### 3. Retry cap — zero, everywhere
+### 3. Retry cap — two, in one place, on three names
 
-**There is no retry. Anywhere.** Not a timeout, not a 429, not a 503, not an unreadable answer
-(ADR-0005, NFR-05, owner 2026-08-26).
+**Rewritten 2026-09-17 (ADR-0014).** From 2026-08-26 until then there was no retry anywhere,
+because a second call sat under the same 30-second clock as the first. The call now runs in the
+background, so a capped retry is allowed again, and the cap is the guardrail:
 
-**`maxRetries: 0` on the Anthropic client, and it is not optional.** The SDK retries twice by
-default. Left alone, an 18,000 ms timeout becomes 54,000 ms of real time. That is past the
-application deadline and past the gateway's hard cut. So the default breaks the money *and* the
-deadline, and it reports nothing (`03-api-spec.md` §4).
+```
+MaxAttempts: 2       in the state machine, on the Assess task. Three calls at most
+maxRetries: 0        on the Anthropic client. The SDK must never retry underneath
+retryOnServiceExceptions: false   on the CDK task. No hidden six-attempt retry
+```
 
-**A test enforces it.** NFR-04: a stub provider counts calls, and **every** failure case gives
-exactly 1 — timeout, 429, 503, refusal, truncation, bad request, empty balance, rejected photo.
+**Only three names are retried:** `provider-timeout`, `provider-throttled`, `provider-unavailable`.
+The `assess` handler throws them as errors so the workflow can see them. Every other failure —
+refusal, truncation, bad request, empty balance, unreadable answer — is returned as a value and
+never retried, because it would fail the same way again.
+
+**Every retry costs twice: a Step Functions transition and a paid call.** So the cap is written
+once, in CDK, and `infra-assert` reads it off the synthesised template (NFR-05). The worst case for
+one photo is three calls, about $0.012 (NFR-10), and the daily limit still caps a person at ten
+photos, so the worst day is about $0.12.
+
+**A test enforces the count.** NFR-04: a stub provider counts calls. Every non-retried failure gives
+exactly 1, and a stub that throws three timeouts gives exactly 3.
 
 **The circuit breaker in guardrail 6 is not a retry and does not become one.** A retry makes a
-second call for the same person's same photo. The breaker makes **fewer** calls, never more.
+second call for the same person's same photo. The breaker makes **fewer** calls, never more. The
+retries do count toward its five failures in a row.
 
-### 4. Checkpointing — what it means when there is nothing to resume
+### 4. Checkpointing — the row is the checkpoint
 
-There is one call and no retry, so there is no partial run to pick up. What exists instead is an
-order of writes chosen so that a failure never loses the count and never leaves a mess:
+**Rewritten 2026-09-17.** The assessment row carries a `state`: `queued`, `running`, `done` or
+`failed`. Every step of the run writes it, so a run that dies at any point leaves a row that says
+where it got to, and nothing is picked up twice:
 
-- **The daily counter increments before the call**, so a failed call still counts. The money was
-  spent whether or not an answer came back (ADR-0008).
+- **The daily counter increments before the run starts**, so a call that was made and failed still
+  counts. The money was spent whether or not an answer came back (ADR-0008).
 - **The counter increments before the photo is written**, so a refused request leaves no object
   behind.
-- **A failure from step 9 to step 11 is stored by name**, as a failure record and not as an
-  assessment, so the count in NFR-23 can be taken (`03-api-spec.md` §4).
-
-**Say it plainly: this endpoint has no checkpoint, because one call cannot be half done.** When the
-assessment moves to a background job in run 3, that changes and this line has to be rewritten.
+- **`ClaimRun` moves the row from `queued` to `running` with a condition**, so a run started twice
+  makes the call once. The execution name is the assessment id, which gives the same protection
+  one level up.
+- **An attempt is given back only when no call was made** — the switch was off, the breaker was
+  open, or the run could not be started (ADR-0016, NFR-38). Never after a call.
+- **A failure inside the run is written on the row by name**, as `state: failed` with a
+  `failureCode`, so the count in NFR-23 can be taken. An EventBridge rule writes it for a run that
+  died outside its own error handling (`01-iac-plan.md` §4.4b).
 
 ### 5. Fallback — there is none, and that is the honest answer
 
@@ -257,9 +288,11 @@ The shape below does both.
 then exactly 1 call             ->  a test. If it works, normal service returns
 ```
 
-**Where it lives.** In the API, as **its own row** in the DynamoDB table. The row holds three
-things: how many calls have failed in a row, the moment the breaker opened, and the moment it may
-next let one call through. It carries a time-to-live, so it does not sit in the table forever.
+**Where it lives.** As **its own row** in the DynamoDB table. The row holds three things: how many
+calls have failed in a row, the moment the breaker opened, and the moment it may next let one call
+through. It carries a time-to-live, so it does not sit in the table forever. **Since 2026-09-17 the
+`assess` function writes it**, because the `api` function never sees the outcome of a call any
+more; both functions read it (ADR-0014).
 **The row's shape has to be written into two files that belong to other roles** —
 `docs/400-architecture/05-patterns.md` §1 and `docs/500-engineering/03-api-spec.md` §8.1. Both are
 in the list in `04-ci-cd.md` §6.2.
@@ -272,10 +305,11 @@ That row is the owner's kill-switch. So two things stay true at once, and neithe
   that has healed cannot turn it on.
 - **A runaway that starts overnight stops itself**, without waiting for a person to read an email.
 
-**Where the check runs in the request.** Straight after the kill-switch is read and **before** the
-daily limit is counted — between step 6 and step 7 of `03-api-spec.md` §4. That order matters: an
-open breaker means no call was made, so it must not spend one of the person's ten. It is the same
-reasoning as US-08 AC-3, which requires that a refusal costs no money.
+**Where the check runs.** Twice. In the `api` function, straight after the kill-switch is read and
+**before** the daily limit is counted — between step 6 and step 7 of `03-api-spec.md` §4 — so an
+open breaker never spends one of the person's ten. And again in `assess`, just before the call,
+because the breaker may have opened in the seconds between; that refusal gives the attempt back
+(ADR-0016). It is the same reasoning as US-08 AC-3, which requires that a refusal costs no money.
 
 **What the person sees while it is open.** This role's reading is that the existing
 `provider-unavailable` is the right answer. It needs no new failure code, no new screen and no
@@ -292,11 +326,12 @@ the money was spent on a working service. **Confirm this list when the row shape
 `05-patterns.md`.**
 
 **What it costs to open, and what it saves.** Five failures at about $0.0035 each is **$0.0175**
-spent before the breaker opens. While it is open, the most the product can spend is **one call every
-ten minutes**, which is six an hour.
+spent before the breaker opens. A retried timeout counts as a failure too, so two slow photos can
+open it. While it is open, the most the product can spend is **one call every ten minutes**, which
+is six an hour. The half-open test is exactly one call, because `assess` runs one copy at a time.
 
 **How much that is worth today, said honestly.** With self sign-up off and one account, the daily
-limit already caps spending at ten calls a day, which is about $0.035. So the breaker saves little
+limit already caps spending at ten assessments a day, which is at most about $0.12. So the breaker saves little
 money in run 1. **Its value is speed and its value is the future.** Speed: it stops in seconds. A
 person reading an email stops it in minutes, or in hours if it happens at night. The future: the
 moment gate 49's open sign-up story ships, the daily limit stops being a ceiling on the whole
@@ -338,8 +373,13 @@ because none of them depends on anybody reading an email.
 | Guardrail | Setting | What it stops |
 | --- | --- | --- |
 | **Provisioned DynamoDB, 20/20 plus 5/5** | `01-iac-plan.md` §4.1 | A runaway loop is **throttled**, so the requests fail and somebody notices. On demand, the same loop succeeds and eats the credit (ADR-0002) |
-| **Lambda reserved concurrency 10** | `01-iac-plan.md` §4.4 | A loop cannot start a thousand copies of a function that each wait 18 seconds on a paid call. Ten is the largest number any requirement asks for (NFR-12) |
-| **Lambda timeout 22 seconds** | `01-iac-plan.md` §4.4 | A hung request cannot burn GB-seconds forever |
+| **Lambda reserved concurrency 10 on `api`, 1 on `assess`** | `01-iac-plan.md` §4.4, §4.4b | A loop cannot start a thousand copies of a function. One paid call at a time is the whole cap on the model side |
+| **Lambda timeout 22 seconds on `api`, 30 on `assess`, 60 on `watch`** | `01-iac-plan.md` §4.4, §4.4b | A hung request cannot burn GB-seconds forever |
+| **Step Functions Standard, `MaxAttempts: 2`, no machine timeout** | `01-iac-plan.md` §4.4b | Express would bill every run. A retry cap written in one place is a cost cap. A machine timeout would strand rows |
+| **`retryOnServiceExceptions: false` on the `Assess` task** | `01-iac-plan.md` §4.4b | CDK's hidden six-attempt retry cannot call the model again after a call was made |
+| **The EventBridge rule has `retryAttempts: 2` and `maxEventAge: 5 minutes`** | `01-iac-plan.md` §4.4b | The default is 185 attempts over 24 hours. A broken `mark-failed` function would be invoked all day |
+| **No function reads a queue** | `01-iac-plan.md` §4.4b | Lambda polling an idle SQS queue still makes receive requests. The one queue is a dead-letter queue nobody reads |
+| **The Function URL is `AWS_IAM`** | `01-iac-plan.md` §4.4b | A `NONE` URL is a public endpoint anybody can hold open for 55 seconds of Lambda time |
 | **Cognito self sign-up off** | `01-iac-plan.md` §4.3 | Strangers cannot create accounts against a shared $5 balance (gate 49) |
 | **No VPC, so no NAT Gateway** | `01-iac-plan.md` §4.4 | A NAT Gateway is charged by the hour with no free offer, and would be the single largest line item in the product (ADR-0002) |
 | **No cache service** | ADR-0002 | ElastiCache and DAX are charged by the hour, save 24 ms out of 8,191, and would force the function into a VPC |

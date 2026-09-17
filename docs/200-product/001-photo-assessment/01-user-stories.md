@@ -47,8 +47,8 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 1. **Given** I am signed in and at least one pot is named, **when** I open the assessment screen,
    **then** I can pick one pot and add a photo in exactly two ways: take one with the camera, or
    choose one from the phone.
-2. **Given** I picked a file that is not JPEG, PNG, GIF or WebP, **when** I try to send it, **then**
-   the app refuses before any model call and names those four formats. (Source: Anthropic vision
+2. **Given** I picked a file that is not JPEG, PNG or WebP, **when** I try to send it, **then**
+   the app refuses before any model call and names those three formats. (Source: Anthropic vision
    limits, `00-context-brief.md` 5.3.)
 3. **Given** no pot is picked, **when** I try to send, **then** the app refuses before any model
    call and asks me to pick or create a pot.
@@ -58,12 +58,14 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 5. **Given** the photo's shorter side is under 200 px, **when** I try to send it, **then** the app
    refuses before any model call and says the photo is too small. (Anthropic warns about images
    under 200 px, `00-context-brief.md` 5.3.)
-6. **Given** the two checks in AC-2 and AC-3 both pass, **when** the assessment runs, **then**
-   exactly **one** model call is made for it.
+6. **Given** the two checks in AC-2 and AC-3 both pass, **when** the assessment runs, **then** one
+   background run is started for it, and that run makes **one** model call in the normal case and
+   **never more than three** (ADR-0014, 2026-09-17).
 7. **Given** I have tapped send, **when** the result has not come back, **then** the screen shows
    that work is running and the send button cannot be tapped a second time.
-8. **Given** a working network, **when** I tap send, **then** a result or a message appears within
-   **30 seconds** (G-5, set by the owner 2026-08-25).
+8. **Given** a working network, **when** I tap send, **then** within **30 seconds** the screen
+   confirms the assessment is running (G-5, set by the owner 2026-08-25; what is on screen changed on
+   2026-09-17), and within **60 seconds** a result or a message appears.
 
 **Success metric:** M-02 · **Guardrails:** M-22, M-12
 
@@ -104,6 +106,8 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
    as creating tasks nobody remembers agreeing to, in a run that cannot send a reminder.
 7. **Given** the verdict code is `nothing-wrong`, **when** the result is shown, **then** the next
    action may be "do nothing", and no care task is offered.
+8. **Given** the run has finished, **when** the result is ready, **then** it reaches my phone on its
+   own, over the connection the app opened, without me tapping anything (ADR-0015, 2026-09-17).
 
 **AI Eval Card**
 
@@ -297,9 +301,10 @@ decision**, named as open in `factory/feature.md`. This story says what must be 
 4. **Given** I am below the limit, **when** I send a photo, **then** no message about the limit is
    shown.
 5. **Given** any failure of the model call, **when** the count is taken, **then** the failed call
-   still counts against the daily limit, because the count happens before the call is made.
-   *(Reworded 2026-08-26. It said "any automatic retry from US-09 counts against the same limit".
-   There is no retry now, so the rule that remains is the one about a failed call.)*
+   still counts against the daily limit, because the count happens before the call is made. The
+   workflow's own retries do not count again: one attempt is one assessment, however many calls it
+   took. **An attempt is given back only when no call was made at all**, for example when the
+   kill-switch was flipped while the run was still queued (ADR-0016, 2026-09-17).
 
 **This story cannot be tested until the number exists.** Gate G-2 is a hard stop. The limit is the
 only thing between the assessment endpoint and the owner's Anthropic credit, and no AWS alarm can
@@ -328,12 +333,12 @@ see that spend, because the model bill is not an AWS bill.
    created.
 4. **Given** an admin turned the feature off (US-13), **when** I send a photo, **then** the message
    says the feature is off and that trying again will not work now.
-5. **Given** any failure, **when** the calls are counted, **then** the app made **exactly one**
-   model call for that assessment. **Nothing is retried** — not a timeout, not a 429, not a 503.
-   *(Reversed by the owner on 2026-08-26. G-9 originally allowed one retry, two attempts in total.
-   Two attempts cost about $0.0070 against a $0.0040 ceiling, and each attempt had to fail early
-   enough to leave room for the other. A retry returns in run 3, when the work happens in the
-   background.)*
+5. **Given** any failure, **when** the calls are counted, **then** the app made **at most three**
+   model calls for that assessment, and only a timeout, a 429 or a 503 was retried. The retry
+   happens inside the background workflow, never on the screen, and never for a bad request, a
+   rejected photo, a refusal or an empty credit balance. *(Set by the owner on 2026-09-17, ADR-0014.
+   The rule was "no retry" from 2026-08-26 while the phone waited for the answer; moving the work
+   into the background is what made a capped retry safe again.)*
 6. **Given** any failure, **when** the record is stored, **then** it is stored with the reason, so
    the count in M-08 can be taken.
 
@@ -470,7 +475,9 @@ is not a product feature, so this story waits.
 **AC**
 
 1. **Given** the switch is changed to off, **when** it is changed, **then** within **60 seconds**
-   (G-8, set by the owner 2026-08-25) no new model call is made by anyone.
+   (G-8, set by the owner 2026-08-25) no new model call is made by anyone. That includes a run that
+   was already queued in the background: it stops before its call, and the person's attempt is given
+   back (ADR-0016).
 2. **Given** the switch, **when** it is used, **then** no code change and no deploy is needed. A
    switch that needs a release is not a kill-switch.
 3. **Given** the feature is off, **when** a USER sends a photo, **then** US-09 AC-4 applies.

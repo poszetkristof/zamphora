@@ -2,6 +2,8 @@
 
 **Written by** 800 Infra, run 1 (`001-photo-assessment`). **Date:** 2026-08-27.
 **Updated** 2026-08-28 with the owner's answers to gates 43 to 63.
+**Updated 2026-09-17** for ADR-0014 to ADR-0016: the workflow and its three functions in §3, and
+the clocks and retry lines in §4.
 **Read next by** 900 Security, 600 QA.
 
 This file says how many copies of zamphora exist, what each copy is for, and which values change
@@ -77,7 +79,11 @@ Everything that can run without AWS runs without AWS:
   that keeps the accounts and shows the sign-in pages, and a user pool cannot be run locally. This
   is the one place `local` touches AWS.
 - The model — a stub `LlmProvider` that returns a fixed answer and sleeps for the budgeted 8,000 ms
-  (`06-nfrs.md` NFR-01 already describes this stub).
+  (`06-nfrs.md` NFR-07 already describes this stub).
+- The workflow — **Step Functions Local**, in Docker, Amazon's own copy of Step Functions for a
+  developer's machine. It runs the same state machine definition against DynamoDB Local and calls
+  the `assess` handler as a local process. The stream — the `watch` handler run as a plain Node
+  process on a second local port, because response streaming needs no Lambda to work locally.
 
 **DynamoDB Local and MinIO are both accepted tools** (gate 51, owner, 2026-08-27). Each runs in
 Docker on the owner's machine, costs nothing, and never touches the AWS account. Here is why they
@@ -98,9 +104,10 @@ convenience. Three written requirements cannot be tested without it.
 
 ### `prod`
 
-The real thing. One CloudFront distribution, one Lambda function, one table, one bucket, one user
-pool. CloudFront is Amazon's content delivery network, the layer that answers the browser. Lambda
-runs code without a server the project has to keep alive.
+The real thing. One CloudFront distribution, four Lambda functions, one state machine, one table,
+one bucket, one user pool. CloudFront is Amazon's content delivery network, the layer that answers
+the browser. Lambda runs code without a server the project has to keep alive. Step Functions runs
+the background assessment as a list of steps written in CDK (ADR-0014).
 
 ## 3. What each environment is made of
 
@@ -112,12 +119,16 @@ Every container in `02-containers.mmd` appears here. The CDK construct for each 
 | `edge` — CloudFront | Not present. The two dev servers run side by side | One distribution | One distribution |
 | `web` — Next.js static export | `next dev` | Bucket + distribution | Bucket + distribution |
 | `api` — Nest.js on Lambda | A normal Node process | One function | One function |
+| `workflow` — Step Functions | Step Functions Local, in Docker | One state machine | One state machine |
+| `assess` — the model call, on Lambda | A local process called by Step Functions Local | One function, concurrency 1 | One function, concurrency 1 |
+| `watch` — the result stream, on Lambda | A Node process on a second port | One function behind a Function URL | One function behind a Function URL |
+| `mark-failed` — the net under the workflow | Not present | One function and one EventBridge rule | One function and one EventBridge rule |
 | `llm adapter` — `packages/llm` | Stub provider | Stub provider | Anthropic adapter |
 | `contracts` — `packages/contracts` | Code. Not a deployed thing anywhere | | |
 | `table` — DynamoDB | DynamoDB Local | One table at 5/5 | One table at 20/20 |
 | `photos` — S3 | MinIO | One bucket | One bucket |
-| Cognito user pool | Uses `preview`'s pool | One pool, Lite | One pool, Lite |
-| Anthropic Messages API | Never called | Never called | Called once per assessment |
+| Cognito user pool | Uses `preview`'s pool | One pool, Essentials | One pool, Essentials |
+| Anthropic Messages API | Never called | Never called | Called once per assessment, at most three times |
 | Email delivery | Not built in run 1 (`02-containers.mmd`, gate 29) | | |
 | AWS Management Console | The admin path. Not a deployed thing (gate 30) | | |
 
@@ -132,7 +143,7 @@ Every container in `02-containers.mmd` appears here. The CDK construct for each 
 | The `LlmProvider` used | An environment variable read at start-up. `stub` outside `prod` |
 | Log retention | 30 days in `prod`, 1 day in `preview` |
 | DynamoDB capacity | 20 read / 20 write in `prod`, 5 / 5 in `preview`. §5 |
-| Lambda reserved concurrency | 10 in `prod`, 2 in `preview` |
+| Lambda reserved concurrency of `api` | 10 in `prod`, 2 in `preview`. `assess` is 1 everywhere |
 
 **Never changes, in any environment:**
 
@@ -146,9 +157,10 @@ Every container in `02-containers.mmd` appears here. The CDK construct for each 
   assertion test in NFR-40 checks the same code that ships.
 - Every cookie rule: `__Host-` prefix, `Secure`, `HttpOnly`, `Path=/`, no `Domain` (ADR-0003,
   ADR-0010).
-- The three stacked deadlines: 30,000 ms gateway, 20,000 ms application, 18,000 ms model
-  (`03-api-spec.md` §7).
-- `maxRetries: 0` (ADR-0005).
+- The clocks: 20,000 ms in the `api` function, 25,000 ms on the `Assess` task, 18,000 ms on the
+  model call, and no timeout on the state machine (`05-patterns.md` §7).
+- `maxRetries: 0` on the adapter, and `MaxAttempts: 2` on the one workflow retry (ADR-0005,
+  ADR-0014).
 - The refuse-by-default route guard (ADR-0004).
 - The bucket is private with Block Public Access on, everywhere (ADR-0007).
 - The circuit breaker's numbers: 5 failures, 10 minutes, one test call
@@ -280,8 +292,8 @@ Two secrets exist in run 1:
 
 | Secret | Who needs it | Where it lives |
 | --- | --- | --- |
-| The Cognito app client secret | `apps/api` (ADR-0003 — a confidential client) | Parameter Store, `SecureString` |
-| The Anthropic API key | `apps/api`, through `packages/llm` | Parameter Store, `SecureString` |
+| The Cognito app client secret | The `api` function (ADR-0003 — a confidential client) | Parameter Store, `SecureString` |
+| The Anthropic API key | **The `assess` function only**, through `packages/llm`. The `api` function's role cannot read it (ADR-0014) | Parameter Store, `SecureString` |
 
 **Parameter Store, standard tier, `SecureString`, encrypted with the AWS-managed key.** Parameter
 Store is the AWS service that keeps named values, and a `SecureString` is a value it keeps
@@ -313,7 +325,10 @@ buys nothing.
 | The developer, as admin | The DynamoDB table directly | The AWS console, with their own AWS sign-in (gate 30, ADR-0009) |
 | GitHub Actions, deploy | The `prod` stacks | A role assumed with OpenID Connect, where GitHub proves who it is with a short-lived token. Restricted to the `main` branch. No stored access key |
 | GitHub Actions, preview | The `preview` stacks only | A second role, restricted to pull requests |
-| The API function | The table, the bucket, two parameters | Its own execution role, with only those permissions |
+| The `api` function | The table, the bucket, the Cognito secret, and starting the one state machine | Its own execution role, with only those permissions |
+| The `assess` function | The model key, two `CONFIG` rows, the breaker row, the photo object | Its own role. The smallest in the product, and the only one with the model key |
+| The `watch` function | The session and assessment rows, read only | Its own role. Reached only through CloudFront |
+| The state machine | The assessment, counter and rollup rows, and invoking `assess` | Its own role |
 | The web files | Nothing | ADR-0010: the web app has no role, no client and no credential |
 
 **Nobody creates their own account in run 1.** Cognito self sign-up is off, and the owner creates
@@ -354,6 +369,23 @@ A checklist, in order. Each line is a thing a person does once. The pipeline hal
    DynamoDB row and not in code, so moving to another model is one edit and no deploy. Moving to
    Sonnet 5 now was rejected on cost — gate row 62 has the arithmetic. **Re-check again if run 1 is
    still running in October 2026.**
+
+**Four more, added 2026-09-17 by the security review of this pack** (`../900-security/02-mitigations.md`
+§4 and R-05). Each one is a promise that nobody has tested:
+
+9. **Flip the kill-switch once on purpose, time it, and write the number down.** The promise is 60
+   seconds and the cache is 30 (ADR-0009, NFR-34). A switch nobody has flipped is a paragraph, in
+   the same way §9 of `01-iac-plan.md` says a rollback nobody has run is a plan.
+10. **Run level 3 of the rollback once on purpose** (`01-iac-plan.md` §9). Same reason.
+11. **Read the `zamphora-github-preview` role's policy after creating it in step 2, and confirm it
+    names no `Zamphora-Prod-*` stack.** This is the one property of R-05 that could not be checked
+    from a document, because the policy does not exist until step 2 writes it. The other two walls
+    — no fork pull request runs the deploy workflow, and the trust claim is pinned to
+    `repo:poszetkristof/zamphora:pull_request` — are verified in `04-ci-cd.md` §4.
+12. **Confirm multi-factor sign-in is on for the AWS account**, on the root user and on any user the
+    owner signs in as (gate 71, R-10). That one credential opens everything and there is no backup
+    behind it, because point-in-time recovery is off (gate 46). **This is a hard stop before the
+    first deploy, not a nice-to-have.**
 
 ## 11. What this document does not decide
 

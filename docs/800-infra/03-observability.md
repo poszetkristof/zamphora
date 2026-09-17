@@ -2,6 +2,8 @@
 
 **Written by** 800 Infra, run 1 (`001-photo-assessment`). **Date:** 2026-08-27.
 **Updated** 2026-08-27 with the owner's answers to gates 43 to 61.
+**Updated 2026-09-17** for ADR-0014 to ADR-0016: the workflow's own metrics in §4, alarm 3 and a
+new alarm 12 in §5, and X-Ray turned on in §8.
 **Read next by** 900 Security, 600 QA.
 
 This file says where the logs go and which numbers are measured. It lists the alarms. It says
@@ -42,7 +44,8 @@ trigger as gate 5 and as the admin route in ADR-0009, and all three should be an
 - the model id
 - the input and output token counts
 - the computed cost
-- the duration of each of the fifteen steps in `03-api-spec.md` §4
+- the duration of each step in `03-api-spec.md` §4, from whichever of the three functions ran it.
+  The assessment id joins the `api`, `assess` and `watch` lines of one run
 
 **Recorded by their own names, never merged.** The person sees one screen for several failures. The
 log keeps them apart:
@@ -119,6 +122,8 @@ Not everything needs a custom metric. Three sources cost nothing and cover most 
 | `ConsumedReadCapacityUnits`, `ConsumedWriteCapacityUnits` | DynamoDB | How much of the free allowance is used |
 | `Count`, `4xx`, `5xx`, `Latency` | API Gateway | Requests the function never saw |
 | `Requests`, `4xxErrorRate`, `5xxErrorRate` | CloudFront | The front door |
+| `ExecutionsStarted`, `ExecutionsSucceeded`, `ExecutionsFailed`, `ExecutionsTimedOut`, `ExecutionTime` | Step Functions | Did the background run finish, and how long it took. Added 2026-09-17 |
+| `Invocations`, `Errors` on `assess` | Lambda | The paid function on its own. Its `Errors` count is the retried failures, by design |
 
 **API Gateway's *detailed* metrics are charged as custom metrics. Do not turn them on.** The basic
 ones above are free.
@@ -193,14 +198,15 @@ use.
 **The same trap applies to a CloudWatch Logs metric filter**, which also creates a custom metric. Use
 a query, not a filter.
 
-## 5. The alarms — eleven of them, and the free allowance is ten
+## 5. The alarms — twelve of them, and the free allowance is ten
 
 **Corrected 2026-09-01. This section said "exactly ten" and listed eleven.** Alarm 11 was added on
 2026-08-31 to close the CloudFront flood hole, and the heading, the opening sentence and two other
 files were never updated. So the true position is:
 
-- **The CloudWatch Always Free allowance is ten alarm metrics.** This list uses **eleven**.
-- **One of them is therefore charged.** A standard-resolution alarm is a small fixed amount per
+- **The CloudWatch Always Free allowance is ten alarm metrics.** This list uses **twelve** since
+  alarm 12 was added on 2026-09-17 for the background run.
+- **Two of them are therefore charged.** A standard-resolution alarm is a small fixed amount per
   alarm metric per month — cents, not dollars. *The exact figure was not confirmed first-party in
   this pass.* AWS is clear on the shape of the charge: *"Each CloudWatch alarm incurs charges for
   the metric it monitors."*
@@ -211,10 +217,10 @@ files were never updated. So the true position is:
 **This is the owner's decision, not this document's** (`02-cost-guardrails.md` §9). Two ways out,
 and doing nothing is a legitimate third:
 
-1. **Keep eleven and pay cents a month.** Alarm 11 is the only warning of a flood that stops at the
+1. **Keep twelve and pay cents a month.** Alarm 11 is the only warning of a flood that stops at the
    edge and never reaches the throttled gateway. It is one of the four alarms this project actually
-   needs.
-2. **Drop one of alarms 1 to 5**, the ordinary ones any system has, and stay at ten.
+   needs, and alarm 12 is the only sign that a run died with nothing to catch it.
+2. **Drop two of alarms 1 to 5**, the ordinary ones any system has, and stay at ten.
 
 **Whatever is chosen, the rule from here is unchanged: an alarm is a decision, not an addition.**
 Whoever adds the twelfth has to say which one it replaces, or accept another charge.
@@ -223,7 +229,7 @@ Whoever adds the twelfth has to say which one it replaces, or accept another cha
 | --- | --- | --- | --- |
 | 1 | API function errors | Lambda `Errors` ≥ 1 in 5 minutes | Something is broken and nobody is watching a screen |
 | 2 | API function throttles | Lambda `Throttles` ≥ 1 in 5 minutes | Reserved concurrency of 10 was hit. Either a loop, or ten real people |
-| 3 | Slow requests | Lambda `Duration` p95 > 20,000 ms over 15 minutes | The application deadline is being reached, so people are seeing `deadline-passed` (NFR-02) |
+| 3 | **Failed runs** | Step Functions `ExecutionsFailed` + `ExecutionsTimedOut` ≥ 1 in 5 minutes | **Changed 2026-09-17.** It used to watch `api` duration against the 20-second deadline; that route now answers in about a second. A run that failed outside its own error handling is the thing nothing else reports |
 | 4 | DynamoDB read throttles | `ReadThrottleEvents` ≥ 1 in 5 minutes | The table's fixed read units were hit. This is the free tier working, and it means something is wrong |
 | 5 | DynamoDB write throttles | `WriteThrottleEvents` ≥ 1 in 5 minutes | The same, on writes |
 | 6 | **Runaway model calls** | `zamphora/ModelCalls` sum > 30 in 1 hour | Expected use is about 30 a **month**. Thirty in an hour is a loop or an attack |
@@ -232,6 +238,10 @@ Whoever adds the twelfth has to say which one it replaces, or accept another cha
 | 9 | Gateway 5xx | API Gateway `5xx` ≥ 1 in 5 minutes | A 504 from the gateway means a request passed 30 seconds. The app should have answered at 20 |
 | 10 | Front door 5xx | CloudFront `5xxErrorRate` > 1% over 15 minutes | The distribution or an origin is broken. **Lives in `us-east-1`, see below** |
 | 11 | **Front door flood** | CloudFront `Requests` sum > 50,000 in 1 hour | Expected use is a few hundred a day. This is the only warning of a flood that stops at the edge and never reaches the throttled gateway. **Lives in `us-east-1`** |
+| 12 | **Dead letters** | The dead-letter queue's `ApproximateNumberOfMessagesVisible` ≥ 1 | **Added 2026-09-17.** A `mark-failed` invocation that failed twice. A row may be stuck at `running`. Nothing reads this queue, so the alarm is the only way anybody learns |
+
+**Twelve now, and the same rule: the twelfth is charged like the eleventh**, cents a month, and the
+owner decides whether to drop one of alarms 1 to 5 instead.
 
 **Alarms 6, 7, 8 and 11 are the ones this project actually needs.** The others are the ordinary ones
 any system has. These four are about a balance that ends a feature and an account that ends a
@@ -253,7 +263,7 @@ the response is to disable the distribution by hand.
 
 **Alarm 8 changed shape when gate 50 was answered, and the change is worth understanding.** Before
 the answer, this alarm *was* the circuit breaker: it counted failures and asked a person to flip the
-kill-switch. Now the breaker is automatic and lives in the API
+kill-switch. Now the breaker is automatic and lives in the `assess` function
 (`02-cost-guardrails.md` §5), so the alarm no longer has a job to do in the moment. **Its job is to
 tell the owner that the product has already protected itself.** By the time the email arrives, the
 spending has stopped. That makes it a message rather than a request for help. It is the better
@@ -323,7 +333,8 @@ Five rows, in this order, because that is the order a question gets asked in:
 1. **Money.** `CostMicroUsd` per day, `ModelCalls` per day, and the running total for the NFR-14
    window.
 2. **Is it working.** `Invocations`, `Errors`, `Throttles`, and `BreakerOpened`.
-3. **Is it fast.** `Duration` at p50 and p95, with a line drawn at 20,000 ms.
+3. **Is it fast.** Step Functions `ExecutionTime` at p50 and p95, with a line drawn at 60,000 ms
+   (NFR-07), and `api` `Duration` at p95 next to it, which should sit near one second.
 4. **Is the answer any good.** `CannotTellAnswers` and `UnreadableAnswers` as a share of
    `ModelCalls`, against the NFR-22 and NFR-23 ceilings.
 5. **The free allowances.** `ConsumedReadCapacityUnits` and `ConsumedWriteCapacityUnits` against the
@@ -357,12 +368,22 @@ fields @timestamp, msg, failureCode
 
 **The cold start, for NFR-06** — the query in §4.
 
-**One request, end to end** — every step duration from `03-api-spec.md` §4:
+**One assessment, end to end** — every step duration from `03-api-spec.md` §4, across the three
+functions. Run it against all three log groups at once; the assessment id is the join:
 
 ```
 fields @timestamp, @message
-| filter requestId = "<the request id>"
+| filter assessmentId = "<the assessment id>"
 | sort @timestamp asc
+```
+
+**Which runs were retried, and how often** — the count NFR-04 caps at three:
+
+```
+fields @timestamp, assessmentId, msg
+| filter msg = "assess.attempt"
+| stats count(*) as attempts by assessmentId
+| filter attempts > 1
 ```
 
 **The cannot-tell share, for NFR-22:**
@@ -383,8 +404,9 @@ admin key it needs does not go on the server, so it is a local script the owner 
 
 ## 8. What is deliberately not watched
 
-Four things nothing records. Each is a decision that was already made, and each is written here so
-nobody spends an evening looking for a log that was never going to exist.
+Three things nothing records, and one thing that is now recorded after all. Each is a decision that
+was already made, and each is written here so nobody spends an evening looking for a log that was
+never going to exist.
 
 **1. Who flipped the kill-switch.** ADR-0009: nothing in the application runs when it happens, so
 the app's own logs show the effect — model calls stopping — and never the cause. AWS's own record of
@@ -405,20 +427,16 @@ turn on Data events or Insights events.** Both bill from the first event.
 AWS console, never through the API (gate 30). So no route, no guard and no application log sits on
 it. The same CloudTrail record is the trail, with the same 90-day limit.
 
-**3. Distributed tracing.** AWS X-Ray is not turned on in run 1. There is one function and one
-outside call, and the duration of every step is already in the log line (`03-api-spec.md` §11).
-
-**Corrected 2026-09-01: the reason written here was cost, and cost is not the reason.** X-Ray is
-free at this size — 100,000 traces recorded a month sit inside CloudWatch's always-free tier, and
-this product would send a few dozen. X-Ray is also no longer sold on its own: its old pricing page
-now redirects into
-[CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/) (checked 2026-09-01).
-**The real reason is that a service map of one node is not worth drawing.** X-Ray's value is showing
-where time went across several hops. This flow has one function calling one outside API, and the log
-line already gives every step duration. Turning it on would still add a permission and a sampling
-decision, for a picture with nothing in it. **The trigger to turn it on is unchanged and is still
-right: a second compute unit joins the flow** — which is exactly what Option C in `00-options.md` §6
-would add, and what the container shape in `../learn/aws-and-the-pipeline.md` §7 would add three of.
+**3. Distributed tracing — turned on 2026-09-17.** AWS X-Ray draws where time went across several
+hops. Until 2026-09-17 it was off, and the reason written here was that a service map of one node is
+not worth drawing: one function, one outside call, and every step duration already in the log line.
+The trigger written next to that reason was "a second compute unit joins the flow". ADR-0014 added
+three: the state machine, `assess` and `watch`. So X-Ray is on, with `tracingEnabled: true` on the
+state machine and active tracing on the four functions (`01-iac-plan.md` §4.4b). It is free at this
+size: 100,000 traces recorded a month sit inside CloudWatch's always-free tier
+([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/), checked 2026-09-01), and this
+product sends a few hundred. Sampling stays at the default. **Do not turn on X-Ray Insights**, which
+bills on its own.
 
 **4. Anything about uptime.** §1.
 
@@ -428,9 +446,11 @@ A check that this file covers what `06-nfrs.md` says can only be measured at run
 
 | Requirement | Marked in `06-nfrs.md` as | Covered here by |
 | --- | --- | --- |
-| NFR-02, the 20,000 ms server share | `test`, plus real behaviour | Alarm 3, dashboard row 3 |
-| NFR-06, cold start ≤ 2,000 ms p95 | **runtime only** | §4, the Logs Insights query |
-| NFR-10, ≤ $0.0040 per assessment | `test`, plus the rollup | `CostMicroUsd`, dashboard row 1 |
+| NFR-02, the 20,000 ms server share | `test`, plus real behaviour | Dashboard row 3, the `api` line |
+| NFR-04, at most 3 calls per photo | `test` | The retry query in §7 |
+| NFR-06, cold start ≤ 2,000 ms p95 | **runtime only** | §4, the Logs Insights query, on each of the functions |
+| NFR-07, the result inside 60,000 ms | `perf-flow`, plus real behaviour | Alarm 3, dashboard row 3, `ExecutionTime` |
+| NFR-10, ≤ $0.0040 per call, ≤ $0.012 per photo | `test`, plus the rollup | `CostMicroUsd`, dashboard row 1 |
 | NFR-13, the app's count matches the provider's | **a local script** | §7, read from the table |
 | NFR-14, under $5.00 to 2026-12-31 | **runtime only** | Dashboard row 1, the running total |
 | NFR-22, cannot-tell ≤ 3 in 10 | `ai-eval`, plus real answers | `CannotTellAnswers`, §7 |

@@ -1,6 +1,7 @@
 # ADR-0010 — Serve the web app and the API from one origin
 
-- **Status:** Accepted
+- **Status:** Accepted. One sentence added by ADR-0015 (2026-09-17): one more CloudFront behaviour
+  sends the single stream path to a Lambda Function URL, under the same host name.
 - **Date:** 2026-08-25
 
 ## Context
@@ -31,6 +32,12 @@ survive whichever shape is chosen.
 A CloudFront distribution sits in front. **`/api/*` goes to the API. Everything else goes to the
 web.** The two are still separate deployable units with separate CDK stacks; only the front door is
 shared.
+
+**Added by ADR-0015 on 2026-09-17:** one path, `GET /api/assessments/:id/events`, goes to a third
+place — the `watch` function's Lambda Function URL, which streams the assessment result to the
+phone. It is still the same host name, reached only through CloudFront, and it is a `GET` with no
+body, so every cookie rule below is untouched. That is the only path that does not go to the API
+Gateway.
 
 **The web app holds no credentials and reads no data store.** It renders the screens, ships both
 languages, and fetches every value from `/api/*` in the browser. It has no permission on the table
@@ -168,8 +175,9 @@ processes that both validate a session, which is the same rule written twice —
 
 ## Agent-Readable Summary
 
-> The whole product is served from one domain: `/api/*` reaches `apps/api`, everything else reaches
-> `apps/web`. Do not add a second origin, a second subdomain or any CORS configuration — if a change
+> The whole product is served from one domain: `/api/*` reaches `apps/api`, the one stream path
+> reaches the `watch` Function URL (ADR-0015), everything else reaches `apps/web`. Do not add a
+> second host name, a second subdomain or any CORS configuration — if a change
 > needs `Access-Control-Allow-Origin`, something has gone wrong. Do not give `apps/web` an IAM role,
 > a database client, an S3 client or any credential; it fetches everything from `/api/*`. Do not
 > validate the session in the Next.js server — there is no Next.js server. `apps/web` is built with

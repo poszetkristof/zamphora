@@ -7,6 +7,9 @@
   `POST /api/admin/ai-enabled`. The `changedBy` and `changedAt` fields are gone with it. Everything
   about *where the value lives* and *how it is cached* is unchanged. This record is corrected in
   place rather than superseded, because no code was written against the route.
+- **One sentence added by ADR-0016 (2026-09-17):** the `assess` function reads the same row, on the
+  same 30-second cache, just before the model call. So a flip also stops a run that was already
+  queued in the background, and that run's attempt is refunded.
 
 ## Context
 
@@ -143,8 +146,9 @@ later security review.
 ## Agent-Readable Summary
 
 > The AI kill-switch is the item `PK = CONFIG, SK = AI_ENABLED` in the DynamoDB table, holding one
-> field `enabled`, read into memory and refreshed when the copy is older than 30,000 ms. **In run 1
-> it is flipped by editing the row in the AWS console, and no admin route exists.** Do not build
+> field `enabled`, read into memory and refreshed when the copy is older than 30,000 ms, by the
+> `api` function before it counts an attempt and by the `assess` function before the model call.
+> **In run 1 it is flipped by editing the row in the AWS console, and no admin route exists.** Do not build
 > `POST /api/admin/ai-enabled` or any other admin route in run 1 — the owner moved admin actions to
 > a later run on 2026-08-26. Do not add `changedBy` or `changedAt` to the row; nothing in the
 > application writes it. Do not put the switch in an environment variable, in AppConfig, in

@@ -54,9 +54,9 @@ the value in half. Use `encodeURIComponent` when building the link and read it b
 `URLSearchParams`, which decodes for you. **The browser never takes the id apart and never builds
 one.**
 
-**SC-2 is a state, not a route.** The wait happens while one request is in flight, and the assessment
-has no id until that request answers. Giving it a route would mean a route with nothing to address.
-This does not change anything in `02-SPEC.md`: every state in its SC-2 table is still built.
+**SC-2 is a state, not a route.** The wait starts while the first request is in flight, and the
+assessment has no id until the `202` answers. After that the screen holds the id and one open
+stream, and still needs no route of its own. Every state in the SC-2 table of `02-SPEC.md` is built.
 
 **The redirect from `/`.** A static export cannot read `Accept-Language` on the server. Two answers
 are open, both named in ADR-0010: a small CloudFront function, or one line of client-side code on a
@@ -108,7 +108,7 @@ longer side is already 1000 px or less is still re-encoded, so one code path cov
 
 **The browser's checks are for the person, not for safety.** The API runs all three again on the
 bytes it receives, because a check that only runs in the browser is not a check (ADR-0007). The
-browser only ever sends JPEG; the API still accepts all four types, because a script is not the
+browser only ever sends JPEG; the API still accepts all three types, because a script is not the
 browser.
 
 ### 4.2 The state machine
@@ -117,11 +117,23 @@ One state value drives SC-1 and SC-2. Every name below is a state in `02-SPEC.md
 invented here.
 
 ```
-signed-out → empty → ready → photo-chosen → sending → (SC-2) resizing → uploading → asking
+signed-out → empty → ready → photo-chosen → sending → (SC-2) resizing → uploading
+                                                            ↓
+                                          confirmed (the 202 arrived. The promise is kept)
+                                                            ↓
+                                          waiting   (one open stream to /api/assessments/:id/events)
                                                             ↓
                     answered ──────────────────────→ /[locale]/result?id=…
                     timed-out · provider-error · not-retryable · offline → failure view
 ```
+
+**`confirmed` and `waiting` were added on 2026-09-17** (ADR-0014, ADR-0015). On the `202` the screen
+moves to `confirmed`, then opens `new EventSource('/api/assessments/<id>/events')`. One `done` or
+`failed` event carries the assessment, parsed with `AssessmentEvent`. `EventSource` reconnects on
+its own; a reconnect after the run finished is answered at once. If the stream cannot open at all,
+the screen falls back to `GET /api/assessments/:id` every 2 seconds — that is the fallback only,
+never the first choice. A `failed` event shows `FailureNote` from the row's `failureCode`, with the
+same mapping as §8.
 
 **The `requestId` is made at `photo-chosen`, not at `sending`.** **Added 2026-08-31.** One UUID per
 photo the person picks. It goes in the form body of `POST /api/assessments` and the API uses it to
@@ -150,19 +162,21 @@ shorthand.
   `Blob` for the life of the page. It is **not** written to any storage, because NFR-33 forbids
   browser storage and a photo of the inside of a home is the last thing to put there.
 
-### 4.3 The client deadline
+### 4.3 The two client clocks
 
 ```ts
-export const CLIENT_DEADLINE_MS = 30_000;
+export const CLIENT_DEADLINE_MS = 30_000;   // tap to the 202. NFR-01
+export const RESULT_DEADLINE_MS = 60_000;   // tap to the result. NFR-07
 ```
 
-One timer, started on the tap that sends and covering the resize, the upload and the answer
-(US-01 AC-8, NFR-01). When it fires, the screen shows `FailureNote` in `retry-may-work` with the code
-`client-deadline`, and the in-flight request is abandoned.
+The first timer starts on the tap that sends and covers the resize, the upload and the `202`
+(US-01 AC-8). When it fires, the screen shows `FailureNote` in `retry-may-work` with the code
+`client-deadline`, and the request is abandoned. The second timer covers the whole wait for the
+result. When it fires, the screen shows `deadline-passed`, whatever the background run is still
+doing; the run itself is not cancelled, and if it finishes later the result sits on the row.
 
-It is a different thing from the server's own 20-second deadline. The server gives up first so that
-it, and not the gateway, writes the answer (ADR-0002). The client timer is the backstop for a request
-that never comes back at all.
+Neither timer is the server's. The `api` function has its own 20-second deadline for its own work,
+and the background run has per-task timeouts of its own (`05-patterns.md` §7).
 
 **There is no cancel button** (`02-SPEC.md` SC-2).
 

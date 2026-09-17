@@ -270,7 +270,7 @@ detect         is there a package.json yet?
 | `quality` | `pnpm format:check`, `pnpm lint` | ADR-0001 rule 1 lives in the linter: no relative import crosses an app border |
 | `audit` | `pnpm audit --audit-level=high` | A high or critical advisory stops the merge. Low and moderate are reported and do not fail |
 | `test` | Per workspace, in a matrix over `apps/web`, `apps/api`, `packages/contracts`: `pnpm type-check`, then `pnpm test` | NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-42, NFR-43, NFR-52 |
-| `infra-assert` | `cdk synth` and assertions, no AWS call | **NFR-40**, and the capacity total in §6 |
+| `infra-assert` | `cdk synth` and assertions, no AWS call | **NFR-40**, the capacity total in §6, and since 2026-09-17 the state machine's retry cap (NFR-05, NFR-38) |
 | `build` | `pnpm build` | A change that does not build cannot ship |
 | `ci-ok` | Asserts every job above succeeded | §9 |
 
@@ -288,7 +288,11 @@ detect         is there a package.json yet?
   against it, so it needs no credential and costs nothing (`06-nfrs.md` §1). Two assertions on day
   one. First, the photo bucket's lifecycle rule expires objects at exactly 180 days (NFR-40).
   Second, the DynamoDB read and write capacity is 20 in `prod` and 5 in `preview`, and the total
-  never adds up to more than 25 (gate 43, `01-iac-plan.md` §4.1).
+  never adds up to more than 25 (gate 43, `01-iac-plan.md` §4.1). **Four more since 2026-09-17**,
+  on the state machine (`01-iac-plan.md` §4.4b): the type is `STANDARD`; there is no machine-level
+  `TimeoutSeconds`; the `Assess` retry list is exactly the four named errors with `MaxAttempts: 2`
+  and `retryOnServiceExceptions` off; and `Refund` is reachable only from the refusal choice. Plus
+  one on roles: the `api` function's role has no read on the model key parameter.
 - **The router test is in `test` and it is the one that guards a security rule.** NFR-32: a test
   walks the whole Nest.js router and asserts every route carries `@Anonymous()`, `@Roles('USER')` or
   `@Roles('ADMIN')`. A new route with none fails the build before anybody can call it (ADR-0004).
@@ -370,8 +374,11 @@ already right, and §9 describes it.
 Every line below was named somewhere in `docs/800-infra/`. They are collected here so the owner has
 one list instead of five.
 
-**Status 2026-08-31: the owner applied every line marked DONE below**, plus a set of changes that
-came out of a full review of the pack. Lines still marked OWED are the ones left.
+**Status 2026-09-17: every line in this table is now marked DONE.** The last six were applied in two
+passes — gates 53 and 62 into ADR-0006 on 2026-09-17, and the four `05-patterns.md` and
+`03-api-spec.md` lines on 2026-08-31, where the change landed but the row was never ticked. **A
+ledger that is not ticked is worse than no ledger**, because the next reader re-does the work or
+assumes it was skipped.
 
 **Two lines were missing from this table and are now in it:** `docs/context/stack.md` §3 still said
 "fixed at 25 write and 25 read units", and its gotcha table said "run 1 has one table". Only the
@@ -380,17 +387,17 @@ Node line was listed. That is how a stale rule survives a list of stale rules.
 | File | Section | The change, in one sentence | From |
 | --- | --- | --- | --- |
 | **DONE** `docs/ADR/0002-run-the-api-on-lambda-and-store-data-in-dynamodb.md` | Decision, and the Agent-Readable Summary | "fixed at 25 write and 25 read units" and "Do not add a second table in run 1" both become: one table per environment, `prod` at 20/20 and `preview` at 5/5, and **the total across every table in the Region must never pass 25** | Gate 43 |
-| `docs/ADR/0006-choose-the-model-by-measuring-it.md` | The 2026-08-27 note about the model id | **Both id forms are real, and neither is an error.** `claude-haiku-4-5-20251001` is the pinned snapshot and `claude-haiku-4-5` is an alias pointing at it. Say that the dated snapshot is the one written into `CONFIG`, because a provider can move an alias with no deploy and no warning. **This is a correction, not the removal of a mistake** | Gate 53 |
-| `docs/ADR/0006-choose-the-model-by-measuring-it.md` | Decision 3, the run-1 default | Record that **Claude Haiku 4.5 retires no sooner than 2026-10-15** (checked 2026-08-28), and add the re-check trigger. The id lives in a DynamoDB row, not in code, so changing model is one edit and no deploy | Gate 62 |
+| **DONE** `docs/ADR/0006-choose-the-model-by-measuring-it.md` | The 2026-08-27 note about the model id | **Both id forms are real, and neither is an error.** `claude-haiku-4-5-20251001` is the pinned snapshot and `claude-haiku-4-5` is an alias pointing at it. Say that the dated snapshot is the one written into `CONFIG`, because a provider can move an alias with no deploy and no warning. **This is a correction, not the removal of a mistake** | Gate 53 |
+| **DONE** `docs/ADR/0006-choose-the-model-by-measuring-it.md` | Decision 3, the run-1 default. **Landed as decision 8** | Record that **Claude Haiku 4.5 retires no sooner than 2026-10-15** (checked 2026-08-28), and add the re-check trigger. The id lives in a DynamoDB row, not in code, so changing model is one edit and no deploy | Gate 62 |
 | **DONE** `docs/ADR/0012-run-the-workspace-on-pnpm-and-turborepo.md` | "What it costs", the second cost | *"pnpm 11 needs Node 22"* becomes **Node 24**, with both deprecation dates written in: `nodejs24.x` deprecates 2028-04-30 and `nodejs22.x` deprecates 2027-04-30 (checked 2026-08-27) | Gate 60 |
 | **DONE** `docs/context/stack.md` | §1 | "22 or newer" becomes **24**, so the three files stop disagreeing about one number | Gate 60 |
 | **DONE** `docs/context/stack.md` | §3 and the gotcha table | "fixed at 25 write and 25 read units" and "run 1 has **one** table" become the two-table split and the unit-hour model. **This line was missing from the list** | Found 2026-08-31 |
 | **DONE** `docs/ADR/0001-keep-one-product-repository.md` | Agent-Readable Summary | The summary named ADR-0012 and then said *"Do not add Turborepo or Nx"* in the next sentence. Turborepo is in use, so that clause told an agent to remove it | Found 2026-08-31 |
-| `docs/400-architecture/05-patterns.md` | §1, the item shapes | Add the circuit breaker's row: how many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live. **It must never be `PK = CONFIG, SK = AI_ENABLED`** | Gate 50 |
-| `docs/500-engineering/03-api-spec.md` | §8.1, the item table | Add the same breaker row, so the API's own list of what it reads and writes is complete | Gate 50 |
-| `docs/500-engineering/03-api-spec.md` | §4, the fifteen steps | Add the breaker check **between step 6 and step 7** — after the kill-switch, before the daily limit — so an open breaker does not spend one of the person's ten | Gate 50 |
+| **DONE** `docs/400-architecture/05-patterns.md` | §1, the item shapes | Add the circuit breaker's row: how many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live. **It must never be `PK = CONFIG, SK = AI_ENABLED`** | Gate 50 |
+| **DONE** `docs/500-engineering/03-api-spec.md` | §8.1, the item table | Add the same breaker row, so the API's own list of what it reads and writes is complete | Gate 50 |
+| **DONE** `docs/500-engineering/03-api-spec.md` | §4, the step list. **Landed as step 6b** | Add the breaker check **between step 6 and step 7** — after the kill-switch, before the daily limit — so an open breaker does not spend one of the person's ten | Gate 50 |
 | **DONE** `docs/400-architecture/06-nfrs.md` | NFR-06 | *"Read from the `InitDuration` CloudWatch metric"* is wrong: there is no such metric — use the Logs Insights query in `03-observability.md` §4. **The number also changed, 2026-08-31: 800 ms described a plain Node handler, not a bundled Nest+Express one. It is now 2,000 ms** | Found by this role |
-| `docs/500-engineering/03-api-spec.md` | §9, first bullet | The bullet contradicts itself: it says the photo key uses the timestamp "**not** the assessment id", then says the key carries a `#`. ADR-0007 gate 38 settled it — delete the stale half | Found by this role |
+| **DONE** `docs/500-engineering/03-api-spec.md` | §9, first bullet | The bullet contradicts itself: it says the photo key uses the timestamp "**not** the assessment id", then says the key carries a `#`. ADR-0007 gate 38 settled it — delete the stale half | Found by this role |
 
 **One more, and it is conditional.** If the owner wants the open circuit breaker to have its own
 failure code rather than reusing `provider-unavailable`, then
@@ -414,7 +421,7 @@ deploy-preview ─> bundle-budget ─> e2e ─> perf-flow ─> destroy-preview  
 | `deploy-preview` | `cdk deploy --all` into a stack named for the pull request, in `eu-central-1` | — |
 | `bundle-budget` | `size-limit` on the built output for SC-1 | NFR-50 |
 | `e2e` | Playwright: sign in, then assert `localStorage` and `sessionStorage` are empty and the only cookie is `__Host-session` with `HttpOnly`, `Secure` and `SameSite=Strict`. Assert the two AI notice lines on SC-3, SC-4 and SC-5 in both languages | NFR-33, NFR-37 |
-| `perf-flow` | The whole journey, network throttled to 400 kbps up, a fixed 200 KB photo, the provider replaced by a stub. **Run it twice: once with the stub sleeping 8,000 ms and once with it sleeping 18,000 ms.** Both must assert p95 ≤ 30,000 ms | NFR-01 |
+| `perf-flow` | The whole journey, network throttled to 400 kbps up, a fixed 200 KB photo, the provider replaced by a stub. **Run it twice: once with the stub sleeping 8,000 ms and once with it sleeping 18,000 ms.** Both must assert two timers: tap to the confirmed waiting screen p95 ≤ 30,000 ms, and tap to the result p95 ≤ 60,000 ms. A third run has the stub throw a timeout twice and then answer, and asserts the result still arrives inside 60,000 ms | NFR-01, NFR-07 |
 | `destroy-preview` | `cdk destroy --all`, **with `if: always()`** | The environment must not survive a failed run |
 | **`preview-ok`** | Asserts the three test jobs succeeded. **`if: always()`** | The second required check. §9 |
 
@@ -438,9 +445,11 @@ deploy-preview ─> bundle-budget ─> e2e ─> perf-flow ─> destroy-preview  
 - **`perf-flow` runs twice, and the second run is the one that matters.** The 8,000 ms stub is the
   budgeted model latency, and `03-flow.md` §6 calls that number *"the weakest in the file. No source
   at all"*. A job that only ever sleeps 8,000 ms can never fail for the reason the architecture
-  itself names as its biggest risk. The second run sleeps **18,000 ms** — the point at which the
-  server's own 20,000 ms deadline is about to fire — and must still finish under 30,000 ms. The real
-  model latency is checked by the first live call, not by this job.
+  itself names as its biggest risk. The second run sleeps **18,000 ms** — the model's own abort
+  point — and the result must still arrive inside 60,000 ms. **Since 2026-09-17 the first timer, the
+  30-second promise, no longer depends on the stub at all**, because the `202` arrives before the
+  model is called (ADR-0014). The real model latency is checked by the first live call, not by this
+  job.
 - **The preview environment never calls the real Anthropic API.** `LLM_PROVIDER` is `stub`. NFR-01's
   own description already says the provider is a stub that sleeps for the budgeted time. A preview
   that made real calls would spend the same one $5 balance on every pull request.
@@ -662,11 +671,11 @@ checklist in §10, written as its own line so it cannot be folded into something
 | `quality` | `ci.yml` | Formatting, and ADR-0001 rule 1 in the linter: no relative import crosses an app border |
 | `test` | `ci.yml` | Type errors, and NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-42, NFR-43, NFR-52 |
 | `audit` | `ci.yml` | A high or critical dependency advisory |
-| `infra-assert` | `ci.yml` | **NFR-40**, the 180-day lifecycle rule, and the 25-unit capacity total |
+| `infra-assert` | `ci.yml` | **NFR-40**, the 180-day lifecycle rule, the 25-unit capacity total, and the state machine's retry cap (NFR-05, NFR-38) |
 | `build` | `ci.yml` | A change that does not build cannot ship |
 | `bundle-budget` | `pr-preview.yml` | NFR-50 |
-| `e2e` | `pr-preview.yml` | NFR-33, NFR-37 |
-| `perf-flow` | `pr-preview.yml` | NFR-01 |
+| `e2e` | `pr-preview.yml` | NFR-33, NFR-37, NFR-08 |
+| `perf-flow` | `pr-preview.yml` | NFR-01, NFR-07 |
 
 ### The rest of the `main` ruleset
 

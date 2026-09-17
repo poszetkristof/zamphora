@@ -702,7 +702,7 @@ Miss one and the number is a wish. `06-nfrs.md` is a table where every row carri
 | NFR | Target | How it is checked | Which CI job runs it |
 | --- | --- | --- | --- |
 | NFR-01 how long the user waits | **p95 under 30,000 ms** | Playwright runs the whole flow on a throttled connection, with the model replaced by a stub that sleeps for the budgeted 8,000 ms | `perf-flow` |
-| NFR-10 what one assessment costs | **≤ $0.0040** on Haiku 4.5 | the cost is read from the `usage` block the API returns, never estimated, and asserted against the published prices | `test` |
+| NFR-10 what one assessment costs | **≤ $0.0040 per call, ≤ $0.012 per photo** on Haiku 4.5, because a photo may take three calls | the cost is read from the `usage` block the API returns, never estimated, and asserted against the published prices | `test` |
 | NFR-20 how often the verdict is right | **≥ 8 in 10**, provisional | run the 40 known photos through the real model and count how often a person agrees | `ai-eval` |
 
 Three things in that table are worth unpacking, because they are the parts people skim.
@@ -726,8 +726,10 @@ architecture.
 
 ### The timed flow, and the simplest shape that works
 
-`001-photo-assessment/03-flow.md` lists all fifteen steps with a number, in two columns — the run
-most people get, and the run the design has to survive:
+`001-photo-assessment/03-flow.md` lists every step with a number, in two columns — the run most
+people get, and the run the design has to survive. The table below is the run-1 version; the file
+was rewritten on 2026-09-17 with twenty steps and two budgets, and the shape of the argument is the
+same:
 
 ```
 typical   8,191 ms   warm function, decent signal
@@ -767,6 +769,14 @@ run the design *permits* — the app using its whole 24,000 ms — the headroom 
 800 ms cold start had been subtracted inside the app's own deadline, and the code that starts that
 clock cannot run until the cold start has finished. **Anything that happens before your code runs is
 budgeted outside your deadline, not inside it.**
+
+**And the stack itself was taken apart three weeks later, which is the last lesson of this
+section.** On 2026-09-17 the owner moved the model call out of the request and into a background
+workflow (ADR-0014). The gateway's 30 seconds is no longer on the paid path, the retry that was
+deleted on 2026-08-26 came back with a cap of two, and the table above is now history. None of that
+makes the lesson wrong. The table is what showed that the phone waiting on the model was the real
+constraint, and a table that shows a constraint that clearly is also what lets you see when a
+different shape removes it. **A finding is not a commitment to the shape it was found in.**
 
 Then pick the shape: **plain code (if / else) → one AI call → a fixed chain of AI calls → a
 free-roaming agent.** Stop at the first that does the job. Photo assessment is **one AI call**.
@@ -943,11 +953,72 @@ once is the dangerous combination:
 On zamphora it finds three real ones: the photo carries **EXIF GPS**, which is the user's home
 address · a plant nickname is free text that reaches the model, so it is a **prompt-injection** path
 · the paid endpoint is a **denial-of-wallet** target — it breaks nothing, it just spends your money
-until the account closes.
+until the account closes. It also fires on the role itself, which the next part covers.
 
 One more habit: **check a package is real before you add it.** Models invent plausible package names,
 the same invented name comes back across sessions, and attackers register it and wait. The name for
 this is **slopsquatting**.
+
+### What the real run showed, 2026-09-01
+
+The section above is what the role is *for*. This is what it actually did, because the run turned
+out to teach more than the description does.
+
+**It produced eight gates and eight seams, and that is the good outcome, not a bad one.** Eight
+questions it refused to answer because they are a person's — a retention period, a compliance
+position, whether to spend money — and eight facts it needed and no declared input carried.
+
+**Three risks were scored Critical because a fact was unknown, not because the design was wrong.**
+The clearest one: the role is told to review how the build reaches AWS, and `04-ci-cd.md` was not on
+its reading list. It could not see the workflow triggers or the roles' trust policies. **So it wrote
+the risk at the top of the scale and said in the row that the score is high because it is
+unverified, and that it drops the moment somebody reads that file.** Somebody read the file two
+weeks later. Two of the three properties held as written, and the score fell from 15 to 10.
+
+That is the behaviour you want and it is still a defect in the line. **A role that cannot check
+something must say so loudly, and the map should not have put it in that position.** The fix is one
+line in `handoff-map.yaml`, and it is written down as a change to the factory rather than as a
+security finding. **The general rule: for every instruction in a role's contract, check that some
+declared input can answer it.** Three separate findings in this run had that same shape.
+
+**The lethal trifecta fired on the role itself, and it wrote that down.** It held the whole
+repository, it fetched eight outside pages, and a fetched URL is a way to send data out. All three
+at once. Nothing was sent, no fetched page changed its task, and every URL came from a search result
+it chose — but a gate that fires and is not recorded is the same as a gate that never fired, so it
+is in the ledger with the reasoning. **A role that reports its own shape is worth more than one that
+looks clean.**
+
+**The package check found nothing wrong, and running it was still the point.** Every package named
+in a specification was read from the npm registry before it was accepted. All four were real. You
+cannot know that in advance, and the run where it finds an invented name is the run where it pays
+for every run before it.
+
+**One thing the web access bought, which is the argument for giving this role the internet at all.**
+A CVE published two months earlier and an RFC published one month earlier both changed the output. A
+security review written from training data alone would have missed both, and would have read as
+confident.
+
+### A control can be copied for its shape and not for what it does
+
+**Found on 2026-09-17, by auditing the pack against itself.** This is a different failure from the
+stale number in section 11, and it is harder to see.
+
+The product has to delete an account that has not been used for twelve months. There was already a
+good pattern in the repository for deleting on a clock: the photo is removed by an **S3 lifecycle
+rule**, so the deleting is done by the store and keeps working even when the application is broken.
+The security document reached for that pattern and proposed the nearest thing DynamoDB has, a
+**time-to-live** on the profile row.
+
+It reads right. Both are "let the store do the deleting". **They do not do the same amount of
+work.** An S3 lifecycle rule can expire every object under a prefix. A DynamoDB time-to-live deletes
+**one item**. It would have removed the profile row and left the pots, the assessments, the photo
+objects and the sign-in account behind, owned by an id that no longer resolves — which is worse than
+deleting nothing, because it looks done.
+
+**The lesson to carry: when you reuse a pattern, check what the mechanism actually does, not what
+the sentence describing it says.** Both controls were described in the same words by the same
+person on the same day. The words matched. The behaviour did not. **A one-line description is a
+label, and a label is not a specification.**
 
 ### The break: a good document on each side, a gap in between
 
