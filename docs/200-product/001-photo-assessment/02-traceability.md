@@ -29,7 +29,7 @@ this role does not make it. `00-prd.md` section 8 says the same.
 | M-09 | Texts that exist in one language and are missing in the other | 0 | every release | `factory/feature.md`, Hungarian and English in run 1 |
 | M-10 | Model calls started after the kill-switch was turned off, later than the propagation window | 0 | every release, and in the log | UC-7. Still measured in run 1: the switch ships even though the admin route does not (gate 30) |
 | M-11 | Assessment results shown without the AI notice | 0 | every release | `00-context-brief.md` 5.4, EU AI Act Article 50(1) |
-| M-12 | Time from tapping send to a result or a message | at or under **30 seconds** | 9 of 10 assessments, first 8 weeks | UC-1, Usability condition. Number set by the owner 2026-08-25, gate G-5 |
+| M-12 | Time from tapping send to the confirmation that the assessment is running; and time from tapping send to a result or a message | at or under **30 seconds**; at or under **60 seconds** | 9 of 10 assessments, first 8 weeks | UC-1, Usability condition. 30 seconds set by the owner 2026-08-25, gate G-5. The second number added 2026-09-17 with the background run, ADR-0014 |
 | M-13 | Times a returning user is asked to sign in again inside the session window | 0 | first 8 weeks | UC-4, Usability condition. Window is **30 days**, set by the owner 2026-08-25, gate G-7 |
 | M-14 | Model calls made for a user who was already at the daily limit | 0 | continuous | `00-context-brief.md` 4, "the cost that is not small". Limit is **10 a day**, set by the owner 2026-08-24, gate G-2 |
 | M-15 | Difference between the model call count the app recorded and the provider's own count, for a finished day | 0 | **not in run 1** | UC-7. **Moved out with US-12 on 2026-08-26, gate 30.** The rollups are still written, so the check can be run by hand as a local script. It is not a release gate in run 1 |
@@ -38,13 +38,13 @@ this role does not make it. `00-prd.md` section 8 says the same.
 | M-18 | Admin-only actions that succeed for a USER account | 0 | every release | `factory/feature.md`, two account types from day one. **Still measured with zero admin routes** (gate 30): NFR-32 walks the router and fails the build on any route with no role decorator, which is what US-14 AC-3 actually asks for |
 | M-19 | Share of results in the `cannot-tell` band | at or under 3 in 10 | across 20 assessments | `factory/feature.md` says a model hiding behind `cannot-tell` is failing. **The 3 in 10 is a proposal by this role. The owner sets it** |
 | M-20 | Care tasks the user deletes within 7 days | at or under 2 in 10 | the same 8 weeks as M-01 | The other side of M-01, `00-context-brief.md` 3. Provisional with it |
-| M-21 | Automatic retries after a failed model call | **0** | continuous | UC-6, Viability condition. **Reversed by the owner 2026-08-26.** Was "at or under 1 — two attempts in total" (gate G-9, 2026-08-25). Two attempts cost about $0.0070 against a $0.0040 ceiling, and squeezed the time budget. Nothing is retried in run 1 |
-| M-22 | Model calls per assessment | exactly 1 | continuous | `factory/feature.md`, In scope: "One model call" |
+| M-21 | Automatic retries after a failed model call | **at most 2**, only inside the background workflow, only for a timeout, a 429 or a 503 | continuous | UC-6, Viability condition. Set by the owner 2026-09-17 (ADR-0014). It was 0 from 2026-08-26 while the phone waited for the answer |
+| M-22 | Model calls per assessment | 1 in the normal case, **never more than 3** | continuous | `factory/feature.md`, In scope; ADR-0014 |
 | M-23 | Screens between signing in on a clean account and sending the first photo | at most **3** | every release | US-15, added 2026-08-25 from gate 21. It guards the thing the story exists for: that a new account can reach an assessment at all, and that the add-a-pot screen does not grow |
 
 **Five of the six numbers that were missing on 2026-08-24 now exist.** The owner set them on the 24th
 and the 25th: the daily limit in M-14 (10 a day), the time budget in M-12 (30 seconds), the session
-window in M-13 (30 days), the retry limit in M-21 (now zero), and the retention of the assessment
+window in M-13 (30 days), the retry limit in M-21 (zero on 2026-08-26, then at most two inside the background workflow on 2026-09-17), and the retention of the assessment
 text behind US-10 (no clock — it lives as long as the pot). **One is still missing:** how far back
 the admin figures in US-12 reach, AC-4. 180 days is proposed there, to match the photo retention.
 **Do not guess that one in code.**
@@ -140,7 +140,7 @@ backbone feature 5, and nothing found by research was allowed above it.
 | 2 Soil intervals | Same. Run 2 |
 | 3 Placement advice | Same. Run 4. Idea W-7 is a way of building it, not a replacement for it |
 | 4 Documenting a plant over time | Same. Run 5 |
-| 5 Photo assessment | **All fourteen stories** |
+| 5 Photo assessment | **All fifteen stories** |
 | 6 Notifications | `00-prd.md` section 3. Run 3. US-03 writes the task that it will deliver |
 
 ### 3.5 Every researched idea stayed out
@@ -158,14 +158,14 @@ All ten were open when this file was written on 2026-08-24. All ten are closed. 
 | Gate | The question | The answer | When |
 | --- | --- | --- | --- |
 | G-1 | The fourth response field | Yes — the follow-up in whole days | 2026-08-24 |
-| G-2 | The per-user daily limit | 10 a day, checked before the model call. With no retry, 10 calls means 10 assessments | 2026-08-24 |
+| G-2 | The per-user daily limit | 10 a day, checked before the model call. The counter counts assessments started, so the workflow's retries do not count again (ADR-0014) | 2026-08-24 |
 | G-3 | How long the assessment text is kept | No clock. It lives as long as the pot. An account idle 12 months is deleted, warned at 11 | 2026-08-24 |
 | G-4 | Confirm or replace the 8 in 10 in M-01 | Kept, marked provisional until 20 real assessments replace it | 2026-08-24 |
 | G-5 | The time budget in M-12 | 30 seconds, tap to something on screen | 2026-08-25 |
 | G-6 | A plant person checks the ten verdict codes | Ship the ten, review after the first 20 real assessments. A rising share of `other` is the signal | 2026-08-25 |
 | G-7 | The session window in M-13 | 30 days | 2026-08-25 |
 | G-8 | How fast the kill-switch must take effect, in M-10 | 60 seconds | 2026-08-25 |
-| G-9 | The retry limit in M-21 | **Reversed 2026-08-26: no retry, one call per assessment.** Was: one retry, two attempts in total | 2026-08-25, reversed 2026-08-26 |
+| G-9 | The retry limit in M-21 | **At most two retries, inside the background workflow** (2026-09-17). It was one retry on 2026-08-25, then none on 2026-08-26 while the phone waited | 2026-08-25, changed 2026-08-26 and 2026-09-17 |
 | G-10 | Whether the EU AI Act applies here | Left unanswered on purpose. US-06 shows the notice either way. **Re-opens the day the app is offered to another person** | 2026-08-25 |
 
 Two more decisions arrived with them and no gate had asked for either. There is **no total cap on

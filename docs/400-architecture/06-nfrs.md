@@ -1,6 +1,8 @@
 # Non-functional requirements — the numbers, and what checks them
 
 **Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
+**Updated 2026-09-17** for ADR-0014 to ADR-0016: NFR-01, 04, 05 and 10 changed, NFR-07, 08 and 38
+are new.
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA.
 
 Every row below has four things: a number, the window it is measured over, how it is tested, and
@@ -39,32 +41,45 @@ it is testing is not a test.
 
 | # | The requirement | Number | Window | How it is tested | Job | Metric |
 | --- | --- | --- | --- | --- | --- | --- |
-| NFR-01 | Tap to something on screen | **≤ 30,000 ms**, p95 | Every assessment, measured over a rolling 20 | Playwright against a preview deploy, with the network throttled to 400 kbps up and a fixed 200 KB photo, and the model provider replaced by a stub that sleeps for the budgeted 8,000 ms | `perf-flow` | M-16 |
-| NFR-02 | The server's own share of that budget | **≤ 20,000 ms**, hard | Every request | Two tests. A unit test that the deadline constant is 20,000 and is below the 22,000 ms function timeout. An integration test with a stub that sleeps past it, asserting the app answers with `deadline-passed` and not a 504 | `test` | — |
-| NFR-03 | The model call's own timeout | **≤ 18,000 ms** | Every call | A unit test on the constant, plus an integration test with a stub that never answers. The number is what is left of the 20,000 ms deadline after the other steps — see `03-flow.md` §4 | `test` | — |
-| NFR-04 | Model calls per assessment | **exactly 1** | Every assessment | A stub provider counts calls. **Every** case gives 1 — timeout, 429, 503, refusal, truncation, bad request, empty balance, rejected photo. There is no retry in run 1 | `test` | M-22 |
-| NFR-05 | Retries of any kind | **0** | Always | A test that no failure path calls the provider twice, and that no wait-and-try-again code exists. Dropping the retry is what makes NFR-04 and NFR-10 agree | `test` | — |
-| NFR-06 | Cold start of the API function | **≤ 800 ms**, p95 | Rolling 7 days | **Not tested in CI.** Read from the `InitDuration` CloudWatch metric after a deploy | none — runtime only | — |
+| NFR-01 | Tap to the waiting screen confirming the run started (the `202`) | **≤ 30,000 ms**, p95 | Every assessment, measured over a rolling 20 | Playwright against a preview deploy, network throttled to 400 kbps up, a fixed 200 KB photo. **Changed 2026-09-17:** the thing on screen is the confirmation, not the answer (ADR-0014) | `perf-flow` | **M-12** |
+| NFR-02 | The `api` function's own share of one request | **≤ 20,000 ms**, hard | Every request | A unit test that the deadline constant is 20,000 and is below the 22,000 ms function timeout. An integration test with a slow step, asserting the app answers `deadline-passed` and not a 504. In practice the `api` answers in about a second; this is a net | `test` | — |
+| NFR-03 | The model call's own abort | **≤ 18,000 ms** per attempt | Every call | A unit test on the constant, plus an integration test with a stub that never answers | `test` | — |
+| NFR-04 | Model calls per assessment | **1 in the normal case, never more than 3** | Every assessment | A stub provider counts calls. Every non-retried failure gives 1 — refusal, truncation, bad request, empty balance, rejected photo. A stub that throws three timeouts gives exactly 3 (ADR-0014) | `test` | M-22 |
+| NFR-05 | Retries **of the model call** | **Only the workflow's `Retry`, `MaxAttempts: 2`, and `maxRetries: 0` in the adapter** | Always | A test that no code path calls the provider twice and no wait-and-try-again code wraps `LlmProvider`. `infra-assert` reads the retry list off the synthesised state machine: exactly `ProviderTimeout`, `ProviderThrottled`, `ProviderUnavailable`, `Lambda.TooManyRequestsException`, and `retryOnServiceExceptions` off. **AWS SDK retries stay at their defaults** | `test`, `infra-assert` | — |
+| NFR-06 | Cold start of the `api` function | **≤ 2,000 ms**, p95 | Rolling 7 days | **Not tested in CI.** There is no `InitDuration` CloudWatch metric — read it with the Logs Insights query in `03-observability.md` §4 after a deploy. Read `assess` and `watch` the same way | none — runtime only | — |
+| NFR-07 | Tap to the result on screen | **≤ 60,000 ms**, p95 | Every assessment | Playwright, over the stream, with the stub sleeping 8,000 ms and again 18,000 ms. Both must pass. **New 2026-09-17** (ADR-0015) | `perf-flow` | M-12 |
+| NFR-08 | The stream delivers after the row is written | **≤ 1,000 ms**, p95 | Every assessment | Playwright timestamps the write and the event. `watch` reads the row every 500 ms. **New 2026-09-17** | `e2e` | — |
 
 **NFR-06 is the honest one.** No job can enforce it, because a cold start is a property of the
-platform on the day. It is written down so that a run that regularly passes 800 ms is recognised as
-a change rather than as bad luck. The number comes from secondary sources, not from this
-application — see section 8.
+platform on the day. It is written down so that a run that regularly passes the number is recognised
+as a change rather than as bad luck.
+
+**The number was 800 ms and was raised to 2,000 ms on 2026-08-31.** The 200–800 ms range came from
+articles measuring a **plain Node.js handler**. This is not a plain handler: it is Nest.js plus
+Express plus multer plus Zod plus the AWS SDK clients plus the Anthropic SDK, all loaded before the
+handler runs. A published `InitDuration` for a bundled Nest mono-Lambda is about **905 ms for a
+near-empty application**. With this dependency list at 1024 MB on ARM64, a realistic p95 is 1,200 to
+2,500 ms.
+
+**Replace it with the first real reading**, as section 8 says. This is still an estimate, only an
+honest one about the right kind of application. Since 2026-09-17 the cold start sits in front of
+the `202`, not in front of the answer, so NFR-01 has more than 20 seconds of headroom
+(`03-flow.md` §2).
 
 ## 3. Money
 
 | # | The requirement | Number | Window | How it is tested | Job | Metric |
 | --- | --- | --- | --- | --- | --- | --- |
-| NFR-10 | Cost of one assessment | **≤ $0.0040** on Haiku 4.5 | Every assessment | The cost is computed from the `usage` block the API returns, never from an estimate. A unit test on the arithmetic against the published prices. An integration test that a recorded cost above the ceiling is written to the day's rollup so it is visible | `test` | M-05 |
+| NFR-10 | Cost of one call, and of one photo | **≤ $0.0040 per call, and ≤ $0.012 per photo** on Haiku 4.5, because one photo may take three calls (ADR-0014) | Every assessment | The cost is computed from the `usage` block the API returns, never from an estimate. A unit test on the arithmetic against the published prices. An integration test that a recorded cost above the ceiling is written to the day's rollup so it is visible | `test` | M-05 |
 | NFR-11 | Cost of one `ai-eval` run | **≤ $0.20** | Every run | The eval script prints its total before it starts and refuses to run if the set is larger than 50 photos | `ai-eval` | — |
-| NFR-12 | Model calls per account per day | **≤ 10** | A UTC calendar day | Two tests. The 11th call is refused with no provider call. Ten parallel requests give exactly ten successes. **With no retry, 10 a day now means 10 assessments**, not 5 assessments and 5 retries | `test` | M-14 |
+| NFR-12 | Model calls per account per day | **≤ 10** | A UTC calendar day | Two tests. The 11th call is refused with no provider call. Ten parallel requests give exactly ten successes. **The counter counts assessments started, not calls**, so the workflow's retries never count twice. Ten a day is ten assessments, and each may cost up to three calls | `test` | M-14 |
 | NFR-13 | The app's model-call count matches the provider's own record | **difference = 0** | Any finished day | A local script the owner runs, comparing the day's rollup against `/v1/organizations/usage_report/messages`. **Not automated in CI, because the admin key it needs does not go on the server** — see `05-patterns.md` §12 | none — a local script | M-15, US-12 AC-2 |
 | NFR-14 | Anthropic spend for this feature | **< $5.00** | 2026-07-01 to 2026-12-31 | The sum of the day rollups over the range, read from the table directly — there is no admin route in run 1 (gate 30) | none — runtime only | M-05 |
 
 **NFR-14 is a watch number and the daily limit does not guarantee it.** Two arithmetics, both true:
 expected use is about 30 assessments a month, which over six months is 180 calls and about **$0.63**.
-One person using all 10 every day for 184 days is 1,840 calls and about **$6.44**, which is over the
-ceiling. The daily limit protects against a script, not against enthusiasm. The real stop is the
+One person using all 10 every day for 184 days is 1,840 assessments and about **$6.44**, which is
+over the ceiling, and up to about **$19** if every one of them took three calls. The daily limit protects against a script, not against enthusiasm. The real stop is the
 credit balance emptying — see the note below.
 
 **There is no cap that stops spending, and that is a decision, not a gap.**
@@ -106,6 +121,7 @@ checked, and a model upgrade that quietly breaks the schema would look like ordi
 | NFR-35 | A session older than 30 days is accepted | **0** | Always | A test that a session item with an expiry in the past is refused, **even though the row is still in the table**, because DynamoDB TTL does not delete on time | `test` | — |
 | NFR-36 | Model calls made with no signed-in user | **0** | Always | A test that the assessment route with no cookie refuses before the provider is reached | `test` | M-06, US-07 AC-5 |
 | NFR-37 | Result screens with no AI notice | **0** | Every pull request | A Playwright assertion on SC-3, SC-4 and SC-5, in both languages, that both notice lines are present and not inside a collapsed section | `e2e` | M-11 |
+| NFR-38 | Attempts refunded on a path where a model call was made | **0** | Always | A stub that fails after the call; the counter does not move back. `infra-assert` checks that `Refund` is reachable only from the two refusal branches. **New 2026-09-17** (ADR-0016) | `test`, `infra-assert` | — |
 
 ## 6. Keeping and deleting
 
@@ -150,8 +166,9 @@ what it actually was.
 | Number | Row | Why it is a guess | What replaces it |
 | --- | --- | --- | --- |
 | 8,000 ms for the model call | NFR-01, NFR-03 | No source at all | The first real call |
-| 18,000 ms model timeout | NFR-03 | What is left of the 20,000 ms deadline after the other steps. The 8,000 ms guess sets how much slack that leaves, not the number itself | Re-derived once the real latency is known. **This row said 9,000 ms until 2026-08-26** — that belonged to the two-attempt rule the owner dropped |
-| 800 ms cold start | NFR-06 | Secondary sources, not this app | The `InitDuration` metric |
+| 18,000 ms model timeout | NFR-03 | A ceiling per attempt, kept from run 1. It no longer has to fit under a request deadline, because the call runs in the background | Re-derived once the real latency is known |
+| 60,000 ms to the result, 1,000 ms for the stream | NFR-07, NFR-08 | Two retries at 2 and 4 seconds plus three 18-second calls is about 60 seconds; the stream reads every 500 ms | The first month's execution times, and the first e2e run |
+| **2,000 ms cold start** | NFR-06 | Estimated for a bundled Nest+Express Lambda. Was 800 ms, from sources measuring a plain Node handler | The Logs Insights query in `03-observability.md` §4 — there is no `InitDuration` metric |
 | 1 in 100 unreadable answers | NFR-23 | Nobody has run one call yet | The first 100 attempts |
 | 170 KB for SC-1 | NFR-50 | No screen has been built | The measurement of the real screen |
 | 10 minutes of CI | NFR-51 | No pipeline exists | The first ten pull requests |

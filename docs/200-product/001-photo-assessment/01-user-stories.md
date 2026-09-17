@@ -3,7 +3,9 @@
 **Written by** 200 Product, run 1 (`photo-assessment`). **Date:** 2026-08-24.
 **Read next by** 300 Design, 400 Architecture, 500 Engineering, 600 QA.
 
-Fourteen stories. Every one of them serves backbone feature 5, the one feature of this run.
+Fifteen stories. Every one of them serves backbone feature 5, the one feature of this run.
+**US-15 was added by gate 21 on 2026-08-25**, and three files went on saying fourteen until
+2026-08-31.
 
 ## How to read a story
 
@@ -45,8 +47,8 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 1. **Given** I am signed in and at least one pot is named, **when** I open the assessment screen,
    **then** I can pick one pot and add a photo in exactly two ways: take one with the camera, or
    choose one from the phone.
-2. **Given** I picked a file that is not JPEG, PNG, GIF or WebP, **when** I try to send it, **then**
-   the app refuses before any model call and names those four formats. (Source: Anthropic vision
+2. **Given** I picked a file that is not JPEG, PNG or WebP, **when** I try to send it, **then**
+   the app refuses before any model call and names those three formats. (Source: Anthropic vision
    limits, `00-context-brief.md` 5.3.)
 3. **Given** no pot is picked, **when** I try to send, **then** the app refuses before any model
    call and asks me to pick or create a pot.
@@ -56,12 +58,14 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 5. **Given** the photo's shorter side is under 200 px, **when** I try to send it, **then** the app
    refuses before any model call and says the photo is too small. (Anthropic warns about images
    under 200 px, `00-context-brief.md` 5.3.)
-6. **Given** the two checks in AC-2 and AC-3 both pass, **when** the assessment runs, **then**
-   exactly **one** model call is made for it.
+6. **Given** the two checks in AC-2 and AC-3 both pass, **when** the assessment runs, **then** one
+   background run is started for it, and that run makes **one** model call in the normal case and
+   **never more than three** (ADR-0014, 2026-09-17).
 7. **Given** I have tapped send, **when** the result has not come back, **then** the screen shows
    that work is running and the send button cannot be tapped a second time.
-8. **Given** a working network, **when** I tap send, **then** a result or a message appears within
-   **30 seconds** (G-5, set by the owner 2026-08-25).
+8. **Given** a working network, **when** I tap send, **then** within **30 seconds** the screen
+   confirms the assessment is running (G-5, set by the owner 2026-08-25; what is on screen changed on
+   2026-09-17), and within **60 seconds** a result or a message appears.
 
 **Success metric:** M-02 · **Guardrails:** M-22, M-12
 
@@ -76,9 +80,16 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 
 **AC**
 
-1. **Given** the model call succeeded, **when** the answer is read, **then** it carries exactly four
-   fields: a verdict code, a confidence band, a next action as text, and the follow-up in whole
-   days. (The fourth field is a decision of this document. See gate G-1.)
+1. **Given** the model call succeeded, **when** the answer is read, **then** it carries exactly six
+   fields: a verdict code, a confidence band, a next action as text, the follow-up in whole days,
+   the reason it cannot tell, and the retake advice. (The fourth field is a decision of this
+   document. See gate G-1.)
+
+   **Corrected 2026-08-31.** This used to say "exactly four fields". `05-patterns.md` §4 and
+   `01-contracts.md` §4 both define six, and the extra two are not optional: US-04 AC-2 needs
+   `cannotTellReason` and US-05 AC-2 needs `retakeAdvice`. A test written word for word from the old
+   sentence would have failed on a correct answer. **Four of the six may be `null`** — that is what
+   makes a `likely` answer look like it has four fields.
 2. **Given** the answer, **when** the verdict code is checked, **then** it is one of the ten codes
    in `00-prd.md` section 5.2 and nothing else.
 3. **Given** the answer, **when** the band is checked, **then** it is exactly one of `likely`,
@@ -95,6 +106,8 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
    as creating tasks nobody remembers agreeing to, in a run that cannot send a reminder.
 7. **Given** the verdict code is `nothing-wrong`, **when** the result is shown, **then** the next
    action may be "do nothing", and no care task is offered.
+8. **Given** the run has finished, **when** the result is ready, **then** it reaches my phone on its
+   own, over the connection the app opened, without me tapping anything (ADR-0015, 2026-09-17).
 
 **AI Eval Card**
 
@@ -102,7 +115,7 @@ can read usage and cost figures and can turn the AI feature off. Both types exis
 | --- | --- |
 | How often it must be right | When the band is `likely`, a person agrees with the verdict at least **8 times in 10**, measured over the first 20 real assessments (`factory/feature.md`). The bar is provisional and is replaced by the measurement |
 | What it does when it is not sure | It must return the band `unsure` or `cannot-tell` rather than a `likely` guess. US-04 and US-05 say what each one looks like on screen |
-| The fallback | If the answer is missing a field, has a verdict code outside the ten, or has a band outside the three, the app treats the whole result as `cannot-tell`, shows no verdict, writes no task, and offers another photo. The failed answer is stored so 600 QA can count how often this happens |
+| The fallback | If the answer is missing a field, has a verdict code outside the ten, or has a band outside the three, it is a **failure** — `answer-unreadable` — and never a verdict. The person sees a `FailureNote`, no verdict is shown, no task is written, and another photo is offered. The failed answer is stored as a **failure record**, not as an assessment, so 600 QA can count how often this happens. **Corrected 2026-08-31:** this used to say the app "treats the whole result as `cannot-tell`", which contradicted `factory/feature.md` and ADR-0005. The two are different things and must stay different: `cannot-tell` is an answer the model gave on purpose, with a reason and retake advice; `answer-unreadable` is our system failing. If both looked the same on screen, nobody could tell a careful model from a broken one, and gate G-6 needs exactly that difference |
 
 **Success metric:** M-03 · **Guardrails:** M-05, M-22
 
@@ -288,9 +301,10 @@ decision**, named as open in `factory/feature.md`. This story says what must be 
 4. **Given** I am below the limit, **when** I send a photo, **then** no message about the limit is
    shown.
 5. **Given** any failure of the model call, **when** the count is taken, **then** the failed call
-   still counts against the daily limit, because the count happens before the call is made.
-   *(Reworded 2026-08-26. It said "any automatic retry from US-09 counts against the same limit".
-   There is no retry now, so the rule that remains is the one about a failed call.)*
+   still counts against the daily limit, because the count happens before the call is made. The
+   workflow's own retries do not count again: one attempt is one assessment, however many calls it
+   took. **An attempt is given back only when no call was made at all**, for example when the
+   kill-switch was flipped while the run was still queued (ADR-0016, 2026-09-17).
 
 **This story cannot be tested until the number exists.** Gate G-2 is a hard stop. The limit is the
 only thing between the assessment endpoint and the owner's Anthropic credit, and no AWS alarm can
@@ -319,12 +333,12 @@ see that spend, because the model bill is not an AWS bill.
    created.
 4. **Given** an admin turned the feature off (US-13), **when** I send a photo, **then** the message
    says the feature is off and that trying again will not work now.
-5. **Given** any failure, **when** the calls are counted, **then** the app made **exactly one**
-   model call for that assessment. **Nothing is retried** — not a timeout, not a 429, not a 503.
-   *(Reversed by the owner on 2026-08-26. G-9 originally allowed one retry, two attempts in total.
-   Two attempts cost about $0.0070 against a $0.0040 ceiling, and each attempt had to fail early
-   enough to leave room for the other. A retry returns in run 3, when the work happens in the
-   background.)*
+5. **Given** any failure, **when** the calls are counted, **then** the app made **at most three**
+   model calls for that assessment, and only a timeout, a 429 or a 503 was retried. The retry
+   happens inside the background workflow, never on the screen, and never for a bad request, a
+   rejected photo, a refusal or an empty credit balance. *(Set by the owner on 2026-09-17, ADR-0014.
+   The rule was "no retry" from 2026-08-26 while the phone waited for the answer; moving the work
+   into the background is what made a capped retry safe again.)*
 6. **Given** any failure, **when** the record is stored, **then** it is stored with the reason, so
    the count in M-08 can be taken.
 
@@ -346,7 +360,11 @@ see that spend, because the model bill is not an AWS bill.
 2. **Given** I open a pot or an assessment, **when** the screen is shown, **then** it states how
    long the assessment **text** is kept: **as long as the pot exists** (G-3, set 2026-08-24). There
    is no period to print. Deleting the pot deletes its assessments; deleting the account deletes
-   everything. An account with no sign-in for 12 months is deleted, with a warning by email at 11.
+   everything. **Amended 2026-08-31 (owner):** the screen no longer states the 12-month idle-account
+   rule or the 11-month email warning. Run 1 builds neither the monthly sweep that finds an idle
+   account nor any email delivery — gate 29 moved email to the notifications run — so the screen was
+   promising something nothing enforced. **The 12-month rule is still the intended policy and moves
+   to that run with the sweep and the email.** A screen may state it once something does it.
 3. **Given** I delete one photo, **when** the delete has finished, **then** the photo and every
    resized or cached copy of it is gone.
 4. **Given** I deleted a photo, **when** I open the assessment it belonged to, **then** the
@@ -457,7 +475,9 @@ is not a product feature, so this story waits.
 **AC**
 
 1. **Given** the switch is changed to off, **when** it is changed, **then** within **60 seconds**
-   (G-8, set by the owner 2026-08-25) no new model call is made by anyone.
+   (G-8, set by the owner 2026-08-25) no new model call is made by anyone. That includes a run that
+   was already queued in the background: it stops before its call, and the person's attempt is given
+   back (ADR-0016).
 2. **Given** the switch, **when** it is used, **then** no code change and no deploy is needed. A
    switch that needs a release is not a kill-switch.
 3. **Given** the feature is off, **when** a USER sends a photo, **then** US-09 AC-4 applies.

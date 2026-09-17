@@ -20,7 +20,7 @@ One repository, `zamphora` (ADR-0001). Four workspace packages and one infrastru
 | Package name | Folder | What it is |
 | --- | --- | --- |
 | `@zamphora/web` | `apps/web` | Next.js, built with `output: 'export'` |
-| `@zamphora/api` | `apps/api` | Nest.js in one Lambda function |
+| `@zamphora/api` | `apps/api` | Nest.js. Three Lambda entry points from one codebase: `main.ts` (the API), `assess.ts` (the model call), `watch.ts` (the result stream). ADR-0014, ADR-0015 |
 | `@zamphora/contracts` | `packages/contracts` | Zod schemas for everything crossing the wire |
 | `@zamphora/llm` | `packages/llm` | The `LlmProvider` port and the one Anthropic adapter |
 | — | `infra/` | CDK. One stack per deployable unit |
@@ -143,6 +143,10 @@ switched on.
 
 - `LlmProvider.assess()` returns either a parsed answer or a **named failure**. It never throws a
   vendor error (ADR-0005, `05-patterns.md` §4 and §8).
+- **One place in the product throws on purpose: the `assess` handler.** It turns exactly three of
+  those values — `provider-timeout`, `provider-throttled`, `provider-unavailable` — into thrown
+  errors with those names, because Step Functions can only retry an error, never a returned value
+  (ADR-0014). Every other outcome is still returned.
 - Every API answer that is not a success is the same envelope, `Problem`, defined in
   `01-contracts.md` §8. It carries a `code` from a closed list and a `retryHint` of `may-work` or
   `will-not-work`.
@@ -249,13 +253,15 @@ the architecture and the code agree.
 
 | # | The enforcement point in the code | The check |
 | --- | --- | --- |
-| NFR-01 ≤ 30,000 ms tap to screen | `apps/web` constant `CLIENT_DEADLINE_MS = 30_000`, one timer covering resize, upload and answer | `perf-flow` |
+| NFR-01 ≤ 30,000 ms tap to the confirmed waiting screen | `apps/web` constant `CLIENT_DEADLINE_MS = 30_000`, one timer covering resize, upload and the `202` | `perf-flow` |
 | NFR-02 ≤ 20,000 ms server share | `apps/api` constant `REQUEST_DEADLINE_MS = 20_000`, applied by one Nest interceptor that answers `deadline-passed` | `test` |
 | NFR-03 ≤ 18,000 ms model call | `packages/llm` constant `MODEL_TIMEOUT_MS = 18_000`, passed as an `AbortSignal` to the adapter | `test` |
-| NFR-04 exactly 1 model call | `AssessmentService` calls `LlmProvider.assess()` on exactly one line. A stub counts calls in every failure case | `test` |
-| NFR-05 zero retries | The adapter builds its client with `maxRetries: 0`. No wait-and-try-again code exists anywhere | `test` |
-| NFR-06 ≤ 800 ms cold start | The function is bundled by esbuild and runs on Node 22. Not testable in CI; read `InitDuration` | runtime |
-| NFR-10 ≤ $0.0040 per assessment | `packages/llm` computes the cost from the `usage` block the API returns, never from an estimate, and returns it with the answer | `test` |
+| NFR-04 at most 3 model calls, 1 normally | The `assess` handler calls `LlmProvider.assess()` on exactly one line. A stub counts calls in every failure case; three timeouts give exactly 3 | `test` |
+| NFR-05 only the workflow retries | The adapter builds its client with `maxRetries: 0`. No wait-and-try-again code exists anywhere. The synthesised state machine carries one `Retry` with `MaxAttempts: 2` | `test`, `infra-assert` |
+| NFR-06 ≤ 2,000 ms cold start | The functions are bundled by esbuild and run on Node 24. Not testable in CI; read `@initDuration` from the logs | runtime |
+| NFR-07 ≤ 60,000 ms tap to result | `apps/web` constant `RESULT_DEADLINE_MS = 60_000`, the give-up timer on the waiting screen | `perf-flow` |
+| NFR-08 ≤ 1,000 ms stream delivery | `watch` reads the row every 500 ms | `e2e` |
+| NFR-10 ≤ $0.0040 per call, ≤ $0.012 per photo | `packages/llm` computes the cost from the `usage` block the API returns, never from an estimate, and returns it with the answer | `test` |
 | NFR-11 ≤ $0.20 per eval run | The eval script prints the total and refuses a set larger than 50 photos. 600 QA owns the script | `ai-eval` |
 | NFR-12 ≤ 10 calls per account per day | `QuotaRepository.increment()` — one `UpdateItem` with a condition, before the model call (ADR-0008) | `test` |
 | NFR-13 count matches the provider | Every assessment writes `modelCalls` into the day rollup item, so a local script can compare | local script |
@@ -272,6 +278,7 @@ the architecture and the code agree.
 | NFR-35 zero sessions older than 30 days | The session expiry is checked in code on every request. DynamoDB TTL is never trusted to have deleted it | `test` |
 | NFR-36 zero model calls with no session | The guard runs before the controller, so the provider is unreachable without a session | `test` |
 | NFR-37 zero result screens with no AI notice | One `ResultLayout` component renders `NoticeLines`, and SC-3, SC-4 and SC-5 all use it | `e2e` |
+| NFR-38 zero refunds after a made call | The `Refund` state is reachable only from the two refusal branches of the workflow (ADR-0016) | `test`, `infra-assert` |
 | NFR-40 lifecycle rule at exactly 180 days | The CDK stack for the bucket. 800 Infra owns it | `infra-assert` |
 | NFR-41 zero objects older than 182 days | A scheduled job that lists the bucket | `retention-audit` |
 | NFR-42 zero copies of a photo | One write path, `PhotoRepository.put()`. A test asserts no other code path writes an image, and that no photo URL is served through a cache | `test` |

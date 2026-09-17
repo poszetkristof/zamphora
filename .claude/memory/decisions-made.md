@@ -38,9 +38,11 @@ workflows and one CDK stack per service give both.
 The user asked three times for separate front-end and back-end repos. The answer is settled. The
 evidence sits in `factory/feature.md`, where role 400 reads it — do not copy it back here.
 
-**Still open for 400 Architecture:** how the product repo is arranged, whether it uses Turborepo, Nx
-or plain npm workspaces, and the trigger for splitting further. It writes
-`docs/ADR/0001-repository-layout.md`.
+**Answered on 2026-08-25 and 2026-08-26, so do not re-ask it.** How the product repo is arranged is
+`docs/ADR/0001-keep-one-product-repository.md`, with the six split-readiness rules and the trigger
+for splitting further. The workspace tool is **pnpm 11 plus Turborepo** in
+`docs/ADR/0012-run-the-workspace-on-pnpm-and-turborepo.md`, which replaces ADR-0001's
+package-manager sentence. **Nx is rejected and stays rejected.**
 
 See [[factory-as-plugin]].
 
@@ -60,9 +62,37 @@ See [[factory-as-plugin]].
 - Nothing was found using `zamphora`. **No trademark check was done** — USPTO and EUIPO classes 9
   and 42 are worth ten minutes before any public launch.
 
+**The running shape — Option E, decided 2026-09-17 (gate 72, ADR-0014 to ADR-0016)**
+
+- The assessment runs in the background. The API answers `202` in about a second, a Step Functions
+  Standard workflow makes the model call in its own `assess` function, and a `watch` function pushes
+  the result to the phone over server-sent events. The 30-second promise is kept by the waiting
+  screen; the result arrives inside 60 seconds.
+- A retry of the model call is allowed again, at most 2 more tries, only inside the workflow, only
+  on a timeout, a 429 or a 503. An attempt is refunded only when no call was made.
+- The grown shape for runs 2 to 6 is approved too: two EventBridge Scheduler rules, Web Push, SES,
+  one secondary index. Not Option F, not DynamoDB Streams, not direct upload, not containers.
+  `docs/400-architecture/08-async-options-short.md` §8 draws it. Do not re-open E against F.
+
+**The security positions, decided 2026-09-17 (gates 65, 66, 68, 73)**
+
+- **The photo goes to Anthropic outside the EU and that is accepted for run 1.** One account, and it
+  is the owner's. The trigger to re-open is the day a second person's photo enters the product — the
+  same trigger as the EU AI Act position and the availability target.
+- **Nothing is deleted automatically in run 1.** The 11-month warning and the 12-month deletion of
+  an idle account both move to run 3. A DynamoDB time-to-live cannot do it: it deletes one item and
+  would orphan the rest of the account.
+- **Accepted photo formats are JPEG, PNG and WebP.** `image/gif` is out.
+- **`sharp` is external in the CDK bundle and copied in by an `afterBundling` hook**, together with
+  `node_modules/@img`. esbuild cannot bundle a native module and `bundling.nodeModules` stays banned.
+
 **Still open, and the user's to decide**
 
-- Photo retention period.
+- Three security gates: 64 (how much web reach a research role gets), 69 (a named contact for every
+  residual risk), 71 (multi-factor sign-in on the AWS account). 69 and 71 are hard stops before the
+  first deploy.
 - Whether notifications use Web Push (the current assumption) or something else.
+
+*(The photo retention period is decided: 180 days, 2026-08-24.)*
 
 See [[project-zamphora]].

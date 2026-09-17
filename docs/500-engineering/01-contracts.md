@@ -200,6 +200,10 @@ export const ModelAnswer = z.strictObject({
 });
 ```
 
+**`ModelAnswer` stays `z.strictObject`, and §11a does not loosen it.** The rule there is about
+responses the *browser* parses. This one parses a reply from a model, which is untrusted input like
+any other. A field nobody asked for is a reason to refuse, not to ignore.
+
 **The field is `verdict`, not `verdictCode`.** That is the name in `05-patterns.md` §4 and in the
 assessment item in §1, so it is the name here and on the wire.
 
@@ -212,8 +216,39 @@ ours, it is smaller, and it can be tested with no model call.
 `additionalProperties: false` and every field in `required` come from ADR-0005 and are not optional.
 **Do not express the cross-field rules with `oneOf` or `anyOf`** (`05-patterns.md` §4).
 
-**There is no maximum length on `nextAction`.** A cap in the parse would turn a long but correct
-answer into `answer-unreadable`, and length is not something the provider can be told to obey.
+### 4.2 `AssessmentRequest` — what `apps/api` hands to `packages/llm`
+
+**Added 2026-08-31.** ADR-0005 names the port as `assess(input: AssessmentRequest)`, and **no file
+defined that type.** It was also missing from §10, the table whose whole job is to catch a type that
+crosses a border with no schema. So nothing said what reaches the model.
+
+```ts
+export const AssessmentRequest = z.strictObject({
+  photoJpeg:  z.instanceof(Uint8Array),   // the RE-ENCODED bytes from step 5b, never what arrived
+  plantName:  z.string().max(POT_NAME_MAX),    // user text. Untrusted
+  locale:     Locale,
+});
+```
+
+**Two of these are written by the person using the app, and both are untrusted input.** The plant
+nickname is typed. The photo can contain text — a photo of a sheet of paper is still a photo. So the
+rules in `03-api-spec.md` §4c apply to every call: **the system prompt is a module-level constant
+that no user value ever enters**, every user value goes in the user turn wrapped in a line saying
+instructions inside it are data, and the reply only becomes a value by passing `ModelAnswer`.
+
+**`photoJpeg` is the re-encoded image.** Passing the original bytes would send the EXIF — and the
+person's home GPS — to the provider, which is the thing step 5b exists to prevent.
+
+**There is no maximum length on `nextAction` in the parse. There is one in the refinement.**
+**Amended 2026-08-31.** A cap in the parse would turn a long but correct answer into
+`answer-unreadable`, and length is not something the provider can be told to obey — that reasoning
+stands. But this text is **stored and drawn on the result screen**, so an unbounded string is a
+value the model controls with no ceiling at all. So: parse it with no limit, then **truncate it to
+`NEXT_ACTION_MAX` in the refinement**, which is not a failure and costs the person nothing.
+
+```ts
+export const NEXT_ACTION_MAX = 400;
+```
 
 ### 4.1 The refinement — the cross-field rules
 
@@ -257,15 +292,23 @@ One set of numbers, used by the browser before the upload and by the API again a
 that only runs in the browser is not a check** (ADR-0007).
 
 ```ts
-export const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
+export const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 export const MIN_SHORT_SIDE_PX = 200;
 export const MAX_LONG_SIDE_PX  = 1000;
 export const MAX_PHOTO_BYTES   = 2_097_152;   // 2 MB
 ```
 
-The four formats come from Anthropic's vision limits (US-01 AC-2). 200 px is Anthropic's warning
-about small images (US-01 AC-5). 1000 px keeps one photo at 1296 visual tokens instead of about three
-times that (US-01 AC-4). 2 MB is the API's hard ceiling on the request body (ADR-0007).
+The formats come from Anthropic's vision limits (US-01 AC-2). 200 px is Anthropic's warning about
+small images (US-01 AC-5). 1000 px keeps one photo at 1296 visual tokens instead of about three times
+that (US-01 AC-4). 2 MB is the API's hard ceiling on the request body (ADR-0007).
+
+**`image/gif` was removed on 2026-09-17** (gate 68, the owner). The July 2026 libvips advisory names
+the GIF loader as one of three holes `sharp` can be reached through
+([GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj)), and a phone camera never
+produces a GIF, so nothing real is lost. **Do not put it back.** It is one of the three names the
+`sharp.block()` call at start-up refuses anyway (`../900-security/02-mitigations.md` R-09), so
+accepting the type and blocking the loader would only produce a confusing failure. The list is now
+three, and every message that names the accepted formats names three.
 
 ## 6. Pots
 
@@ -273,7 +316,7 @@ times that (US-01 AC-4). 2 MB is the API's hard ceiling on the request body (ADR
 export const POT_NAME_MIN = 1;
 export const POT_NAME_MAX = 60;
 
-export const Pot = z.strictObject({
+export const Pot = z.object({
   id:        PotId,
   name:      z.string().min(POT_NAME_MIN).max(POT_NAME_MAX),
   room:      z.string().min(1).max(60),
@@ -285,7 +328,7 @@ export const CreatePotRequest = z.strictObject({
   room: z.string().min(1).max(60),
 });
 
-export const PotListResponse = z.strictObject({ pots: z.array(Pot) });
+export const PotListResponse = z.object({ pots: z.array(Pot) });
 ```
 
 The item holds the name the person typed and the room (`05-patterns.md` §1).
@@ -303,11 +346,17 @@ rule for the name only. See §11.
 ```ts
 export const PhotoStatus = z.enum(['present', 'removed'] as const);
 
-export const Assessment = z.strictObject({
+// Added 2026-09-17 (ADR-0014). The assessment runs in the background, so a row has a state.
+export const ASSESSMENT_STATES = ['queued', 'running', 'done', 'failed'] as const;
+export const AssessmentState = z.enum(ASSESSMENT_STATES);
+
+export const Assessment = z.object({
   id:               AssessmentId,
   potId:            PotId,
   potName:          z.string(),            // joined from the pot row, for the photo's alt text
-  band:             ConfidenceBand,
+  state:            AssessmentState,
+  failureCode:      FailureCode.nullable(),  // set when state is `failed`
+  band:             ConfidenceBand.nullable(), // null until state is `done`
   verdict:          VerdictCode.nullable(),
   nextAction:       z.string().nullable(),
   followUpDays:     z.number().int().nullable(),
@@ -319,13 +368,20 @@ export const Assessment = z.strictObject({
   createdAt:        IsoInstant,
 });
 
-export const AssessmentResponse = z.strictObject({
-  assessment:            Assessment,
+// The 202 body. The run has started; the answer comes over the stream (ADR-0014, ADR-0015).
+export const AssessmentAccepted = z.object({
+  assessmentId:          AssessmentId,
   assessmentsLeftToday:  z.number().int().min(0),
   quotaResetsAt:         IsoInstant,
 });
 
-export const CareTask = z.strictObject({
+// One event on the stream. `assessment` is filled when the state is `done` or `failed`.
+export const AssessmentEvent = z.object({
+  state:      AssessmentState,
+  assessment: Assessment.nullable(),
+});
+
+export const CareTask = z.object({
   id:           CareTaskId,
   potId:        PotId,
   assessmentId: AssessmentId,
@@ -339,16 +395,21 @@ export const CreateCareTaskRequest = z.strictObject({
   confirmedUnsure: z.boolean().default(false),
 });
 
-export const PhotoUrlResponse = z.strictObject({
+export const PhotoUrlResponse = z.object({
   url:       z.string().url(),
   expiresAt: IsoInstant,
 });
 
-export const MeResponse = z.strictObject({
+export const MeResponse = z.object({
   assessmentsLeftToday: z.number().int().min(0),
   quotaResetsAt:        IsoInstant,
 });
 ```
+
+**`state` and `failureCode` were added on 2026-09-17.** The assessment row is written as `queued`
+before the `202`, moves to `running` when the workflow claims it, and ends `done` or `failed`. A
+failure inside the run arrives as `state: failed` with its code on the row and over the stream, not
+as an HTTP status. `band` and the other answer fields are `null` until the state is `done`.
 
 **Two stored fields are deliberately not on the wire.** The assessment item also holds the **model
 id** and the **cost** (`05-patterns.md` §1). The browser has no use for either, and a cost is not a
@@ -388,14 +449,16 @@ Every answer that is not a success is this shape, and nothing else. It is
 export const RETRY_HINTS = ['may-work', 'will-not-work'] as const;
 export const RetryHint = z.enum(RETRY_HINTS);
 
-export const Problem = z.strictObject({
+// z.object, NOT z.strictObject — RFC 9457 §3.2 says a reader must ignore
+// members it does not know, and a strict schema does the opposite. See §11a.
+export const Problem = z.object({
   // The five RFC 9457 members. `instance` is omitted — see below.
   type:      z.url(),        // https://zamphora.app/problems/<code>
   title:     z.string(),     // short, stable, English, for a developer
   status:    z.int().min(400).max(599),
-  detail:    z.string(),     // safe to show a person, in the reader's language
+  detail:    z.string(),     // fixed English, one per code, from a closed map. See below
 
-  // Extension members. RFC 9457 §3.2 allows these and readers must ignore what they do not know.
+  // Extension members.
   code:      FailureCode,
   retryHint: RetryHint,
   details:   z.record(z.string(), z.unknown()).optional(),
@@ -446,20 +509,27 @@ outside the `LlmProvider` port.
 | `not-found` | 404 | will-not-work | The row is not under the caller's owner key, or does not exist | `FailureNote` |
 | `invalid-request` | 400 | will-not-work | The body or the query failed its Zod parse | `FailureNote` |
 | `no-pot-picked` | 400 | will-not-work | No `potId` on an assessment request | SC-1, "pick or create a pot" |
-| `wrong-format` | 400 | will-not-work | The file is not one of the four types | SC-1 state 6 |
+| `wrong-format` | 400 | will-not-work | The file is not one of the three types | SC-1 state 6 |
 | `photo-too-small` | 400 | will-not-work | The shorter side is under 200 px | SC-1 state 7 |
 | `photo-too-large` | 400 | will-not-work | Over 2 MB, or the longer side is over 1000 px | SC-1, `InlineRefusal` |
 | `daily-limit-reached` | 429 | will-not-work | The conditional increment failed | SC-1 state 10, SC-5 state 4 |
 | `feature-off` | 503 | will-not-work | The kill-switch is off | SC-1 state 11 |
 | `no-credit` | 503 | will-not-work | The provider says the credit balance is empty | SC-1 state 12 |
-| `provider-timeout` | 502 | **may-work** | The provider did not answer in time | SC-2 state 6 |
-| `provider-throttled` | 502 | **may-work** | The provider answered 429 | SC-2 state 6 |
-| `provider-unavailable` | 502 | **may-work** | The provider answered 503 or another 5xx | SC-2 state 6 |
-| `provider-bad-request` | 502 | will-not-work | The provider refused the request itself | SC-2 state 7 |
-| `provider-refused` | 502 | will-not-work | `stop_reason` was `refusal` | SC-2 state 7 |
-| `answer-truncated` | 502 | will-not-work | `stop_reason` was `max_tokens` | SC-2 state 7 |
-| `answer-unreadable` | 502 | **may-work** | The answer failed the §4.1 refinement | SC-2, the failure view |
-| `deadline-passed` | 503 | **may-work** | The request reached `REQUEST_DEADLINE_MS` | SC-2 state 5 |
+| `request-in-flight` | 409 | **may-work** | The same `requestId` has not reached its `202` yet | SC-2 keeps waiting |
+| `workflow-not-started` | 503 | **may-work** | `StartExecution` failed. The attempt was refunded (ADR-0016) | SC-2 state 6 |
+| `provider-timeout` | on the row | **may-work** | The provider did not answer in time, three times | SC-2 state 6 |
+| `provider-throttled` | on the row | **may-work** | The provider answered 429, three times | SC-2 state 6 |
+| `provider-unavailable` | on the row | **may-work** | The provider answered 503, three times; or the breaker was open | SC-2 state 6 |
+| `provider-bad-request` | on the row | will-not-work | The provider refused the request itself | SC-2 state 7 |
+| `provider-refused` | on the row | will-not-work | `stop_reason` was `refusal` | SC-2 state 7 |
+| `answer-truncated` | on the row | will-not-work | `stop_reason` was `max_tokens` | SC-2 state 7 |
+| `answer-unreadable` | on the row | **may-work** | The answer failed the §4.1 refinement | SC-2 state 10 |
+| `deadline-passed` | 503, or on screen | **may-work** | The `api` request reached `REQUEST_DEADLINE_MS`, or the waiting screen reached 60 seconds | SC-2 state 5 |
+
+**"On the row" means the failure happened inside the background run** (ADR-0014). It is written on
+the assessment row as `state: failed` with this code, and it reaches the phone over the stream as an
+`AssessmentEvent`, not as an HTTP status. `retryHint` still decides whether a try-again button is
+drawn.
 | `task-not-possible` | 409 | will-not-work | `followUpDays` is null, the band is `cannot-tell`, or the verdict is `nothing-wrong` | No task button is drawn, so this is a guard, not a screen |
 | `confirmation-required` | 409 | will-not-work | The band is `unsure` and `confirmedUnsure` was not `true` | The web opens SC-6 instead of showing this |
 | `photo-already-removed` | 409 | will-not-work | The photo was already deleted or already expired | SC-7 state 5 |
@@ -467,7 +537,7 @@ outside the `LlmProvider` port.
 
 **`photo-rejected` is three codes here, and that is on purpose.** `05-patterns.md` §8 gives one name
 for a rejected photo. One name cannot carry two required sentences: US-01 AC-2 says the refusal
-**names the four formats**, and US-01 AC-5 says it **says the photo is too small**. So the one name
+**names the accepted formats**, and US-01 AC-5 says it **says the photo is too small**. So the one name
 becomes `wrong-format`, `photo-too-small` and `photo-too-large`. All three carry
 `will-not-work`, exactly as `photo-rejected` does. See §11.
 
@@ -492,13 +562,12 @@ list and the same `FailureNote` component, so no failure is described only by a 
 | Code | When | `retryHint` |
 | --- | --- | --- |
 | `offline` | The device has no network | may-work |
-| `client-deadline` | 30 seconds passed with nothing on screen | may-work |
+| `client-deadline` | 30 seconds passed with no confirmation that the run started | may-work |
 | `file-unreadable` | The chosen file cannot be opened at all | will-not-work |
 | `upload-failed` | The request never reached the API | may-work |
 
-`client-deadline` is US-01 AC-8 and it is the client's own timer. It is different from
-`deadline-passed`, which is the server giving up at 20 seconds so the gateway never gets the chance
-to answer a 504 with a body nobody here wrote (ADR-0002).
+`client-deadline` is US-01 AC-8 and it is the client's own timer for the `202`. A second client
+timer, 60 seconds for the result, shows `deadline-passed` on screen (NFR-07).
 
 ## 9. Where the provider's errors are turned into these codes
 
@@ -514,9 +583,10 @@ an answer. `refusal` and `max_tokens` arrive as normal successes and are not ver
 **Never match on the raw text of an answer.** Parse it. A model version can escape characters
 differently, so string matching breaks in silence on an upgrade (ADR-0005).
 
-**None of these is ever retried automatically**, whatever `05-patterns.md` §8's "Auto retry?" column
-says. That column predates the owner's decision of 2026-08-26 and ADR-0005 now ends with "Do not
-retry anything at all in run 1". See §11.
+**The adapter never retries.** Three of these values — `provider-timeout`, `provider-throttled`,
+`provider-unavailable` — are thrown as errors by the `assess` handler in `apps/api`, so the
+background workflow can retry them at most twice (ADR-0014, `05-patterns.md` §8). The adapter
+itself stays a function that returns a value.
 
 **One thing to confirm in the first task:** the exact error shape the provider returns when the
 credit balance is empty. It is not written in any input to this role. Until it is confirmed, an
@@ -577,12 +647,13 @@ The check on this file is that no schema has only one user. This table is that c
 | `FOLLOW_UP_DAYS_MIN/MAX` | Decide whether the task button is drawn | Decide whether the task route refuses |
 | `Pot`, `PotListResponse` | Draw `PotPicker` | Read the pots of one owner |
 | `CreatePotRequest`, `POT_NAME_MIN/MAX` | Validate the form before sending | Validate the body again |
-| `Assessment`, `PhotoStatus`, `AssessmentResponse` | Draw SC-3, SC-4, SC-5 and SC-7 | Build the answer to the assessment routes |
+| `Assessment`, `AssessmentState`, `PhotoStatus`, `AssessmentAccepted`, `AssessmentEvent` | Show the waiting screen on the `202`, parse the stream event, draw SC-3, SC-4, SC-5 and SC-7 | Build the `202`, write the row, send the stream event |
 | `CreateCareTaskRequest` | Send the yes from SC-6 | Enforce NFR-31 |
 | `CareTask` | Draw the created-task row | Write the item |
 | `PhotoUrlResponse` | Put the URL in `PhotoPreview` | Sign it, at most 5 minutes (NFR-43) |
 | `MeResponse` | Decide `signed-in` or `signed-out`, draw `LimitNote` | Read the session and the day's counter |
 | `Problem`, `FailureCode`, `RetryHint` | Choose the `FailureNote` state and the sentence | Answer every failure |
+| `AssessmentRequest` | — **`apps/api` and `packages/llm` only.** It never crosses the wire to the browser, and it is listed here because it crosses a **package** border, which is the same rule | Build the one model call (§4.2) |
 
 **`ModelAnswer` has three users, and `05-patterns.md` §11 is the reason it is in this package.**
 `packages/llm` builds the provider request from it, `apps/api` parses the answer with it, and the
@@ -597,15 +668,69 @@ answer schema only in `packages/llm`** — it is a wire type, and `packages/llm`
 | --- | --- | --- |
 | Whether `room` is required on a pot, and its length | US-15 AC-2 says "two things" and gives a length rule for the name only. `00-prd.md` does not fill it | Ask the owner. This file assumes required, 1 to 60 characters |
 | ~~The 1 to 30 range on `followUpDays`~~ | **Closed 2026-08-26, gate 39.** The owner set it to 1 to 30 — the value this file already used | Nothing to do. US-02 AC-6 no longer says provisional |
-| Whether ADR-0007's photo key should use only the timestamp | `05-patterns.md` §1 makes `AssessmentId` composite, so the ADR's key repeats the pot id and carries a `#` | Ask the owner. **The ADR is followed as written until then** |
-| The Zod major version | No input names one | It goes in the `catalog:` of `pnpm-workspace.yaml`. Every schema here uses API that both 3 and 4 have |
+| ~~Whether ADR-0007's photo key should use only the timestamp~~ | **Closed 2026-08-26, gate 38.** The key is `photos/<userId>/<potId>/<createdAt>.jpg` and ADR-0007 was amended to match | Nothing to do |
+| ~~The Zod major version~~ | **Closed.** The catalog pins `zod` to `4.4.3`, and all of §9a is Zod-4-only advice | Nothing to do |
 | The provider's error shape for an empty credit balance | Not in any input | Confirm against the provider's documentation in the first task |
+
+## 11a. Changing a schema after something has shipped
+
+**Added 2026-08-31. This file had no compatibility story at all, and the shape of this product needs
+one.**
+
+`apps/web` is a **static export**, cached in browsers and at CloudFront. `apps/api` is a Lambda.
+They are two artifacts and they deploy separately (ADR-0001 rule 5, ADR-0010). So there is always a
+window where a browser is running an **old** bundle against a **new** API. The browser parses every
+answer with the schema in this package and treats a parse failure as a loud error
+(`02-web-spec.md` §3).
+
+**Every response schema used to be `z.strictObject`, which rejects a field it does not know.** So the
+first time the API added a field, every browser holding an old bundle would have shown a failure on
+a perfectly good response. `Problem` was the clearest case: it said in a comment that readers *"must
+ignore what they do not know"* and then forbade exactly that.
+
+**The rule, and it splits by direction:**
+
+| Parsed by | Schema kind | Why |
+| --- | --- | --- |
+| **The API**, on a request body | `z.strictObject` | An unexpected field is untrusted input. Rejecting it is a real border, and it stays tight |
+| **The browser**, on a response body | `z.object` | Unknown keys are stripped, not refused. An older bundle keeps working against a newer API |
+
+**Three sentences that go with it:**
+
+1. **Adding a field to a response is safe.** Removing one, renaming one, or changing what one means
+   is a breaking change and needs both sides shipped together.
+2. **The API deploys before the web.** A new API with an old bundle works. A new bundle expecting a
+   field the old API does not send does not.
+3. **`Problem` is `z.object` because RFC 9457 requires it.** A reader must ignore members it does not
+   understand.
+
+## 11b. `Problem.detail` is fixed English, from a closed map
+
+**Added 2026-08-31, because §1 and §8 could not both be true.**
+
+§1 of this file says: *"The API never sends prose. A failure is a `code`; the sentence is looked up
+in a message file in the reader's language."* §8 then defined `detail` as a required string *"in the
+reader's language"*. The message files live in `apps/web/src/messages/`, not in the API, and only
+`POST /api/assessments` is even told a locale — `GET /api/pots` has no way to know one.
+
+**Something has to fill a required field, and the string always within reach is the exception
+message.** That is the leak the security skill forbids by name: a stack trace, an AWS error, an
+internal class name, handed to whoever made the request.
+
+**So:**
+
+- **`detail` is a fixed English sentence, one per `FailureCode`, from a closed map in the API.** It
+  is for a developer reading a log or a response, in the same voice as `title`.
+- **It is never built from an exception, a driver error, or any value that came from outside.** A
+  test asserts the map's keys are exactly the failure codes, so a new code cannot ship without a
+  sentence and no sentence can be generated.
+- **The reader's own language stays in the browser**, keyed on `code`, where it already works and
+  where the message files already are.
 
 **Two places where `05-patterns.md` and an ADR disagree. Nothing here was changed for either.**
 
-- **§8's "Auto retry?" column allows one automatic retry** on four names. ADR-0005 was corrected on
-  2026-08-26 and now ends with "Do not retry anything at all in run 1", and NFR-05 sets retries to 0.
-  **The ADR wins.** The sentence column of that same table is correct and is used as written.
+- **§8's retry column** now says which three names the workflow retries, since 2026-09-17, and this
+  file agrees with it. The sentence column of that same table is used as written.
 - **§8 has one name, `photo-rejected`, for three refusals that must produce different sentences**
   (US-01 AC-2 and AC-5). Three codes are used here, all with the same `retryHint`. `02-SPEC.md` §6
   already draws them as three separate rows, so the screen side already expects three.

@@ -26,9 +26,13 @@ name of the illness.
 
 **Photograph a plant that looks unwell, and get back an assessment with a next action.**
 
-The plant is already named by the user, so the model is not asked which plant it is. One model call
-per assessment. The result is one verdict, one confidence band, one next action, and the number of
-days until the follow-up. The user can turn that next action into a dated care task for that pot.
+The plant is already named by the user, so the model is not asked which plant it is. The result is
+one verdict, one confidence band, one next action, and the number of days until the follow-up. The
+user can turn that next action into a dated care task for that pot.
+
+**Since 2026-09-17 the assessment runs in the background** (ADR-0014, ADR-0015). The phone gets a
+confirmation at once, and the result is pushed to it when it is ready. One photo normally costs one
+model call, and at most three if the provider times out or is busy.
 
 ## 3. The backbone, and where this run sits
 
@@ -41,7 +45,7 @@ Nothing found by research and nothing thought up by a role sits above any of the
 | 2 | Soil replacement intervals per plant | Run 2 (planned) | Not this run |
 | 3 | Placement advice — where a plant goes for the right sun | Run 4 (planned) | Not this run |
 | 4 | Documenting how a plant is doing over time | Run 5 (planned) | Not this run |
-| 5 | **Photo assessment by AI** | **Run 1 — this run** | **US-01 to US-14, all of them** |
+| 5 | **Photo assessment by AI** | **Run 1 — this run** | **US-01 to US-15, all of them** |
 | 6 | Notifications when it is time to act | Run 3 (planned) | US-03 writes the task that feature 6 will later deliver. Delivery is not built here |
 
 Two of the owner's requirements are not features. They apply to every feature above: **two
@@ -58,7 +62,7 @@ from the market scan. Section 6 keeps those ideas in the Out list.
 | S-1 | Take a photo with the camera, or choose one from the phone, for one named pot | US-01 | `factory/feature.md`, In scope |
 | S-2 | Two free checks before the model call: the file is a format the app accepts, and the plant is named | US-01 | `factory/feature.md`, "What confidence means" |
 | S-3 | Store the photo, with the 180-day rule and delete on demand | US-10 | `factory/feature.md`, In scope |
-| S-4 | One model call that returns a verdict, a confidence band, a next action and a follow-up in days | US-02 | `factory/feature.md`, In scope |
+| S-4 | A model call that returns a verdict, a confidence band, a next action and a follow-up in days. One call normally, at most three | US-02 | `factory/feature.md`, In scope; ADR-0014 |
 | S-5 | Show the result honestly, including `unsure` and `cannot-tell` | US-04, US-05 | `factory/feature.md`, In scope |
 | S-6 | Say on screen that the assessment came from an AI model | US-06 | `00-context-brief.md` 5.4, EU AI Act Article 50(1) |
 | S-7 | Turn the next action into a dated care task for that pot | US-03 | `factory/feature.md`, In scope |
@@ -167,7 +171,7 @@ Full table with thresholds, windows and sources is `02-traceability.md`. Short v
 | Value | The user accepts and completes the next action in at least 8 of 10 assessments, over 8 weeks and at least 20 assessments (M-01, **provisional**) | Care tasks deleted within 7 days stay at or under 2 in 10 (M-20) |
 | Reach | At least 6 assessments in those 8 weeks (M-02) | — |
 | Truth | A person agrees with a `likely` verdict at least 8 times in 10, over the first 20 real assessments (M-03) | Results in the `cannot-tell` band stay at or under 3 in 10 (M-19, **provisional**). A model that hides behind `cannot-tell` is failing quietly |
-| Money | — | Anthropic spend for this feature stays under $5 to 2026-12-31 (M-05). Exactly one model call per assessment (M-22) |
+| Money | — | Anthropic spend for this feature stays under $5 to 2026-12-31 (M-05). One model call per assessment normally, and never more than three (M-22) |
 | Safety | — | Reads of another account's data stay at 0 (M-06). Photos older than 180 days in storage stay at 0 (M-07) |
 
 **Two numbers both say "8 in 10" and they measure different things.** M-01 is about the user acting.
@@ -191,7 +195,7 @@ The answers are repeated here so this document is not misleading on its own.
 | G-6 | The **verdict list** in section 5.2 was built from words found in the input files, not from a plant reference | `closed` 2026-08-25, **with a review date** | **Ship the ten, review after the first 20 real assessments.** The list cannot fail silently: `other` and `nothing-wrong` mean the model is never forced to invent a fault, so a missing code shows up as a rising share of `other`, which is countable. 600 QA owns the review |
 | G-7 | The **session length** for a returning user | `closed` 2026-08-25 | **30 days.** 7 was rejected because the app is opened every few weeks, so the user would meet the sign-in screen almost every visit. 90 was rejected because a lost phone would stay signed in to photos of a home for three months |
 | G-8 | How fast the kill-switch must take effect | `closed` 2026-08-25 | **60 seconds.** The value may be cached for up to a minute. Checking on every request was rejected as more complicated: with no cached value, someone must decide what happens when that read itself fails. 5 minutes was rejected because the switch exists for when something is already wrong |
-| G-9 | The **retry limit** after a failed model call. `01-use-cases.md` gave it to 800 Infra | `closed` 2026-08-25, **reversed 2026-08-26** | **Now: no retry. One model call per assessment**, by the owner on 2026-08-26, after the pre-mortem showed two attempts cost about $0.0070 against a $0.0040 ceiling and squeezed the time budget. The original answer, whose reasoning still holds for run 3: **One retry, two attempts in total**, both inside G-5's 30 seconds. Only a timeout, a 429 or a 503 is retried. Five tries with exponential backoff was rejected: every attempt is a paid model call, and the backoff alone overruns 30 seconds. Five becomes right once the assessment runs in the background — backbone 6, run 3 |
+| G-9 | The **retry limit** after a failed model call. `01-use-cases.md` gave it to 800 Infra | `closed` 2026-08-25, changed twice since | **Now: at most two retries, inside the background workflow, only for a timeout, a 429 or a 503** (owner, 2026-09-17, ADR-0014). The history matters: on 2026-08-25 the owner allowed one retry; on 2026-08-26 they removed it, because with the phone waiting, two attempts cost $0.0070 against a $0.0040 ceiling and squeezed the time budget. Moving the assessment into the background removed both problems, so the retry came back with a cap. Five tries with exponential backoff stays rejected: every attempt is a paid call |
 | G-10 | Whether the EU AI Act applies to a personal project of this size. `00-context-brief.md` calls it a legal question and does not answer it | `closed` 2026-08-25 | **Show the notice, take no legal advice, for run 1.** Whether the Act applies is left unanswered on purpose, because it changes nothing while the app has one user and is offered to nobody. **This re-opens the day the app is offered to another person** |
 
 Two more decisions arrived with these and no gate had asked for either. There is **no total cap on

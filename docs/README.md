@@ -10,23 +10,36 @@ infra surface, QA last because a real test plan needs everything else already wr
 
 | Folder | Owned by | Holds | Written? |
 | --- | --- | --- | --- |
-| `context/` | 500-engineering | `stack.md` — the file that does the most work: versions, constraints, gotchas | ☐ |
-| `100-consulting/` | 100-consulting | Context brief, ranked use cases, decisions, market scan | ☐ |
-| `200-product/` | 200-product | PRD, user stories with testable ACs, traceability | ☐ |
-| `300-design/` | 300-design | Journey map, `CONTEXT.md` + `SPEC.md` handoff, tokens | ☐ |
-| `400-architecture/` | 400-architecture | Options, C4 diagrams, timed flow, patterns, NFR budgets, pre-mortem | ☐ |
-| `500-engineering/` | 500-engineering | Conventions, contracts, web spec, API spec | ☐ |
+| `context/` | 500-engineering | `stack.md` — the file that does the most work: versions, constraints, gotchas | ☑ |
+| `100-consulting/` | 100-consulting | Context brief, ranked use cases, decisions, market scan | ☑ |
+| `200-product/` | 200-product | PRD, user stories with testable ACs, traceability | ☑ |
+| `300-design/` | 300-design | Journey map, `CONTEXT.md` + `SPEC.md` handoff, tokens | ☑ |
+| `400-architecture/` | 400-architecture | Options, C4 diagrams, timed flow, patterns, NFR budgets, pre-mortem. `08-async-options-short.md` is the background-run decision of 2026-09-17 | ☑ |
+| `500-engineering/` | 500-engineering | Conventions, contracts, web spec, API spec | ☑ |
 | `600-qa/` | 600-qa | Test plan, test cases, AI evaluation plan | ☐ |
-| `800-infra/` | 800-infra | Environments, IaC plan, cost guardrails, observability, CI/CD | ☐ |
-| `900-security/` | 900-security | Assets, threats, mitigations, evidence | ☐ |
-| `ADR/` | 400-architecture | Decisions. Each ends in an instruction with an explicit "do not" | ☐ |
+| `800-infra/` | 800-infra | Environments, IaC plan, cost guardrails, observability, CI/CD | ☑ |
+| `900-security/` | 900-security | Assets, threats, mitigations, evidence | ☑ |
+| `ADR/` | 400-architecture | Decisions. Each ends in an instruction with an explicit "do not". Sixteen so far | ☑ |
 
 Tick a row when its folder is filled by a factory run. An unticked row is not a gap in the plan —
 it is a slot that has not run yet. See `/ai-factory:factory-run`.
 
-**One folder here has no role and never will:** `learn/` holds
-`ai-native-delivery.md`, the note that explains this whole method. **No subagent may write to it.**
-It is updated by a person, or by `/ai-factory:learn`, which lists its sections first.
+**Every folder was updated on 2026-09-17** for the background run (ADR-0014 to ADR-0016). Each
+changed file says so under its title, and the 900 files list their corrections in a section at the
+bottom, as their own rule asks.
+
+**One folder here has no role and never will:** `learn/`. It holds four notes:
+
+| Note | Subject |
+| --- | --- |
+| `backend-concepts.md` | **The ideas underneath, explained on their own.** 74 concepts, each with the question it answers, the real tool, what this project does, how else it is done, and the trap |
+| `ai-native-delivery.md` | The method — how the factory line works |
+| `monorepo-architecture.md` | The shape of the code |
+| `aws-and-the-pipeline.md` | The running system on AWS |
+
+**No subagent may write to that folder.** It is updated by a person, or by `/ai-factory:learn`, which
+lists its sections first. **`backend-concepts.md` is the one to read first** if a term in any other
+document is unfamiliar: the other three explain *this project*, and it explains *the idea*.
 
 ## Three rules that apply to every file here
 

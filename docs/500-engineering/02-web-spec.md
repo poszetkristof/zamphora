@@ -54,9 +54,9 @@ the value in half. Use `encodeURIComponent` when building the link and read it b
 `URLSearchParams`, which decodes for you. **The browser never takes the id apart and never builds
 one.**
 
-**SC-2 is a state, not a route.** The wait happens while one request is in flight, and the assessment
-has no id until that request answers. Giving it a route would mean a route with nothing to address.
-This does not change anything in `02-SPEC.md`: every state in its SC-2 table is still built.
+**SC-2 is a state, not a route.** The wait starts while the first request is in flight, and the
+assessment has no id until the `202` answers. After that the screen holds the id and one open
+stream, and still needs no route of its own. Every state in the SC-2 table of `02-SPEC.md` is built.
 
 **The redirect from `/`.** A static export cannot read `Accept-Language` on the server. Two answers
 are open, both named in ADR-0010: a small CloudFront function, or one line of client-side code on a
@@ -108,7 +108,7 @@ longer side is already 1000 px or less is still re-encoded, so one code path cov
 
 **The browser's checks are for the person, not for safety.** The API runs all three again on the
 bytes it receives, because a check that only runs in the browser is not a check (ADR-0007). The
-browser only ever sends JPEG; the API still accepts all four types, because a script is not the
+browser only ever sends JPEG; the API still accepts all three types, because a script is not the
 browser.
 
 ### 4.2 The state machine
@@ -117,14 +117,38 @@ One state value drives SC-1 and SC-2. Every name below is a state in `02-SPEC.md
 invented here.
 
 ```
-signed-out → empty → ready → photo-chosen → sending → (SC-2) resizing → uploading → asking
+signed-out → empty → ready → photo-chosen → sending → (SC-2) resizing → uploading
+                                                            ↓
+                                          confirmed (the 202 arrived. The promise is kept)
+                                                            ↓
+                                          waiting   (one open stream to /api/assessments/:id/events)
                                                             ↓
                     answered ──────────────────────→ /[locale]/result?id=…
                     timed-out · provider-error · not-retryable · offline → failure view
 ```
 
-Refusals that never reach `sending`: `wrong-format`, `too-small`, `limit-reached`, `feature-off`,
-`no-credit`, `offline`, and `empty` with no pot picked.
+**`confirmed` and `waiting` were added on 2026-09-17** (ADR-0014, ADR-0015). On the `202` the screen
+moves to `confirmed`, then opens `new EventSource('/api/assessments/<id>/events')`. One `done` or
+`failed` event carries the assessment, parsed with `AssessmentEvent`. `EventSource` reconnects on
+its own; a reconnect after the run finished is answered at once. If the stream cannot open at all,
+the screen falls back to `GET /api/assessments/:id` every 2 seconds — that is the fallback only,
+never the first choice. A `failed` event shows `FailureNote` from the row's `failureCode`, with the
+same mapping as §8.
+
+**The `requestId` is made at `photo-chosen`, not at `sending`.** **Added 2026-08-31.** One UUID per
+photo the person picks. It goes in the form body of `POST /api/assessments` and the API uses it to
+make sure one tap is one charge (`03-api-spec.md` §4a). **A resend of the same photo must carry the
+same id** — that is the whole point — so it is stored with the chosen photo in the state, and a new
+one is only made when a new photo is picked. If the API answers `409 request-in-flight`, the screen
+stays in `asking` and keeps waiting; it does not send again.
+
+Refusals that never reach `sending`: `wrong-format`, `photo-too-small`, `daily-limit-reached`,
+`feature-off`, `no-credit`, `offline`, and `empty` with no pot picked.
+
+**Corrected 2026-08-31.** Two of these were written with short names — `too-small` and
+`limit-reached` — that do not exist. The real codes are `photo-too-small` and `daily-limit-reached`
+(`01-contracts.md` §8). A code is a value from a closed list, so a near-miss is a bug, not a
+shorthand.
 
 **Four rules the state machine carries, and each is a negative criterion in `02-SPEC.md` §7.**
 
@@ -138,19 +162,21 @@ Refusals that never reach `sending`: `wrong-format`, `too-small`, `limit-reached
   `Blob` for the life of the page. It is **not** written to any storage, because NFR-33 forbids
   browser storage and a photo of the inside of a home is the last thing to put there.
 
-### 4.3 The client deadline
+### 4.3 The two client clocks
 
 ```ts
-export const CLIENT_DEADLINE_MS = 30_000;
+export const CLIENT_DEADLINE_MS = 30_000;   // tap to the 202. NFR-01
+export const RESULT_DEADLINE_MS = 60_000;   // tap to the result. NFR-07
 ```
 
-One timer, started on the tap that sends and covering the resize, the upload and the answer
-(US-01 AC-8, NFR-01). When it fires, the screen shows `FailureNote` in `retry-may-work` with the code
-`client-deadline`, and the in-flight request is abandoned.
+The first timer starts on the tap that sends and covers the resize, the upload and the `202`
+(US-01 AC-8). When it fires, the screen shows `FailureNote` in `retry-may-work` with the code
+`client-deadline`, and the request is abandoned. The second timer covers the whole wait for the
+result. When it fires, the screen shows `deadline-passed`, whatever the background run is still
+doing; the run itself is not cancelled, and if it finishes later the result sits on the row.
 
-It is a different thing from the server's own 20-second deadline. The server gives up first so that
-it, and not the gateway, writes the answer (ADR-0002). The client timer is the backstop for a request
-that never comes back at all.
+Neither timer is the server's. The `api` function has its own 20-second deadline for its own work,
+and the background run has per-task timeouts of its own (`05-patterns.md` §7).
 
 **There is no cancel button** (`02-SPEC.md` SC-2).
 
@@ -265,11 +291,10 @@ at all, because US-08 AC-4 forbids a message about the limit when the person is 
 
 ## 9. SC-8 — Add a pot
 
-US-15 is in scope (`factory/feature.md`, added 2026-08-25, gate 21) and **`02-SPEC.md` does not draw
-it**. Its SC-1 state 2 and its `PotPicker` `empty` state both link out to "the create-a-pot screen",
-so the design points at a screen that was never specified. This section builds the smallest screen
-that satisfies US-15 and nothing more. **The state list, the layout and the copy are 300 Design's and
-do not exist yet — see §10.**
+US-15 is in scope (`factory/feature.md`, added 2026-08-25, gate 21). **`02-SPEC.md` §4, SC-8 now draws
+it** (written 2026-08-31). This section is the engineering half — the route, the fields and the
+validation. Where this file and `02-SPEC.md` disagree about a state, the layout or the copy,
+**`02-SPEC.md` wins**, as it does for every other screen.
 
 - **Route:** `/[locale]/pots/new`.
 - **Two fields, and nothing else on the screen** (AC-2): a name, and where the plant is.
@@ -329,14 +354,14 @@ a later tidy-up.
 | US-07 Sign in once, see only my own | `AppFrame` `signed-out`, SC-1 state 1 | The sign-in pages are Cognito's |
 | US-08 Stopped at my own limit | SC-1 state 10, SC-5 state 4, `LimitNote` | |
 | US-09 A message that says if trying again helps | `FailureNote`, every screen | §8 |
-| US-10 How long photos are kept, and delete | `/[locale]/photo` — SC-7, `RetentionNote` | Deleting every photo at once has no screen in run 1 |
+| US-10 How long photos are kept, and delete | `/[locale]/photo` — SC-7, `RetentionNote` | AC-7, deleting every photo at once, moved out of run 1 with its route on 2026-08-31 |
 | US-11 Hungarian or English | Every route, in both languages | §7 |
 | US-12 An admin reads the figures | **No screen.** Moved out of run 1 by the owner, gate 30 | |
 | US-13 The feature can be turned off | **No screen.** The switch is flipped in the AWS website. Its effect on a person is SC-1 state 11 | |
 | US-14 A normal account is refused | **No screen, on purpose.** A refused admin action never renders a screen and never says whether the action exists | |
-| US-15 Add a pot | `/[locale]/pots/new` — SC-8 | §9. **No design spec exists for it** |
+| US-15 Add a pot | `/[locale]/pots/new` — SC-8 | §9. Design spec written 2026-08-31, `02-SPEC.md` §4, SC-8 |
 
 ## 13. What this file does not decide
 
 The exact words of any sentence · which of the two answers builds the `/` redirect, which is 800
-Infra's to place · the visual state list for SC-8 · the unit test runner.
+Infra's to place · the unit test runner.

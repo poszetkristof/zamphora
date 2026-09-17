@@ -3,10 +3,15 @@
 **Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA.
 
-This file does one job: it puts four whole-system shapes side by side, scores them on the four
-things that actually pull in different directions on this project, and names the winner. Everything
-else in `docs/400-architecture/` and every ADR follows from the winner. Nothing was drawn before
-this page was finished.
+**Updated 2026-09-17.** Sections 1 to 10 are the record of run 1, where Option A won. Section 11
+adds two more shapes the owner asked for, scores them on the same constraints plus one new one, and
+records the owner's choice: **Option E, the assessment runs in the background.** Read §11 last; it
+is the current state.
+
+This file does one job: it puts whole-system shapes side by side, scores them on the things that
+actually pull in different directions on this project, and names the winner. Everything else in
+`docs/400-architecture/` and every ADR follows from the winner. Nothing was drawn before this page
+was finished.
 
 The inputs are `factory/feature.md`, `docs/100-consulting/00-context-brief.md`,
 `docs/200-product/001-photo-assessment/00-prd.md`, `01-user-stories.md`,
@@ -24,7 +29,7 @@ question this feature asks of stored data. It is a short list, and its shortness
 | --- | --- | --- | --- |
 | Q-1 | Which pots does this user own? | Every time the assess screen opens | US-01, US-15 |
 | Q-2 | One pot by its id, owned by this user | Every assessment | US-01 |
-| Q-3 | How many model attempts has this user made today? | Before every model call. There is no retry, so that is once per assessment (2026-08-26) | US-08 |
+| Q-3 | How many assessments has this user started today? | Once per assessment, in the `api` function, before the workflow starts. The workflow's retries never read it again (ADR-0014) | US-08 |
 | Q-4 | Is the AI feature switched on? | Before every model call | US-13 |
 | Q-5 | Write one finished assessment for one pot | Once per assessment | US-02, US-05 |
 | Q-6 | Read the assessments of one pot, newest first | Not in run 1. Backbone 4 reads it | US-10 AC-4 |
@@ -54,9 +59,10 @@ of them.
 - The Anthropic API, paid from the owner's own Anthropic credits. **Amazon Bedrock is not used.**
 - Every user signs in. Two account types, `USER` and `ADMIN`, from day one.
 - 180 days for a photo, deleted by a storage lifecycle rule and not by application code.
-- 30 seconds from the tap to something on screen. **One model call per assessment, no retry**
-  (owner, 2026-08-26, replacing the earlier two-attempt rule). 10 calls a day.
-  A kill-switch that takes effect inside 60 seconds. A 30-day session.
+- 30 seconds from the tap to something on screen. **One model call per assessment in the normal
+  case, and never more than three** (owner, 2026-09-17, §11 and ADR-0014; it was "no retry" from
+  2026-08-26 to that date). 10 assessments a day. A kill-switch that takes effect inside 60 seconds.
+  A 30-day session.
 - No second-opinion service, ever. No option below leaves a place for one.
 
 ## 3. The four constraints the options are scored on
@@ -172,14 +178,14 @@ the range for production workloads
 ([Sedai](https://sedai.io/blog/what-is-cold-starts-in-lambda-understanding),
 [oneuptime](https://oneuptime.com/blog/post/2026-01-27-lambda-cold-start-optimization/view), both
 checked 2026-08-25). **These are secondary sources, not a measurement of this application**, and
-`03-flow.md` budgets the top of that range. Against a 30-second budget, 800 ms is under 3%.
+`03-flow.md` budgeted the top of that range until 2026-08-31 and now budgets **2,000 ms**, because those figures describe a plain Node handler and this is a bundled Nest+Express application (NFR-06). Against a 30-second budget, 2,000 ms is under 7%.
 
 There is a second and harder ceiling on A and D, and it is the reason neither scores 5. **An API
 Gateway HTTP API cuts a request off at 30 seconds and that cannot be raised** — the same number the
 user was promised. So the whole server side must finish inside a budget somebody else is already
 counting. The design obeys it by failing at 20 seconds and writing its own message.
-**The three stacked deadlines and the arithmetic are in `03-flow.md` §4.** That is a constraint to
-obey, not a fault in the option.
+**The stacked deadlines and the arithmetic were in `03-flow.md` §4 until 2026-09-17.** That was a
+constraint to obey, not a fault in the option. §11 says how Option E removed it from the paid path.
 
 C scores 3, which is the surprising one. Moving the model call to a worker removes the gateway
 ceiling entirely — that is worth something. But the user in US-01 is standing in front of a plant
@@ -241,6 +247,9 @@ already agreed at five states. **Two triggers, either one:** a second model call
 flow, or the model call alone regularly passes 15 seconds. Until then Option C buys headroom that
 `03-flow.md` says is not needed — the typical run is 8.2 seconds against 30.
 
+*This was re-opened on 2026-09-17 by the owner's choice, not by a trigger. See §11. Option E is
+Option C with the poll replaced by a stream and the queue replaced by a workflow.*
+
 ## 7. What Option A is made of
 
 The detail is in `02-containers.mmd` and in the ADRs. In one table:
@@ -265,7 +274,7 @@ The ladder is plain code → one model call → a fixed chain of calls → an ag
 the lowest rung that works, and to say why the rung below it does not.
 
 **Plain code is used, and it is used first.** Three things happen before any model call and none of
-them needs a model: the file must be one of JPEG, PNG, GIF or WebP; the shorter side must be at
+them needs a model: the file must be one of JPEG, PNG or WebP (GIF dropped 2026-09-17, gate 68); the shorter side must be at
 least 200 px; a pot must be picked. Two more happen after the answer arrives and are also plain
 code: the follow-up must be a whole number from 1 to 30, and the date is the assessment day plus
 that number. `00-context-brief.md` §5.2 is the reason the last one is code — the model chooses the
@@ -301,6 +310,112 @@ Written out so no reader mistakes one for a commitment.
 
 ## 10. What this document does not decide
 
-Whether Option A is accepted · whether any cost is acceptable · which hosting product runs the
-Next.js server · whether the component library in ADR-0011 may be added · the build order · the
-release date · whether the feature ships.
+Whether any cost is acceptable · whether the component library in ADR-0011 may be added · the build
+order · the release date · whether the feature ships.
+
+## 11. Two more shapes, and the owner's choice — 2026-09-17
+
+On 2026-09-17 the owner asked for an asynchronous shape: one where the phone does not wait while
+the model thinks. Two shapes were drawn, and a session with no context reviewed them before they
+were scored. The owner then chose Option E. This section is the record, so nobody has to rebuild
+it from the chat.
+
+### 11.1 What Option A could not do
+
+Option A puts the model call inside the request. That gave three limits that all come from one
+place, the clock. API Gateway cuts a request at 30 seconds and CloudFront at 25, so the model had
+about 16 seconds. A retry was impossible, because a second call would eat the same clock. And one
+function held every permission, including the model key, because the call was in it.
+
+### 11.2 Option E — the phone stops waiting, and little else moves
+
+`POST /api/assessments` does everything it does today up to the model call: the session, the
+kill-switch, the daily limit, the photo checks and the re-encode. Then it writes the assessment row
+as `queued`, starts an **AWS Step Functions** workflow and answers `202` in about a second. Step
+Functions is an AWS service that runs steps in order, retries the steps you mark, and keeps a
+history of every run. The workflow runs the model call in its own small function, `assess`, which
+is the only function that holds the model key. The phone opens one connection and the result is
+pushed to it when it is ready, over **server-sent events**, the same mechanism the model provider
+uses to stream. The upload, the table, sign-in and the kill-switch are untouched.
+
+What it adds: one Step Functions state machine, two small functions (`assess` and `watch`), one
+EventBridge rule as a safety net, and X-Ray tracing. What it changes: a retry becomes possible and
+is capped at two; one photo may cost three calls instead of one; the 30-second promise is kept by a
+waiting screen instead of by the answer.
+
+### 11.3 Option F — every step is its own unit, and events connect them
+
+The phone uploads straight to S3 with a 60-second permission for one exact file name. S3 announces
+"a file was created", and that announcement starts the workflow. A `decode` function cleans the
+photo, `assess` makes the call, and every write to the table becomes an event through DynamoDB
+Streams. A timer service, EventBridge Scheduler, sends reminders later and runs the monthly idle
+sweep. Every function has one job and one role.
+
+What it adds beyond E: the direct upload, EventBridge rules, the timer service, DynamoDB Streams,
+SES for email, three more functions, and a second web address for the upload, which needs a CORS
+rule and one exception to ADR-0010. About sixteen pieces instead of four today.
+
+### 11.4 The scoring, on the same constraints plus one
+
+The four constraints of §3 are kept as written. One is added, because the two new shapes disagree
+on it and Option A does not have it at all.
+
+**C-5 — What the shape gives later runs for free.** Three things are already owed and have no
+mechanism in Option A: a timer for the 12-month idle-account sweep (gate 66), a delivery channel for
+notifications (backbone 6), and a separate IAM role for the paid route (gate 70). A shape that
+brings those with it saves a later run from adding them one at a time.
+
+| Constraint | **A** — the phone waits | **E** — async, minimum change | **F** — event-driven | **B** — a container, from §5 |
+| --- | --- | --- | --- | --- |
+| C-1 Cost while idle | **5** | **5** | **5** | **1** |
+| C-2 Fits 30 seconds | **4** | **4** | **4** | **5** |
+| C-3 One part-time developer | **4** | **3** | **2** | **2** |
+| C-4 How hard to leave | **3** | **3** | **3** | **4** |
+| **Total on the four old constraints** | **16** | **15** | **14** | **12** |
+| C-5 What it gives later runs | **1** | **3** | **4** | **3** |
+| **Total with C-5** | **17** | **18** | **18** | **15** |
+
+**Why each score is what it is.**
+
+- **C-1.** E and F run nothing between requests. Every new service they use is Always Free at this
+  size, and the two priced lines — custom events and the stream's function-seconds — are cents.
+- **C-2.** A scores 4 because of the gateway ceiling. E and F remove the ceiling, and the stream
+  delivers the result within half a second of the write. They stay at 4 for a different reason: the
+  promise is now kept by a waiting screen, which the owner had to accept.
+- **C-3.** A is four managed pieces. E adds a workflow, two functions and a rule, and one new
+  service to learn. F adds a bus, a scheduler, a stream, a presigned upload and three more
+  functions. Every piece is a documented AWS pattern; the cost is the count, not the cleverness.
+- **C-4.** E and F score the same as A. The port is the same in all three, so a provider swap costs
+  the same. What E and F add is written in AWS-only languages — the workflow definition, the
+  scheduler — and leaving AWS would mean rewriting those as well as the repository layer. The retry
+  being a setting rather than code is a real gain, and it cancels against that.
+- **C-5.** A carries none of the three owed items. E carries the separate role and a trace. F
+  carries all three.
+
+**How to read the two totals.** On the four constraints run 1 used, Option A is still ahead by one
+and two points. The new shapes win only when what a shape gives later runs is counted. So the choice
+was the owner re-weighting the constraints, not a better design winning on its own, and that is a
+legitimate decision for a project whose second purpose is learning AWS by using it.
+
+### 11.5 The choice, and the reason
+
+**The owner chose Option E on 2026-09-17** (gate 72). The reason is in the planned features, which
+are in `factory/feature.md`: watering and soil intervals, notifications, placement advice, a
+plant's history, admin screens, and open sign-up. Every one of them is served by E plus three small
+additions — two Scheduler timer rules, Web Push, and SES for email. None of them needs F's two
+distinctive pieces, the direct upload and the stream of writes. So F pays for its extra pieces on
+day one for benefits that never arrive. Each of F's pieces can still be added to E later, as its own
+decision, the day a feature asks for it.
+
+The written trigger in §6, "re-open Option C when the model call regularly passes 15 seconds", was
+not met. The owner overrode it on purpose.
+
+The decision is recorded in ADR-0014, ADR-0015 and ADR-0016. The shape, drawn, and the shape grown
+to run 6 are in `08-async-options-short.md`. Every checked fact and link behind this section is in
+`08-async-options.md`, which is a reference and does not need to be re-read.
+
+### 11.6 What losing looks like now
+
+If Option E is wrong, it shows up as one of these, and both are countable: the waiting screen is
+felt as a failure by the person, so the give-up at 60 seconds fires often; or the workflow's
+retries turn out to spend more than they save, which the `run.retry` count in the logs will show.

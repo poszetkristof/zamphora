@@ -101,7 +101,6 @@ fine.
 
 | Out | Why, and who owns it |
 | --- | --- |
-| **The screen that creates a pot** | No story in this run defines it, and US-01 AC-3 needs it to exist. This design ends at a link. Human gate 21 |
 | **The sign-in screen** | The protocol and the flow are 400 Architecture's decision. This design covers only the signed-out state of its own screens (US-07 AC-1) |
 | **Any admin screen** | `00-prd.md` section 6.1: the permission check and the kill-switch ship now, the screens do not. US-12 and US-13 have no screen in run 1 |
 | **A list of past assessments, and a plant's history over time** | Backbone feature 4, a later run. US-10 AC-4 needs a way back to one assessment; that way in is a seam, not a screen designed here |
@@ -113,7 +112,7 @@ fine.
 | **Any way to ask the model a follow-up question** | Out of scope in `factory/feature.md`. It changes the cost model |
 | **Exporting data** | Only deletion is in run 1 (US-10). Export is idea W-5, and it is Out |
 | **Taking a photo now and assessing it later, offline** | Idea W-6. Out. Offline means the photo is kept on the screen, and nothing is sent |
-| **A cancel button during the wait** | The call is paid the moment it is sent. Cancelling would hide a result already paid for. See `00-journey-map.md` section 5 |
+| **A cancel button during the wait** | The model call is paid the moment it runs in the background. Cancelling would hide a result already paid for. See `00-journey-map.md` section 5 |
 
 ## 5. Decisions this design made, and could be told to unmake
 

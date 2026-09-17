@@ -1,6 +1,8 @@
 # ADR-0005 — Make one model call, behind one port, with structured output
 
-- **Status:** Accepted
+- **Status:** Accepted. **The "no retry" rule is superseded in part by ADR-0014 (2026-09-17):** the
+  background workflow retries the model call at most twice, on three named errors. Everything else
+  in this record stands.
 - **Date:** 2026-08-25
 
 ## Context
@@ -75,25 +77,24 @@ fails.
 smaller, is testable with no model call, and does not depend on which parts of JSON Schema the
 vendor supports this month.
 
-### Retries: there are none
+### Retries: the adapter never retries, the workflow retries at most twice
 
-**Corrected 2026-08-26 by the owner. One model call per assessment. Nothing is retried.**
+**The adapter itself never retries.** The Anthropic client is built with `maxRetries: 0`, because
+the SDK retries twice on its own by default, and a hidden retry is a hidden cost.
 
-The earlier rule allowed one retry for a timeout, a 429, a 503 or an unreadable answer. It was
-dropped because it broke two numbers that both matter more than it does:
+**The retry lives in one declared place: the Step Functions workflow (ADR-0014, 2026-09-17).** The
+`assess` handler throws exactly three of the adapter's failure values as errors — `provider-timeout`,
+`provider-throttled` and `provider-unavailable` — and the workflow retries those three at most
+twice, after 2 seconds and then 4. Every other outcome is returned as a value and is never retried:
+a refusal, a truncated answer, a bad request, an empty balance.
 
-- One call costs about $0.0035. Two cost about $0.0070, against a $0.0040 ceiling for one
-  assessment. The rule and the ceiling could not both hold.
-- A first call that times out has to fail early enough to leave room for a second, so neither call
-  gets the whole time budget. A slow-but-working call gets killed to protect a retry that may not
-  help.
-
-Every failure now becomes a named value straight away, and the screen offers the person the tap.
-`03-flow.md` §3 has the full reasoning and what it costs.
-
-**A retry becomes right again in run 3**, when the assessment runs in the background and nobody is
-waiting in front of the plant. A doubling wait becomes possible then too. It never fitted here:
-1+2+4+8 seconds of waiting alone overruns the 30-second budget before a fifth call is made.
+**Why this was "no retry" from 2026-08-26 to 2026-09-17.** While the phone waited for the answer, a
+retry broke two numbers at once: two calls cost about $0.0070 against a $0.0040 ceiling, and a
+first call had to fail early enough to leave room for a second. Moving the assessment into the
+background removed both problems, which is exactly what the earlier text predicted: *"a retry
+becomes right again when the assessment runs in the background."* The cost ceiling is now stated
+per photo, $0.012 for three calls, and the cap is two lines: `MaxAttempts: 2` in the workflow and
+`maxRetries: 0` here.
 
 ## Consequences
 
@@ -147,6 +148,7 @@ It becomes right in run 3, when the assessment runs in the background.
 > the Anthropic SDK anywhere outside `packages/llm/src/adapters/`. Do not add a second model call,
 > a chain, an agent loop or a second opinion service. Always send `output_config.format` with
 > `additionalProperties: false` and every field in `required`, and always read `stop_reason` before
-> reading the content. **Do not retry anything at all in run 1** — exactly one model call per
-> assessment, whatever goes wrong. Do not match on the raw text of
-> an answer — parse it.
+> reading the content. Keep `maxRetries: 0` on the client. **Do not write a retry anywhere in
+> code** — the only retry in the product is the workflow's, at most two, on the three errors the
+> `assess` handler throws (ADR-0014). Do not call `LlmProvider` from the `api` function. Do not
+> match on the raw text of an answer — parse it.

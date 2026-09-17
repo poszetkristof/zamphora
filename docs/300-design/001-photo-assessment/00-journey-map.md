@@ -45,7 +45,7 @@ flowchart TD
     F -- "wrong format, or too small" --> F1["Refused before any model call"]
     F -- "ok" --> G{"Under the daily limit of 10?"}
     G -- "no" --> G1["Refused before any model call"]
-    G -- "yes" --> H["Wait. At most 30 seconds"]
+    G -- "yes" --> H["Confirmed within 30 seconds. The answer arrives on its own, within 60"]
     H -- "failed" --> H1["Message that says if trying again helps"]
     H -- "answer came back" --> I{"Which confidence band?"}
     I -- "likely" --> J["Verdict, next action, one tap to make the task"]
@@ -86,7 +86,7 @@ a later reader can disagree with a specific number rather than with a mood.
 It is worst because three bad things arrive together, and none of them is the person's fault in a
 way they can see:
 
-1. They stood still for up to 30 seconds and got no answer.
+1. They stood still for up to a minute and got no answer.
 2. The attempt still counted against the ten they get each day (US-05 AC-5). The money was already
    spent, so the count is honest, but it does not feel honest.
 3. There is nothing to do next unless the screen says what to do next.
@@ -111,13 +111,18 @@ product decision that makes the design possible.
 
 ## 5. The second worst step, and why it is not the first
 
-**Step 6, the wait, scores 2.** Up to 30 seconds is a long time to stand in front of a plant holding
-a phone (G-5, set by the owner). Three design answers are in `SC-2 Working`:
+**Step 6, the wait, scores 2.** Standing in front of a plant holding a phone, every second is felt.
+Since 2026-09-17 the wait has two parts (ADR-0014, ADR-0015). Within 30 seconds the screen confirms
+that the assessment is running, so the person knows the tap worked (G-5, set by the owner). Then the
+answer arrives on its own, usually in under ten seconds and at most 60, without another tap. Four
+design answers are in `SC-2 Working`:
 
 - The send button cannot be tapped twice (US-01 AC-7). A second tap would be a second paid call.
-- The screen names what is happening now — making the photo smaller, sending it, asking the model —
-  so the wait has parts instead of being one blank pause.
-- There is **no cancel**. The call is paid for the moment it is sent, so cancelling would save
+- The screen names what is happening now — making the photo smaller, sending it, confirmed, waiting
+  for the answer — so the wait has parts instead of being one blank pause.
+- The confirmation is a real step on screen, not a spinner. It says the run started and the person
+  can keep the phone in hand or put it down.
+- There is **no cancel**. The model call is paid for the moment it runs, so cancelling would save
   nothing and would only hide a result the owner already paid for. The screen says so in one line.
 
 It scores above `cannot-tell` because it ends in an answer. A wait that pays off is a different

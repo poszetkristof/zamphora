@@ -13,13 +13,43 @@ schema and the failure names.** Where this file and that one disagree, that one 
 
 ## 1. What `apps/api` is
 
-One Nest.js application, compiled into **one** Lambda function behind an API Gateway HTTP API, using
-the Express adapter (ADR-0002). One function, not one per route, so there is one place to look and
-one cold start to pay.
+One Nest.js application, built into **three** Lambda functions from three entry points in one
+codebase (ADR-0002, ADR-0014, ADR-0015):
 
-It owns everything the browser is not allowed to own: the session, the ownership rule, the daily
-limit, the kill-switch and the one model call (ADR-0010). It is the only part of the product with
-credentials.
+| Entry point | Function | Behind | How it is invoked |
+| --- | --- | --- | --- |
+| `src/main.ts` | `api` | API Gateway HTTP API, through the Express adapter | Every route below except the stream |
+| `src/assess.ts` | `assess` | The Step Functions workflow | One plain handler that makes the model call |
+| `src/watch.ts` | `watch` | A Lambda Function URL, reached only through CloudFront | Native response streaming, no bridge library |
+
+All three share the same modules, the same repository layer and the same session code, so a rule
+is written once. The `api` function is the only one behind the gateway, and the rest of this
+section is about it.
+
+**Three packages sit in that sentence, and the third one was missing until 2026-09-01.** Naming it
+here matters, because the wrong choice fails on the first real request in production, not at build
+time.
+
+| Piece | Package | What it does |
+| --- | --- | --- |
+| The framework | `@nestjs/core` | The application itself |
+| The HTTP adapter | `@nestjs/platform-express` | Lets Nest.js speak Express |
+| **The Lambda bridge** | **`@codegenie/serverless-express`** | Turns the API Gateway event into the Express request and response pair |
+
+**Why the third is needed at all.** Express expects a network socket. Lambda does not give one — it
+hands the handler an event object. Something has to translate between them, and
+`@nestjs/platform-express` does not do it. Without this package there is no working handler.
+
+**Why this package.** It is the maintained successor to `aws-serverless-express` and
+`@vendia/serverless-express`, both of which are effectively finished, and it ships a working Nest.js
+example. `serverless-http` is the other reasonable choice and appears in more tutorials; either
+works, but the project commits to one so that `apps/api/src/main.ts` is not a decision made alone by
+whoever writes it first. **Prove it with a smoke test on `GET /api/health` before any other route is
+written** — that one call is what shows the event actually reaches Nest.js.
+
+The `api` function owns everything the browser is not allowed to own: the session, the ownership
+rule, the daily limit, the kill-switch check and the start of the background run (ADR-0010). **It
+does not hold the model key.** Only `assess` does.
 
 **Base path is `/api`.** CloudFront sends `/api/*` here and everything else to the static web files.
 There is no second origin and no CORS configuration anywhere (ADR-0010).
@@ -33,22 +63,32 @@ There is no second origin and no CORS configuration anywhere (ADR-0010).
 | --- | --- | --- | --- | --- |
 | `GET /api/health` | `@Anonymous()` | — | `200 { ok: true }` | — |
 | `GET /api/auth/sign-in` | `@Anonymous()` | `?locale=hu\|en` | `302` to Cognito. Sets `__Host-oauth` | US-07 |
-| `GET /api/auth/callback` | `@Anonymous()` | `?code&state` | `302` to `/<locale>`. Sets `__Host-session`, clears `__Host-oauth` | US-07 |
+| `GET /api/auth/callback` | `@Anonymous()` | `?code&state` | `302` to `/<locale>`. **Creates the profile if it is missing**, sets `__Host-session`, clears `__Host-oauth` | US-07 |
 | `POST /api/auth/sign-out` | `@Roles('USER')` | — | `204`. Deletes the session row and clears the cookie | US-07 |
 | `GET /api/me` | `@Roles('USER')` | — | `200 MeResponse` | US-07, US-08 |
 | `GET /api/pots` | `@Roles('USER')` | — | `200 PotListResponse` | US-01, US-15 |
 | `POST /api/pots` | `@Roles('USER')` | `CreatePotRequest` | `201 Pot` | US-15 |
-| `POST /api/assessments` | `@Roles('USER')` | `multipart/form-data`: `potId`, `locale`, `photo` | `201 AssessmentResponse` | US-01 to US-06, US-08, US-09, US-11, US-13 |
-| `GET /api/assessments/:assessmentId` | `@Roles('USER')` | — | `200 Assessment` | US-02, US-11 |
+| `POST /api/assessments` | `@Roles('USER')` | `multipart/form-data`: `potId`, `locale`, `requestId`, `photo` | **`202 AssessmentAccepted`** — the run is started, the answer comes later (ADR-0014) | US-01 to US-06, US-08, US-09, US-11, US-13 |
+| `GET /api/assessments/:assessmentId` | `@Roles('USER')` | — | `200 Assessment`, with its `state`. Sent with `Cache-Control: no-store` | US-02, US-11 |
+| `GET /api/assessments/:assessmentId/events` | `@Roles('USER')` | — | **A server-sent-events stream** that sends one event when the state is `done` or `failed`. Served by `watch`, not by the gateway (ADR-0015) | US-02 AC-8 |
 | `GET /api/assessments/:assessmentId/photo-url` | `@Roles('USER')` | — | `200 PhotoUrlResponse` | US-10 |
 | `DELETE /api/assessments/:assessmentId/photo` | `@Roles('USER')` | — | `204` | US-10 |
-| `DELETE /api/me/photos` | `@Roles('USER')` | — | `204` | US-10 AC-7 |
 | `POST /api/care-tasks` | `@Roles('USER')` | `CreateCareTaskRequest` | `201 CareTask` | US-03 |
 | `DELETE /api/care-tasks/:careTaskId` | `@Roles('USER')` | — | `204` | US-03 AC-7 |
 
 **`:assessmentId` and `:careTaskId` are composite and must be URL-encoded.** They are the DynamoDB
 sort key without its prefix (`01-contracts.md` §2.1), so they contain a `#`. An unencoded `#` in a
 URL starts a fragment and cuts the value in half.
+
+**~~`DELETE /api/me/photos`~~ was removed from run 1 on 2026-08-31 (owner).** It deleted one S3
+object and updated one row **per assessment**, under the same 20,000 ms interceptor as every other
+route, with no batching, no continuation token and no way to resume. On an account with a few hundred
+assessments it would time out half way: the person is told the request failed, and some photos are
+gone while others are not. That is the delete-my-data promise of US-10 AC-7, so a half-working
+version is worse than none. `02-web-spec.md` already said *"Deleting every photo at once has no
+screen in run 1"*, so nothing could reach it anyway. **It returns in the run that gives it a screen,
+as a paged delete** — `DeleteObjects` in batches with a "more remaining" flag. US-10 AC-7 moves to
+that run with it.
 
 **Thirteen routes and a health check. None of them is an admin route, and that is deliberate.**
 The owner moved admin screens and admin routes out of run 1 on 2026-08-26 (gate 30). `@Roles('ADMIN')`
@@ -118,6 +158,36 @@ putting the user id in the cookie — is rejected, because it undoes the point o
 
 - The session's expiry is checked **in code**. A session older than 30 days is refused even though
   the row is still in the table, because DynamoDB TTL deletes late (NFR-35, `05-patterns.md` §2).
+
+### The callback creates the profile, and a missing profile is never defaulted
+
+**Added 2026-08-31. Without this the product does not work for anybody.**
+
+Every route with a role decorator reads the profile and takes the account type from it. **Nothing in
+any spec wrote that item.** The callback wrote only a session row. So a person would sign in
+successfully, and then every request would answer `not-signed-in` — forever, for every new account.
+
+**`GET /api/auth/callback` writes the profile after it has verified the ID token**, in the same step
+that writes the session:
+
+```
+PutItem
+  Key                  PK = USER#<sub>, SK = PROFILE
+  ConditionExpression  attribute_not_exists(PK)
+  Item                 accountType = 'USER', language = <the locale from __Host-oauth>,
+                       createdAt, lastSignInAt
+```
+
+- **The condition makes it safe to run on every sign-in.** A returning person keeps the profile they
+  have, including an account type an administrator changed. Only `lastSignInAt` is updated, in a
+  separate write.
+- **`accountType` is `'USER'` here and only here.** This is the one place in the product allowed to
+  decide a new account's type.
+
+**A session with no profile is refused, never defaulted.** This is written down because the obvious
+repair for the bug above is *"if there is no profile, treat them as `USER`"* — and that is
+fail-open, which ADR-0004 forbids by name. If the guard reads a session and finds no profile, that
+is a broken account, not a new one: answer `not-signed-in` and log it.
 - **The account type is read from the profile on every request**, never from the session and never
   from a token claim, so a changed account type decides the very next request (US-14 AC-4).
 - Neither read is cached (ADR-0002).
@@ -133,50 +203,171 @@ read, so a query with no owner does not compile (NFR-30).
 
 ## 4. `POST /api/assessments` — the one path that spends money
 
-Every step is in order, and the order is the specification. **Nothing calls the provider around
-this.**
+**Rewritten 2026-09-17 (ADR-0014).** The `api` function does everything up to the model call, then
+hands the call to the background workflow and answers at once. Every step is in order, and the
+order is the specification. **Nothing in the `api` function calls the provider.**
 
 | # | Step | Fails with | Why here |
 | --- | --- | --- | --- |
-| 1 | The guard: session, expiry, profile, account type | `not-signed-in` | No session means no model call, and the guard runs before the controller (US-07 AC-5, NFR-36) |
+| 1 | The guard: session, expiry, profile, account type | `not-signed-in` | No session means no run, and the guard runs before the controller (US-07 AC-5, NFR-36) |
 | 2 | Body size. Reject over `MAX_PHOTO_BYTES` (2 MB) before reading it all | `photo-too-large` | ADR-0007 |
-| 3 | Parse the text fields with Zod. `potId` present, `locale` one of two | `no-pot-picked`, `invalid-request` | US-01 AC-3 |
+| 3 | Parse the text fields with Zod. `potId` present, `locale` one of two, `requestId` a UUID | `no-pot-picked`, `invalid-request` | US-01 AC-3. §4a below |
 | 4 | Read the pot: `PK = USER#<sub>`, `SK = POT#<potId>` | `not-found` | Ownership is the key, not a check (ADR-0004) |
 | 5 | Re-check the photo: type in `ACCEPTED_PHOTO_TYPES`, shorter side ≥ 200, longer side ≤ 1000 | `wrong-format`, `photo-too-small`, `photo-too-large` | A check that only runs in the browser is not a check (ADR-0007). US-01 AC-2, AC-4, AC-5 |
+| 5b | **Decode and re-encode the photo to JPEG. Use the re-encoded bytes from here on** | `wrong-format` | §4b below. Strips EXIF, proves the bytes are an image, fixes rotation |
 | 6 | Read the kill-switch from the `CONFIG` cache | `feature-off` | US-13 AC-1, AC-3. NFR-34 |
+| 6b | **Read the circuit breaker row. If it is open and the retry moment has not passed, stop** | `provider-unavailable` | Gate 50, `02-cost-guardrails.md` §5.6. **Before step 7, so an open breaker does not spend one of the person's ten** |
+| 6c | **Claim the request id: conditional `PutItem` on `SK = IDEM#<requestId>`** | — **not a failure**; answer with the stored id | §4a below. A resend of the same photo gets the same run |
 | 7 | **The daily limit: one conditional `UpdateItem`** | `daily-limit-reached` | US-08 AC-1, AC-3. NFR-12. §5 below |
-| 8 | Write the photo to S3 at `photos/<userId>/<potId>/<createdAt>.jpg` | `unknown` | ADR-0007, amended 2026-08-26 (gate 38). **The timestamp, not the assessment id** — the id contains a `#` |
-| 9 | **One** call to `LlmProvider.assess()`, timeout 18,000 ms | `provider-timeout`, `provider-throttled`, `provider-unavailable`, `provider-bad-request`, `no-credit` | ADR-0005. NFR-03, NFR-04, NFR-05 |
-| 10 | Read `stop_reason` **before** the content | `provider-refused`, `answer-truncated` | ADR-0005, `05-patterns.md` §4 |
-| 11 | Parse with `ModelAnswer` and run the refinement | `answer-unreadable` | `01-contracts.md` §4.1 |
-| 12 | Normalise `followUpDays`: outside 1 to 30 becomes `null` | — **not a failure** | US-03 AC-6 |
-| 13 | Compute the cost from the `usage` block the API returned | — | ADR-0006. NFR-10 |
-| 14 | Write the assessment item and add to the day rollup | — | §8 below |
-| 15 | Answer `201 AssessmentResponse` | — | |
+| 8 | Write the photo to S3 at `photos/<userId>/<potId>/<createdAt>.jpg` | `unknown` | ADR-0007 (gate 38). **The timestamp, not the assessment id** — the id contains a `#` |
+| 9 | **Write the assessment row with `state: queued`**, the locale and the photo key, and store the assessment id on the `IDEM#` row | `unknown` | §8 below. The id is stored **before** the `202`, so a resend returns it |
+| 10 | **`StartExecution` on the workflow, with `name` = the assessment id** | `workflow-not-started` — and the attempt is refunded with `ADD attempts -1` (ADR-0016) | Step Functions returns the same run for a repeated start with the same name, so a duplicate is harmless |
+| 11 | Answer **`202 AssessmentAccepted`**, in about a second | — | The waiting screen confirms the run. This is what keeps the 30-second promise |
+
+**The workflow then does the rest**, and §4b below says exactly what the `assess` handler does.
+`ClaimRun` moves the row from `queued` to `running`; `Assess` makes the call; `Persist` writes the
+result onto the row; `Rollup` adds to the day's usage. Every write is a DynamoDB service
+integration, with no Lambda in between (`05-patterns.md` §13).
 
 **Six things about this order that are easy to get wrong.**
 
-- **The limit is counted before the call, so a failed call still counts** (US-08 AC-5, ADR-0008).
-  The money was spent whether or not an answer came back.
+- **The limit is counted before the run starts, so a call that was made and failed still counts**
+  (US-08 AC-5, ADR-0008). The money was spent whether or not an answer came back.
 - **The limit is counted before the photo is written**, so a refused request leaves no object behind.
-- **The photo is written before the call**, which is the order ADR-0007 sets. A failed assessment
-  therefore leaves one object in the bucket. It is covered by the same 180-day lifecycle rule and by
-  the same delete-on-demand path, so nothing else has to chase it.
-- **A `cannot-tell` answer is a finished assessment, not an error** (US-05 AC-3). It reaches step 14
-  and is stored, and the attempt counts against the limit (US-05 AC-5).
-- **`followUpDays` is `null` when the verdict is `nothing-wrong`**, and that is a correct answer, not
-  a broken one (`05-patterns.md` §4). No task is offered (US-02 AC-7).
-- **A failure at any step from 9 to 11 is stored with its reason**, as a failure record and not as an
-  assessment, so the count in M-08 can be taken (US-09 AC-6) and NFR-23 can be measured.
+- **The photo is written before the run starts**, which is the order ADR-0007 sets. A failed
+  assessment therefore leaves one object in the bucket, covered by the same 180-day rule.
+- **An attempt is refunded only when no call was made** (ADR-0016): `StartExecution` failed here, or
+  `assess` found the switch off or the breaker open. Never for a call that failed.
+- **A `cannot-tell` answer is a finished assessment, not an error** (US-05 AC-3). It is persisted
+  as `done`, and the attempt counts (US-05 AC-5).
+- **A failure inside the run is stored with its reason** on the row, as `state: failed` with a
+  `failureCode`, so the count in M-08 can be taken (US-09 AC-6) and NFR-23 can be measured.
 
-**There is no retry. Anywhere.** Not a timeout, not a 429, not a 503, not an unreadable answer
-(owner, 2026-08-26; ADR-0005; NFR-05). The Anthropic client is built with `maxRetries: 0`, because
-the SDK retries on its own by default and that default would break NFR-04 in silence.
+### 4a. The request id, so one tap is one charge
 
-**`maxRetries: 0` also protects the deadline, not only the money.** The SDK retries a timeout too,
-and its wall clock is `timeout × (retries + 1)`. Left at the default 2, an 18,000 ms timeout could
-run to 54,000 ms — past the 20,000 ms application deadline and past the gateway's hard 30,000 ms
-cut-off, so the person would get a 504 nothing in this product wrote.
+**Added 2026-08-31 (owner). This closes F-13 in `07-adversarial.md`, which was open.**
+
+`POST /api/assessments` is the only route that spends money, and it was the only route with no
+protection against running twice. The design's own budget allows **4,000 ms for the upload on a weak
+signal** (`03-flow.md` §2, step 3), and a weak signal is exactly when a person taps again or a
+browser resends. Each duplicate was a second quota increment, a second S3 object, a second **paid**
+model call and a second row — for one result on screen. The person would lose two of their ten.
+
+**The browser makes one UUID per photo send** and puts it in the form body as `requestId`. It is
+made when the photo is chosen, not when the request starts, so a resend carries the same id.
+
+```
+Step 6c:
+  PutItem
+    Key                  PK = USER#<sub>, SK = IDEM#<requestId>
+    ConditionExpression  attribute_not_exists(PK)
+    ttl                  now + 10 minutes
+```
+
+**The claim is step 6c, after the kill-switch and the breaker and before the daily limit.** It used
+to be step 3a, before the photo was even decoded. It moved so that a request the product was going
+to refuse anyway never leaves a row behind.
+
+- **The condition passes** — this send is new. Carry on to step 7.
+- **The condition fails** — this send has been seen. Read the row. If it carries an `assessmentId`,
+  answer `202` with that id, exactly as the first call did; the run is the same run and the phone
+  opens the same stream. If it does not, the first call has not reached step 9 yet: answer `409`
+  with `request-in-flight`, and the screen keeps waiting. **On a failure the row keeps the id**, so
+  a second send after a failed run is a new request with a new `requestId`, never a lock-out
+  (R-08 in `02-mitigations.md`).
+
+**Ten minutes is deliberate.** It is longer than the whole 30-second promise and short enough that
+the rows never accumulate. The TTL is a tidy-up, not a rule — nothing depends on it firing on time
+(NFR-35).
+
+### 4b. Re-encoding the photo, which is three fixes in one step
+
+**Added 2026-08-31 (owner).** Step 5 used to be the only photo check, and it read the type the
+client **declared**. `02-web-spec.md` §5 already says why that is not enough: *"a script is not the
+browser"*. So the original bytes went to the bucket and to Anthropic exactly as sent.
+
+**Three problems came from that one gap:**
+
+1. **EXIF.** A phone photo carries the GPS position where it was taken — for a plant on a windowsill,
+   that is the person's home. It would sit in the bucket for 180 days and be sent to a third party.
+   `.claude/skills/security/SKILL.md` makes stripping it a rule and says it *"must be provable on the
+   server"*.
+2. **The type check was not a check.** An extension is not evidence. A file that is not an image
+   would reach S3 and the model.
+3. **Rotation.** Orientation lives in the EXIF that is being removed, so it has to be applied first
+   or the photo arrives sideways.
+
+**Decode the image and re-encode it to JPEG. All three are fixed at once, and the check becomes
+real: a file that will not decode is not an image.** Use the re-encoded bytes for step 8 and for the
+model call — never the bytes that arrived.
+
+**This needs `sharp`, and it changes the infrastructure plan.** `01-iac-plan.md` used to say "use a
+pure-JavaScript image-header reader, not `sharp`", because a native module breaks an `ARM_64` bundle
+built on an x86 runner. That line was amended on the same day: the condition it names has a second
+half — *"or the build must run on an arm64 runner"* — and the build moves to `ubuntu-24.04-arm`.
+Pure-JavaScript decoding of a 2 MB photo would spend real CPU inside the 20,000 ms deadline.
+
+### 4c. What reaches the model, and what may never reach it
+
+**Added 2026-08-31.** ADR-0005 names the port as `assess(input: AssessmentRequest)`. **`AssessmentRequest`
+was not defined in any file**, and it was missing from `01-contracts.md` §10 — the table that exists
+to catch a wire type with no schema. So nothing said what is sent to the model, and no step in
+§4 built a prompt.
+
+**Two user-supplied values reach the model, and both are untrusted input:**
+
+- **The plant nickname**, which the person typed.
+- **The photo**, which can contain text. A photo of a sheet of paper is still a photo.
+
+**The rules, and they are not optional:**
+
+1. **The system prompt is a module-level constant.** No user value is ever concatenated into it, in
+   any form. If a change needs a value in the system prompt, the change is wrong.
+2. **Every user value goes in the user turn**, wrapped in a line that says instructions found inside
+   it are data to be described, never instructions to follow.
+3. **The reply is parsed, never trusted.** `ModelAnswer` is the only way a reply becomes a value
+   (§4d, step 5), and `nextAction` carries a maximum length applied in the refinement.
+4. **`AssessmentRequest` lives in `packages/contracts`** and is listed in `01-contracts.md` §10 like
+   every other type that crosses a border.
+
+### 4d. The `assess` handler, and the one retry in the product
+
+**Rewritten 2026-09-17 (ADR-0014).** The workflow invokes `src/assess.ts` with the assessment key.
+In order:
+
+1. **Re-read the kill-switch and the breaker** on the same 30-second cache the API uses. If the
+   switch is off or the breaker is open, **return a refusal value** — `feature-off` or
+   `provider-unavailable`. The workflow's `Refund` step gives the attempt back, because no call was
+   made (ADR-0016).
+2. Read the row and the re-encoded photo object. Build `AssessmentRequest` (§4c).
+3. **One** call to `LlmProvider.assess()`, with an 18,000 ms abort. The client is built with
+   `maxRetries: 0`, because the SDK retries on its own by default and two hidden retries would turn
+   three calls into nine.
+4. **On `provider-timeout`, `provider-throttled` or `provider-unavailable`: update the breaker row,
+   then throw an error with that name.** Step Functions can only retry an error, never a returned
+   value, so this is the one place in the product that throws on purpose. The workflow retries at
+   most twice, after 2 seconds and then 4.
+5. **On every other outcome, return it as a value**: a parsed answer with its cost computed from
+   the `usage` block, or a named failure. Neither is ever retried.
+
+**Once the model has answered, the write always finishes, because the money is already spent.**
+That rule is kept from run 1, and it is now easier to keep: `Persist` and `Rollup` are workflow
+steps with their own retry on DynamoDB errors, so a throttled write costs a transition, never a
+paid answer.
+
+The handler runs with reserved concurrency 1 and a 30-second function timeout, above the task's
+25-second timeout, above the model's 18-second abort. Its role is the model key parameter, the two
+`CONFIG` rows, the breaker row and the photo object. Nothing else.
+
+### 4e. The `watch` handler
+
+`src/watch.ts` serves `GET /api/assessments/:id/events` behind a Lambda Function URL, through
+CloudFront only. It validates the session exactly as the guard does, takes the user id from it, and
+reads the assessment row under that partition every 500 ms. It sends a comment line every 5 seconds
+as a heartbeat, one `event: state` with `AssessmentEvent` when the state becomes `done` or `failed`,
+and then closes. It closes at 55 seconds regardless; the browser's `EventSource` reconnects on its
+own, and the row already holds whatever happened. Its role is read-only on the session and
+assessment rows.
 
 ### The three request numbers
 
@@ -217,7 +408,7 @@ UpdateItem
 - The item carries a time-to-live so the table does not grow, and **nothing depends on that firing on
   time**.
 
-`GET /api/me` and the `AssessmentResponse` both carry `assessmentsLeftToday`. That number is for
+`GET /api/me` and the `AssessmentAccepted` body both carry `assessmentsLeftToday`. That number is for
 display only — it draws `LimitNote` — and it is never used to decide whether a call may run.
 
 ## 6. The kill-switch and the other configuration
@@ -261,29 +452,22 @@ add `changedBy` or `changedAt`** — nothing in the application writes this row.
 
 ## 7. Deadlines
 
-**One clock per request, checked before every step that can block** (`05-patterns.md` §7). Three
-numbers are stacked and the order matters:
-
-```
-30,000 ms   API Gateway cuts the request off. Cannot be raised. Its 504 has a body nobody here wrote
-20,000 ms   REQUEST_DEADLINE_MS — the app gives up first and answers `deadline-passed`
-18,000 ms   MODEL_TIMEOUT_MS   — the ceiling on the one call that cannot be interrupted any other way
-```
+**Changed 2026-09-17 (ADR-0014).** The model call is no longer inside a request, so the paid path
+has no platform clock. Two constants remain, and they belong to two different functions:
 
 ```ts
-export const REQUEST_DEADLINE_MS = 20_000;   // NFR-02
-export const MODEL_TIMEOUT_MS    = 18_000;   // NFR-03
+export const REQUEST_DEADLINE_MS = 20_000;   // the api function's own request. NFR-02
+export const MODEL_TIMEOUT_MS    = 18_000;   // the abort handed to the adapter, per attempt. NFR-03
 ```
 
-`REQUEST_DEADLINE_MS` is applied by one Nest interceptor over the whole request, so no route can
-forget it. A unit test asserts it is 20,000 and that it sits below the function's own timeout, which
-`06-nfrs.md` NFR-02 names as 22,000 ms and 800 Infra sets.
+`REQUEST_DEADLINE_MS` is applied by one Nest interceptor over every `api` request, so no route can
+forget it. In practice the assessment route answers `202` in about a second, so this is a net, not a
+budget. A unit test asserts it is 20,000 and that it sits below the function's 22,000 ms timeout.
 
-**`MODEL_TIMEOUT_MS` is a ceiling, not a second clock.** The `AbortSignal` handed to the adapter
-fires at whichever comes first: 18,000 ms, or the time left on the request deadline. That keeps
-NFR-03's number real and still obeys `05-patterns.md` §7 — **do not give each step its own generous
-timeout and hope the total works out.** One clock, checked often, plus one abort on the one step that
-waits on somebody else.
+`MODEL_TIMEOUT_MS` is the `AbortSignal` handed to the adapter inside `assess`. Above it sit the
+`Assess` task's 25-second timeout and the function's 30-second timeout, so the model always fails
+first and by name. The full table of clocks is `05-patterns.md` §7, and the rule inside a function
+is unchanged: one clock, checked often, never a generous timeout per step.
 
 ## 8. What is written down, so US-12 can be answered later
 
@@ -292,7 +476,7 @@ developer can read them straight from the table with AWS credentials and run the
 local script (gate 30, ADR-0009, NFR-13).
 
 Every assessment adds to one day rollup item with an atomic `ADD`, so ten at once do not lose a
-count:
+count. Since 2026-09-17 the workflow's `Rollup` step does this write, not the `api` function:
 
 ```
 UpdateItem   PK = USAGE, SK = <yyyy-mm-dd>
@@ -327,11 +511,19 @@ purpose, and `GSI1PK` style generic keys are forbidden there.
 | Profile | `USER#<sub>` | `PROFILE` |
 | Session | `SESSION#<opaque id>` | `SESSION` |
 | Pot | `USER#<sub>` | `POT#<potId>` |
-| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` |
+| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` — with `state` and `failureCode` since 2026-09-17 |
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` |
+| **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` |
 | A day's usage | `USAGE` | `<yyyy-mm-dd>` |
 | Configuration | `CONFIG` | `AI_ENABLED`, `DAILY_LIMIT`, `MODEL_ID` |
+| **The circuit breaker** | `CONFIG` | `BREAKER` |
+
+**The last two rows were added on 2026-08-31.** `IDEM#` is §4a. `CONFIG / BREAKER` holds how many
+model calls failed in a row, when the breaker opened and the moment it may next let one call
+through (gate 50, `02-cost-guardrails.md` §5.6). **It is never `CONFIG / AI_ENABLED`.** The
+kill-switch is a person's decision and the breaker is automatic; if they shared a row, the machine
+could undo the human, and ADR-0009 keeps the human's switch above the machine's.
 
 **No secondary index in run 1**, and **no second table** — a second table would split the same 25
 capacity units (ADR-0002). The first index arrives in run 3, for backbone 6's query across accounts.
@@ -339,10 +531,9 @@ capacity units (ADR-0002). The first index arrives in run 3, for backbone 6's qu
 ## 9. Photos
 
 - One object per photo, in one private bucket, at `photos/<userId>/<potId>/<createdAt>.jpg` — the
-  timestamp, **not** the assessment id, which carries a `#` (ADR-0007, gate 38)
-  (ADR-0007). **`<assessmentId>` is the composite id**, so the key repeats the pot id and carries a
-  `#`. Both are legal in S3 and both must be encoded when the URL is signed. See `01-contracts.md`
-  §11 — whether the ADR should be amended is a question for the owner.
+  timestamp, **not** the assessment id, which carries a `#`. **Gate 38 settled this on 2026-08-26
+  and ADR-0007 was amended to match.** This bullet used to print the old reasoning underneath the
+  new key, which read as though the question were still open. It is not.
 - **No thumbnail, no resized copy, no cached copy, no second copy anywhere** (NFR-42,
   `05-patterns.md` §9). US-10 AC-3 says every copy must go, and the cheapest way to satisfy that is
   never to make one.
@@ -356,8 +547,6 @@ export const PHOTO_URL_TTL_MS = 300_000;   // NFR-43
 - `DELETE /api/assessments/:id/photo` deletes the object **and then** clears the photo key on the
   assessment row, in that order. The assessment text stays and `photoStatus` becomes `removed`
   (US-10 AC-3, AC-4, ADR-0007 point 6).
-- `DELETE /api/me/photos` does the same for every assessment of the caller. It is a `Query` under one
-  partition with `SK` beginning `ASSESS#`, never a `Scan` (US-10 AC-7).
 - A signed URL is only ever produced from a row the caller already owns, so another account's photo
   cannot be reached and the answer is the same as for a photo that does not exist (US-07 AC-2).
 - **Deletion at 180 days is an S3 lifecycle rule in CDK. No application code deletes on a schedule**
@@ -381,6 +570,18 @@ is the specification:
 6. Write the task at `SK = TASK#<due date>#<taskId>`. `dueDate` is the **UTC calendar day of the
    assessment plus `followUpDays`** (US-03 AC-2). The item carries the pot, the assessment it came
    from and the action text (US-03 AC-3, `05-patterns.md` §1).
+7. **Write the new task's id back onto the assessment row's `careTaskId`.** Two writes, task first.
+
+**Step 0 and step 7 were added on 2026-08-31, and without them the field is a lie.**
+`Assessment.careTaskId` is declared in `01-contracts.md` §5 and **nothing ever wrote it**. So it was
+always `null` when a screen re-read the assessment, the result screen could never tell that a task
+already exists, and one assessment could produce any number of duplicate tasks because nothing
+checked.
+
+**Step 0, before every other check:** if the assessment's `careTaskId` is already set, answer
+`task-not-possible`. **And `DELETE /api/care-tasks/:careTaskId` clears it**, so a person who deletes a
+task can make a new one. The delete already says it leaves the assessment text alone; it must not
+leave the id behind.
 
 **The task date uses the UTC calendar day.** No input names a timezone for it. UTC is chosen so the
 product has one definition of "day", the same one the daily limit already uses, and so nothing
@@ -397,9 +598,10 @@ later runs (US-03, note on the border).
 800 Infra decides where the logs go and which alarms read them. This section says what the API must
 put in them, because two requirements depend on it.
 
-**Always recorded, on every assessment:** the assessment id, the pot id, the failure code if there
-was one, the model id, the input and output token counts, the computed cost, and the duration of each
-step in §4.
+**Always recorded, on every assessment, in all three functions:** the assessment id, the pot id,
+the failure code if there was one, the model id, the input and output token counts, the computed
+cost, and the duration of each step in §4. The assessment id is the key that joins the `api`,
+`assess` and `watch` lines of one run.
 
 **The provider failures are recorded by their own names**, even where the person sees one screen for
 several of them. `provider-timeout`, `provider-throttled` and `provider-unavailable` are three
@@ -419,7 +621,7 @@ happens. AWS keeps its own record of the console change (ADR-0009, gate 30).
 | Story | Endpoint |
 | --- | --- |
 | US-01 Send one photo of one named pot | `POST /api/assessments`, `GET /api/pots` |
-| US-02 Verdict, band, action, follow-up | `POST /api/assessments`, `GET /api/assessments/:id` |
+| US-02 Verdict, band, action, follow-up | `POST /api/assessments`, `GET /api/assessments/:id/events`, `GET /api/assessments/:id` |
 | US-03 Turn the action into a task | `POST /api/care-tasks`, `DELETE /api/care-tasks/:id` |
 | US-04 An `unsure` result, honestly | `POST /api/assessments` (band `unsure`), `POST /api/care-tasks` |
 | US-05 `cannot-tell` with a reason | `POST /api/assessments` (band `cannot-tell`) |
@@ -427,7 +629,7 @@ happens. AWS keeps its own record of the console change (ADR-0009, gate 30).
 | US-07 Sign in once, see only my own | `GET /api/auth/sign-in`, `GET /api/auth/callback`, `POST /api/auth/sign-out`, `GET /api/me`, **and the guard on every other route** |
 | US-08 Stopped at my own limit | `POST /api/assessments` (429), `GET /api/me` |
 | US-09 A message that says if trying again helps | **Every route.** The `Problem` envelope carries `retryHint` |
-| US-10 How long photos are kept, and delete | `GET /api/assessments/:id/photo-url`, `DELETE /api/assessments/:id/photo`, `DELETE /api/me/photos` |
+| US-10 How long photos are kept, and delete | `GET /api/assessments/:id/photo-url`, `DELETE /api/assessments/:id/photo`. **AC-7 and its route moved out of run 1 on 2026-08-31** |
 | US-11 Hungarian or English | Every route takes or returns a `Locale`. The API sends codes, never prose |
 | US-12 An admin reads the figures | **No endpoint.** Moved out of run 1 by the owner, gate 30. The three numbers are written on every assessment (§8) and read from the table |
 | US-13 The feature can be turned off | **No endpoint.** The row is edited in the AWS website. Its effect is step 6 of §4 |
@@ -443,5 +645,7 @@ exactly why the guard has to be right now.
 
 The function timeout, the memory size and the log destination, which are 800 Infra's · whether SSE-S3
 is enough, which ADR-0007 hands to 900 Security · the unit test runner · whether the care task date
-should follow the reader's timezone instead of UTC · whether ADR-0007's photo key should be amended
-now that the assessment id is composite.
+should follow the reader's timezone instead of UTC.
+
+**Settled since this file was written:** ADR-0007's photo key (gate 38, the timestamp) and the Zod
+major version (4, pinned in the catalog). Neither is an open question any more.

@@ -1,6 +1,10 @@
 # Patterns — the shapes this system repeats
 
 **Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
+**Updated 2026-09-17, twice.** First for ADR-0014 to ADR-0016: the assessment row gained a `state`,
+pattern 7 became per-task clocks, pattern 8 gained the workflow's retry, and pattern 13 is new. Then
+an audit found **pattern 5 had been missed**: the counter now counts assessments started rather than
+model calls, and the refund was not written down at all.
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA.
 
 A pattern here is a shape that appears more than once, or a shape that is easy to build a second
@@ -17,12 +21,13 @@ are not two versions of the same text, and neither repeats the other.
 | 4 | One port, one adapter, for the model | ADR-0005, ADR-0006 |
 | 5 | The counter that cannot be raced | ADR-0008 |
 | 6 | A switch read from a cache with a ceiling | ADR-0009 |
-| 7 | One deadline per request | ADR-0002, and `03-flow.md` §4 for the arithmetic |
-| 8 | Failure is a value with a name | ADR-0005 |
+| 7 | The clocks: one per task, none on the platform | ADR-0014, and `03-flow.md` §4 |
+| 8 | Failure is a value with a name | ADR-0005, ADR-0014 |
 | 9 | Deletion belongs to the storage rule | ADR-0007 |
 | 10 | Language: codes on the wire | — |
 | 11 | Nothing crosses the wire except a contract | ADR-0001, ADR-0012 |
 | 12 | There is no admin route at all in run 1 | ADR-0009, ADR-0004 |
+| 13 | The workflow owns the run | ADR-0014, ADR-0015, ADR-0016 |
 
 Every pattern below belongs to the whole product, not to this one feature. Later runs read this
 file and extend it. They do not rewrite it.
@@ -42,11 +47,43 @@ remember to write.
 | Profile | `USER#<sub>` | `PROFILE` | Account type, language, when they last signed in, when the account was made |
 | Session | `SESSION#<opaque id>` | `SESSION` | The user id, and when the session stops being valid |
 | Pot | `USER#<sub>` | `POT#<potId>` | The name the person typed, the room |
-| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` | Band, verdict, next action, follow-up days, language, photo key, model id, cost |
+| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` | **`state` — `queued`, `running`, `done` or `failed` — and a `failureCode` when failed** (added 2026-09-17, ADR-0014). Then band, verdict, next action, follow-up days, language, photo key, model id, cost |
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` | The pot, the assessment it came from, the action text |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` | One number |
+| **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` | The assessment id once it exists, and a time-to-live 10 minutes out |
 | A day's usage | `USAGE` | `<yyyy-mm-dd>` | Assessments started, model calls made, cost in millionths of a dollar |
 | The kill-switch | `CONFIG` | `AI_ENABLED` | On or off. **One field only** — see the note under this table |
+| **The circuit breaker** | `CONFIG` | `BREAKER` | How many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live |
+
+**Two rows were added on 2026-08-31.**
+
+**`IDEM#<requestId>` is what makes one tap one charge.** `POST /api/assessments` is the only path
+that spends money and it had no protection against running twice, while the design's own budget
+allows a 4,000 ms upload — which is exactly when a person taps again. The browser makes one UUID per
+photo; the API claims it with a conditional `PutItem` before anything else happens
+(`../500-engineering/03-api-spec.md` §4a). This closes F-13 in `001-photo-assessment/07-adversarial.md`.
+
+**`CONFIG / BREAKER` is the automatic cost guard** (gate 50, `../800-infra/02-cost-guardrails.md`
+§5.6). **It must never share a row with `AI_ENABLED`.** The kill-switch is a person's decision and
+the breaker is a machine's. If they shared a row, the machine could undo the human — and ADR-0009
+puts the human above the machine on purpose.
+
+### Every item carries a version, and this is how a shape changes
+
+**Added 2026-08-31.** DynamoDB has no schema and no migration tool, and an assessment row has **no
+clock** — ADR-0007 keeps the text as long as the pot exists. So an item written today can still be
+read in three years, and there was no rule at all for changing a shape.
+
+**Every item carries `v`, a whole number. It is `1` today.**
+
+The rules that go with it are three sentences, and they are cheaper now than the scan-and-rewrite
+they replace:
+
+1. **A reader ignores a field it does not know.** So adding a field is always safe.
+2. **Never rename a field and never change what one means.** Write a new field, stop writing the old
+   one, and leave the old one where it is.
+3. **Raise `v` only when a reader must behave differently**, and keep the code that reads the older
+   version until nothing on disk still uses it.
 
 **The kill-switch row holds one field, and this changed on 2026-08-26.** It used to hold who flipped
 it and when. The owner removed the admin route (gate 30), so nothing in the application ever writes
@@ -295,21 +332,26 @@ Four properties fall out of this and each one is an acceptance criterion:
 - **Ten requests at the same instant produce exactly ten successes**, because the increment is one
   operation on one item. A read-then-write would let all ten read 9.
 - **A failed call still counts** (`factory/feature.md`), because the counter moves before the call.
-- **A failed call still counts**, because the increment happens before the call. US-08 AC-5 was
-  written for a retry, and since 2026-08-26 there is none, so nothing is counted twice.
+  A person whose call fails has spent one of their ten, because the money was spent either way.
+- **A refused run gives the attempt back**, and only when no call was made at all (ADR-0016).
+  Three paths reach it: `StartExecution` failed in the API; `assess` found the kill-switch off;
+  `assess` found the breaker open. The refund is one atomic `ADD attempts -1`, so it cannot race the
+  increment.
 - **The date is in the key**, so yesterday's counter is never read and never needs clearing. The TTL
   on the item exists only to stop the table growing, and nothing depends on it firing on time.
 
-**One consequence, written down because it is easy to meet by surprise.** The counter counts **model
-calls**, not finished assessments. With no retry, one assessment is exactly one call, so ten a day
-means ten assessments. That is what `factory/feature.md` asks for — *"Every attempt costs money,
-which is the whole point of the limit"*.
+**One consequence, written down because it is easy to meet by surprise.** Since 2026-09-17 the
+counter counts **assessments started**, not model calls. The increment runs once in the `api`
+function, before the workflow starts, and the workflow's own retry never touches it. So ten a day is
+ten assessments, and each of those may cost up to three model calls (ADR-0014). **The daily ceiling
+in money is therefore 10 × $0.012, about $0.12 a day**, not 10 × $0.0040. `06-nfrs.md` §3 and
+`../800-infra/02-cost-guardrails.md` §5 both use that figure.
 
-**This paragraph used to say more, and the retry reversal of 2026-08-26 removed the reason for it.**
-While a retry existed, one assessment could cost two calls, so ten a day could mean five
-assessments, and the screen had a line warning that the second try counted too. That line and the
-state it lived in are both gone. The counter still counts calls rather than assessments, because the
-day a retry comes back the limit must not silently double.
+**This is a change from the run-1 rule and the old reading is worth knowing.** Until 2026-09-17 there
+was no retry, so one assessment was exactly one call and the two readings of the limit — "ten
+assessments" and "ten calls" — said the same thing. They no longer do. **Where a document says the
+limit counts calls, it is out of date.** US-08 AC-5 was reworded on 2026-09-17 to say that the
+workflow's retries do not count again.
 
 **The day is a UTC calendar day.** The message that says when the limit resets shows that moment in
 the reader's own time. **Do not** compute the day from a timezone sent by the browser: two
@@ -331,17 +373,24 @@ a switch that needs a release is not a kill-switch.
 **A call already in flight finishes** (US-13 AC-4). That falls out for free: the check happens once,
 before the call, and nothing re-checks it afterwards.
 
-## 7. One deadline per request
+## 7. The clocks: one per task, none on the platform
 
-The whole server side runs against **one deadline of 20,000 ms**, set when the request arrives and
-checked before every step that can block. When it passes, the handler writes its own failure answer
-rather than letting the platform write a 504 nobody chose.
+**Changed on 2026-09-17 (ADR-0014).** Until then the whole server side ran against one 20,000 ms
+deadline, because the model call sat inside the request and API Gateway would cut the request at
+30 seconds. The model call now runs in the background, so the paid path has no platform clock at
+all, and the clocks are these:
 
-**Why 20,000 and how it stacks under the gateway's 30,000: `03-flow.md` §4.** It is worked out once,
-there.
+| Where | Clock | What happens when it fires |
+| --- | --- | --- |
+| The `api` function, its own request | `REQUEST_DEADLINE_MS = 20_000`, one interceptor | The app answers `deadline-passed` itself. In practice it answers `202` in about a second, so this is a net |
+| Every task in the workflow | `TimeoutSeconds` on the task, with a `Catch` | `RecordFailure` writes the failure by its name |
+| The `Assess` task | 25 seconds **per attempt**; the `assess` function 30 seconds; the model abort 18 seconds | The model always fails first, by name |
+| The waiting screen | 60 seconds | `deadline-passed` on screen, whatever the workflow is still doing |
 
-**Do not** give each step its own generous timeout and hope the total works out. One clock, checked
-often, is the pattern. A per-step timeout is a number nobody adds up.
+**Do not** put a timeout on the whole state machine. A machine-level timeout ends a run without
+running any `Catch`, so the row would stay `running` for ever. Per-task timeouts always reach
+`RecordFailure`. And the old rule still holds inside one function: one clock, checked often, never a
+generous timeout per step that nobody adds up.
 
 ## 8. Failure is a value with a name
 
@@ -349,16 +398,18 @@ Every failure in this feature is one of a closed list, and each name carries two
 needs: whether trying again helps, and whether it may be retried automatically. The two are not the
 same. "The person may tap again" and "the code retries by itself" are different permissions.
 
-**The middle column changed on 2026-08-26 and used to say "yes, once" on four rows.** The owner
-removed every automatic retry. **Nothing in run 1 retries itself.** "The person may tap again" is
-still a real difference from "the code retries by itself", and now only the first one happens.
+**The middle column changed twice.** On 2026-08-26 the owner removed every automatic retry, because
+the phone was waiting and a second call ate the same clock. On 2026-09-17 the assessment moved into
+the background (ADR-0014), and a capped retry came back for exactly three names. It happens inside
+the workflow, never on the screen, and never for the other names.
 
-| Name | Auto retry? | The sentence the screen ends with |
+| Name | Retried by the workflow? | The sentence the screen ends with |
 | --- | --- | --- |
-| `provider-timeout` | **no — nothing retries in run 1** | trying again may work |
-| `provider-throttled` (429) | **no — nothing retries in run 1** | trying again may work |
-| `provider-unavailable` (503) | **no — nothing retries in run 1** | trying again may work |
-| `answer-unreadable` | **no — nothing retries in run 1** | trying again may work |
+| `provider-timeout` | **yes, at most 2 more. The `assess` handler throws it so the workflow can see it** | trying again may work |
+| `provider-throttled` (429) | **yes, at most 2 more, the same way** | trying again may work |
+| `provider-unavailable` (503) | **yes, at most 2 more, the same way** | trying again may work |
+| `answer-unreadable` | no | trying again may work |
+| `workflow-not-started` | no. The attempt is refunded | trying again may work |
 | `provider-refused` (`stop_reason: refusal`) | **no** | trying again will not work now |
 | `answer-truncated` (`stop_reason: max_tokens`) | **no** | trying again will not work now |
 | `provider-bad-request` | **no** | trying again will not work now |
@@ -374,7 +425,9 @@ other, or a failure exists that has not been designed.
 **Do not** retry `provider-refused` or `answer-truncated`. A safety classifier that declined will
 decline again, and an answer cut off for want of room will be cut off again in the same place.
 **Do not** retry `no-credit`. `factory/feature.md` is explicit: running out of credit is a normal
-failure state, and retrying does not help.
+failure state, and retrying does not help. **Do not** write a retry anywhere in code: the adapter
+returns every failure as a value, the `assess` handler throws only the three retried names, and the
+workflow's `Retry` with `MaxAttempts: 2` is the only place a second call can come from.
 
 **One name is missing a screen and it is recorded, not papered over.** `02-SPEC.md` §3.14 withdrew
 the `unreadable-answer` state from SC-5 and says out loud that the failure path still needs it. That
@@ -459,3 +512,42 @@ is a different and more powerful credential than the one the app uses
 ([Anthropic usage and cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api),
 checked 2026-08-25). That key does not go on the server. The comparison is a script the owner runs
 locally, against the table directly. 900 Security confirms or overrules that placement.
+
+## 13. The workflow owns the run
+
+**Added 2026-09-17 (ADR-0014 to ADR-0016).** The assessment runs in the background. This pattern
+says who does what, in order, so nobody builds a second way.
+
+```
+api          checks the switch and the breaker, counts the attempt, claims the IDEM row,
+             re-encodes the photo, writes the row as queued,
+             StartExecution with name = the assessment id, answers 202 in about a second
+ClaimRun     UpdateItem queued -> running, with a condition. A duplicate start stops here
+Assess       the one model call, in the assess function. Re-reads the switch and the breaker first.
+             Retried at most twice, on the three thrown errors only
+Persist      UpdateItem the result onto the row. Retried on DynamoDB errors, never money
+Rollup       UpdateItem the day rollup. Retried the same way
+Refund       ADD attempts -1, reached only when no call was made
+RecordFailure  UpdateItem state = failed, with the failure code
+mark-failed  an EventBridge rule on FAILED, TIMED_OUT or ABORTED writes failed on the row,
+             for a run that died outside its own Catch
+watch        streams the row's state to the phone over server-sent events, a heartbeat every
+             5 seconds, closes at 55 seconds, the browser reconnects
+```
+
+Four things fall out of that shape:
+
+- **The execution name is the assessment id.** Step Functions returns the same run for a repeated
+  start with the same name, and `ClaimRun` makes a duplicate stop in one step. So one tap is one
+  run, whatever the network does.
+- **The `assess` function holds the model key and nothing else worth stealing.** Its role is the
+  key parameter, the two `CONFIG` rows, the breaker row and the photo object. The `api` function
+  holds no model key at all.
+- **The circuit breaker is written by `assess`**, because the API never sees the outcome. Retries
+  count toward its five failures. The half-open test is exactly one call, because `assess` runs one
+  copy at a time.
+- **Nothing polls.** The phone holds one open connection. The workflow pushes. No Lambda reads a
+  queue, because an idle queue read by Lambda still costs requests.
+
+**Do not** call `LlmProvider` from the `api` function. **Do not** put a Lambda between the workflow
+and the table for a plain write. **Do not** poll from the phone except as the reconnect fallback.

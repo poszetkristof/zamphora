@@ -2,7 +2,7 @@
 
 The summary a person reads instead of the whole folder. Fill it in last.
 
-**Date:** started 2026-08-24 · **Feature:** see `factory/feature.md` · **Roles run:** 8
+**Date:** started 2026-08-24 · **Feature:** see `factory/feature.md` · **Roles run:** 7 of 8. 600 QA has not run
 
 ## What ran, and what it cost
 
@@ -20,7 +20,8 @@ first, a premium model only for one named decision with the reason written here.
 | 5 | 500-engineering | 5 owned files: `00-conventions.md` (241 lines), `01-contracts.md` (425), `02-web-spec.md` (335), `03-api-spec.md` (340), `docs/context/stack.md` (84). 13 routes plus health, 20 failure codes, every NFR given an enforcement point | default (Opus 5) | Default model, one pass. 202,090 tokens, under the 250,000 bound. **10 stop-and-asks and 7 disagreements between its own inputs** — the most any role has reported, and the reason is that it is the first role reading four earlier roles at once | no |
 | 5b | 500-engineering, **repair pass** | the same 5 files, corrected in place | default (Opus 5), same session resumed | **A repair, not a re-run.** The handoff map was fixed mid-run and two files entered its inputs. Resuming the same agent cost 276,040 tokens against about 200,000 for a fresh run, and kept role ownership — the alternative was the assistant editing a role-owned file. It corrected four rebuilds, two of which changed URL shapes | yes — this row is the re-run |
 | 6 | 800-infra | 5 owned files, 1,737 lines: `00-environments.md` (298), `01-iac-plan.md` (479), `02-cost-guardrails.md` (339), `03-observability.md` (313), `04-ci-cd.md` (308). 8 CDK stacks, 10 alarms, 10 required status checks, 3 rollback levels. **5 human gates and 6 open questions** | default (Opus 5) | **One write pass and three repair passes, in one resumed session, 368,464 tokens** — over the 250,000 bound, and the second role to go over it after 400 Architecture. The write pass finished all five files but the editor was closed before it reported, so the contract was checked by hand instead. The three repairs applied 19 owner decisions as they were answered. **The reason it cost that much is the reason it was right:** the alternative was the assistant editing five role-owned files. **Two rate-limit stops and one editor close, and none of them lost work** — the agent was told to save each file before starting the next. **What it did that no gate asked for:** it marked six free-tier numbers as *not verified first-party* rather than presenting them as checked, it found that its own §8 contradicted the live branch protection, and it found two defects in other roles' files — `InitDuration` is not a CloudWatch metric (NFR-06), and a self-contradicting bullet in `03-api-spec.md` §9 | no |
-| 7 | 900-security | | | | |
+| 7 | 900-security | 4 owned files, 1,777 lines: `00-assets.md` (159), `01-threats.md` (317), `02-mitigations.md` (539), `001-photo-assessment/03-evidence.md` (762). 15 trust boundaries, 39 STRIDE threats plus 8 factory threats, 17 ranked risks, 5 residual risks. **8 human gates and 8 seams** | default (Opus 5) | Default model, one pass. 260,185 tokens across 55 tool calls, just over the 250,000 bound — the web checks are what pushed it over, and they are the part of this role that cannot be skipped: a CVE from July 2026 and an RFC from August 2026 both changed the output | no |
+| 7b | **Architecture change, 2026-09-17**, outside the line: the owner asked for asynchronous shapes, chose Option E (gate 72), and asked for every document to follow | `00-options.md` §11, `08-async-options.md` and its short version, ADR-0014 to ADR-0016, and targeted edits in every 200 to 900 file, the three learn notes, the two READMEs and `stack.md`. Gate 70 closed as a result | default (Fable 5.1), one long session | **Not a role call.** The change cut across seven roles' files, and running seven correction roles for one decision would have cost more than the decision. **One thing went wrong and is worth keeping:** the first pass over the documents compressed readable prose into dense fragments the owner could not follow. Every file was restored from git and re-edited in its original style, and the rule is now in `.claude/memory/essentials-only.md` | no |
 | 8 | 600-qa | | | | |
 
 ## What broke
@@ -44,7 +45,16 @@ Full list in `seam-ledger.md`. The three that matter:
 
 ## What stayed with a human
 
-**Forty-two gates. All closed. None marked `missed`.**
+**Seventy-three gates. Sixty-eight closed, two `n/a`, three open. None marked `missed`.**
+*(Updated 2026-09-17, in two passes. Gate 72, the architecture choice, closed gate 70 with it, and
+gate 67 was closed by the same structure rather than by an answer. Then an audit of the whole pack
+closed gates 65, 66 and 68 and opened gate 73, the `sharp` packaging gap.)*
+
+**Three are still open, all from 900-security.** Gate 64, how much web reach a research role gets.
+Gate 69, a named and reachable person for every residual risk, which the project's own privacy rule
+makes hard. Gate 71, multi-factor sign-in on the AWS account. **Gates 69 and 71 are hard stops
+before the first deploy, and none of the three blocks work that could start today** — gate 65, which
+did block the photo path, was answered on 2026-09-17.
 
 The owner answered sixteen in the last two days. The four that changed the most:
 
@@ -96,13 +106,16 @@ without it you never learn whether the fix worked.
 | 20 | Finding 32 — six stale sentences survived two deliberate sweeps after the retry reversal and the colour change, and a role reading the files cold found all six. Three of them wrote the old value in words rather than digits, so no search for the number could match | Add a step to the correction pass: after a reversal, **a fresh session reads every file that cites the changed decision and reports disagreements**, rather than the changing session searching for the old value. A search finds copies of a number; only a reader finds a sentence that means the old number | `commands/factory-run.md` in the `ai-factory` repo | no | |
 | 21 | Finding 34 — a role that could not read the file its own ADRs cite produced a complete, confident document that was wrong in four places, two of them URL shapes. It did not fail; it guessed well | Add a rule to `run-role.md`: **before dispatching, resolve every file an input ADR names as an authority, and add it to the dispatch.** An ADR that says "see `05-patterns.md` §1" is a declared input in everything but name. Today the map has no way to express "this file is reachable through that one" | `commands/run-role.md` and `factory/handoff-map.yaml` in the `ai-factory` repo | no | |
 | 22 | The slot contracts restated each role's inputs in prose, next to the map that also holds them. The two copies drifted after the per-feature refactor, so five contracts named paths that no longer existed | **Applied on 2026-08-26.** The prose list is deleted from all five and replaced by a pointer to the `reads:` block. One statement of a fact cannot disagree with itself | `factory/subagent-slots/*.md` in the `ai-factory` repo | **yes** | |
+| 23 | Seam 14 — `900-security`'s contract tells it to review the deploy surface, and `docs/800-infra/04-ci-cd.md` is not in its `reads:` block, while `00-environments.md` and `01-iac-plan.md` both are. The role scored a Critical risk at 15 **because the fact was unverified**, which is the correct behaviour and also a wasted Critical | Add `docs/800-infra/04-ci-cd.md` to `900-security`'s `reads:`. This is the same shape as findings 18 and 21: **an instruction in a slot contract names a subject, and the map does not give the role the file that holds it.** The general fix is to check, for every DO row in a contract, that some declared input can answer it | `factory/handoff-map.yaml` in the `ai-factory` repo | no | |
+| 24 | Seam 21 — the contract requires every residual risk to have "a named, reachable person", and no file a role may read carries a name or a contact. Gate 58 deliberately keeps the owner's address out of the repository, so this cannot be fixed by adding a file to the map | Decide which way the contract goes. Either **soften the rule** to "a named role, with the contact held outside the repository", or **add a readable file** that holds a name and no address. Today the contract asks for something the project's own privacy rule forbids, so the role can only ever hard-stop on it | `factory/subagent-slots/900-security.md` in the `ai-factory` repo | no | |
+| 25 | The operator's own run. `role-inputs.mjs` crashed on Node 14 with `TypeError: p.replaceAll is not a function`. `String.prototype.replaceAll` needs Node 15. The message reads like a broken script, not a wrong Node version, and the crash happened **after** it had already printed "may read 9 input(s)", so the output looked half-successful | State the minimum Node version in the plugin, and check it at the top of the script with a clear message. Pair it with finding 19, which asks the same script to print its plugin version: **the first two lines of output should say which script version and which runtime are running.** Both failures so far have been environment, not logic | `scripts/role-inputs.mjs` and the README in the `ai-factory` repo | no | |
 
 ## Done bar
 
-- [x] ≥3 seam findings, each naming a file and a fact — **40 findings**
-- [x] ≥2 human-gate observations — **42 gates, all closed, none `missed`**
-- [x] ≥1 change to make, naming its file — **22 changes; number 22 is applied**
-- [x] one row per role call above — **7 rows, including two repair passes**
+- [x] ≥3 seam findings, each naming a file and a fact — **48 findings**
+- [x] ≥2 human-gate observations — **73 gates, 3 still open, none `missed`**
+- [x] ≥1 change to make, naming its file — **25 changes; number 22 is applied**
+- [x] one row per role call above — **8 rows, including two repair passes**
 - [x] no file was hand-fed outside a role's `reads:` list — **with one exception, written down here.**
       When 500 Engineering was resumed for its repair pass, it was *told* that four values had
       changed (the 18,000 ms timeout, the retry wording, the `--color-warn` rule, the Q-3 line)

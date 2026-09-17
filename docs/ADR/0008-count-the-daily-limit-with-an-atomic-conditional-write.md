@@ -1,6 +1,8 @@
 # ADR-0008 — Count the daily limit with one atomic conditional write in the API
 
-- **Status:** Accepted
+- **Status:** Accepted. One sentence added by ADR-0016 (2026-09-17): an attempt is refunded when no
+  model call was made. **Corrected in place 2026-09-17:** the counter counts assessments started,
+  not model calls. See "What the counter counts".
 - **Date:** 2026-08-25
 
 ## Context
@@ -19,8 +21,8 @@ The stories:
 
 - **US-08 AC-1.** The 11th attempt is refused **before** any model call.
 - **US-08 AC-3.** On that refusal, no Anthropic call was made and no money was spent.
-- **US-08 AC-5.** Written for a retry that no longer exists. Since 2026-08-26 there is exactly
-  one call per assessment, so the criterion is satisfied by there being nothing to count twice.
+- **US-08 AC-5.** The workflow's own retries must not be counted a second time. The increment runs
+  once, in the API, before the workflow starts, so a retried call can never reach it (ADR-0014).
 - **US-05 AC-5.** A `cannot-tell` result still counts, because the money was already spent.
 - **US-08 AC-2.** The message says the limit is reached **and when it resets**.
 
@@ -53,19 +55,21 @@ the same instant produce **exactly ten** successes, because one item is changed 
 read-then-write would let all ten read 9 and all ten proceed, which is precisely the script the
 limit exists to stop.
 
-The other three properties are acceptance criteria that come out for free:
+The other two properties are acceptance criteria that come out for free:
 
-- A failed call still counts, because the counter moves before the call.
-- A failed call still counts, because the increment happens before the call is made.
+- A failed call still counts, because the counter moves before the call is made.
 - Yesterday's counter is never read and never needs clearing, because the date is in the key. The
   item carries a time-to-live so the table does not grow, and **nothing depends on that firing on
   time** — DynamoDB deletes *"typically within a few days"*
   ([DynamoDB TTL](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/howitworks-ttl.html),
   checked 2026-08-25).
 
-**What it costs is now much smaller than it was.** The counter counts **model calls**. Since
-2026-08-26 there is no retry, so one assessment is one call, and 10 a day means 10 assessments. The
-two readings of US-08 AC-1 — "10 assessments" against "10 attempts" — now say the same thing.
+**What the counter counts, corrected 2026-09-17.** It counts **assessments started**, not model
+calls. The increment runs once in the `api` function, before `StartExecution`, and the workflow's
+retry never reaches it. So 10 a day is 10 assessments, and each one may cost up to three calls
+(ADR-0014). **The daily ceiling in money is 10 × $0.012, about $0.12 a day**, not 10 × $0.0040.
+Until 2026-09-17 there was no retry, so "10 calls" and "10 assessments" meant the same thing. They
+do not any more.
 
 **One case still differs, and it is the right one.** A call that fails still counts, because the
 increment happens before the call. A person whose call fails has spent one of their ten. That is what
@@ -78,8 +82,9 @@ spent whether or not an answer came back.
 a small oddity and it is the price of one account having exactly one reset.
 
 **This limit is not a budget guard, and `factory/feature.md` says so.** Ten a day for a month is 300
-attempts: $6.00 on Opus 5, $1.20 on Haiku 4.5. It stops a script. It does not keep spend inside the
-balance. What does that is ADR-0006 and the balance itself running out.
+assessments, which is $1.20 on Haiku 4.5 in the normal case and up to $3.60 if every one of them
+took three calls. It stops a script. It does not keep spend inside the balance. What does that is
+ADR-0006 and the balance itself running out.
 
 ## Alternatives considered
 
@@ -100,7 +105,11 @@ here is per account over a day, and the two do not line up. It also costs money 
 closing credit balance.
 
 **Decrementing the counter when a call fails.** Rejected by the owner's own sentence: a failed call
-still counts, because the money was already spent. Decrementing would also reintroduce a race.
+still counts, because the money was already spent. **One narrow exception was added by ADR-0016 on
+2026-09-17:** since the count now happens before a background run, a run can be refused after the
+count and before any call — the kill-switch was flipped, the breaker opened, or the workflow could
+not start. On those paths, and only those, one atomic `ADD attempts -1` gives the attempt back. No
+money was spent, so the owner's sentence still holds.
 
 **Counting after the call instead of before.** Rejected. US-08 AC-3 requires that no money was spent
 on the refusal, which is only true if the check comes first.
@@ -109,7 +118,7 @@ on the refusal, which is only true if the check comes first.
 
 > The daily limit is one `UpdateItem` with `ADD attempts :one` and a condition of
 > `attempts < :limit`, on the item `PK = USER#<sub>, SK = QUOTA#<yyyy-mm-dd>`, run in the API before
-> every model call. Do not read the counter and then write it back. Do not
-> put the limit in API Gateway, in a usage plan, in WAF or in the browser. Do not decrement it when
-> a call fails. Do not compute the day from a timezone sent by the browser — it is always the UTC
-> calendar day.
+> every model call, before the workflow starts. Do not read the counter and then write it back. Do
+> not put the limit in API Gateway, in a usage plan, in WAF or in the browser. Do not decrement it
+> when a call fails; decrement it only on a path where no call was made (ADR-0016). Do not compute
+> the day from a timezone sent by the browser — it is always the UTC calendar day.

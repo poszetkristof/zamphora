@@ -8,6 +8,14 @@ metadata:
 **The notes that explain how this repo works.** Read these before trying to explain the process to
 the user, and keep them in step when the factory changes:
 
+- `docs/learn/backend-concepts.md` — **the ideas on their own**, away from this project. 74 concepts
+  in seven parts, written 2026-09-17. **The format is fixed and the user chose it:** what it is · the
+  parts, each with **the question it answers** and **the real tool** · what zamphora does · how else
+  it is done · the trap. It came from the user explaining observability that way themselves and
+  saying *"NOW THIS IS HOW YOU PHRASE AN EXPLANATION"*. **Write every new concept in that shape.**
+  When the user asks what a backend or infrastructure term means, answer from this file and add to it
+  if it is missing.
+
 - `docs/learn/ai-native-delivery.md` — **the process**: how the factory line works. Part one is the
   idea. Part two walks one whole run, from an empty folder to finished specs, and explains each term
   at the moment the run needs it. Then a glossary. Add to the right section, never start a second
@@ -20,8 +28,9 @@ the user, and keep them in step when the factory changes:
   of free offer, the seven CDK stacks, how the build signs in to AWS with no password stored
   anywhere, what protects a public repository, and why the kill-switch and the circuit breaker are
   two separate things. Five Mermaid diagrams. Written 2026-08-27 after 800 Infra ran.
-- **Three notes, three subjects.** The method, the code's shape, the running system. A fourth file
-  needs a fourth subject that is none of those.
+- **Four notes, four subjects.** The concepts, the method, the code's shape, the running system. A
+  fifth file needs a fifth subject that is none of those. **The fourth was approved by the user on
+  2026-09-17**, because a concept explained inside a project note cannot be revised on its own.
 - That note is also the user's **approved model for how learning material should read**: teach as
   a walkthrough, name the actor in every example, say each thing once, and tell the reader which
   parts are lookup rather than learning.

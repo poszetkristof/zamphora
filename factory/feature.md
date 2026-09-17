@@ -159,7 +159,8 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   signal the upload alone can take that long, so the app would throw away answers it had already paid
   for. 60 seconds was rejected because a minute in front of a plant feels broken, and the user taps
   again, which costs a second call.
-- **Two attempts per assessment, decided 2026-08-25.** One try, then one retry after a short wait,
+- **Two attempts per assessment, decided 2026-08-25. Reversed 2026-08-26, then replaced 2026-09-17
+  by the background-run rule at the end of this list.** One try, then one retry after a short wait,
   and both must finish inside the 30 seconds above. It retries only what retrying can fix: a
   timeout, a 429, a 503. It never retries a bad request, a rejected photo, or an empty credit
   balance. Both attempts count against the 10-a-day limit. **Five tries with exponential backoff was
@@ -223,8 +224,9 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   will be a separate API. Next.js does not do everything.** That keeps Nest.js, which this file
   already names, and it keeps the border that the six split-readiness rules need. No role may
   re-open this. The two shapes that scored 13 and 12 were already out.
-- **No retry. One model call per assessment, decided 2026-08-26.** This reverses the two-attempt
-  rule taken on 2026-08-25. Two attempts broke two numbers at once: one call costs about $0.0035 and
+- **No retry. One model call per assessment, decided 2026-08-26. Replaced 2026-09-17 by the
+  background-run rule at the end of this list, which allows a capped retry again.** This reverses
+  the two-attempt rule taken on 2026-08-25. Two attempts broke two numbers at once: one call costs about $0.0035 and
   two cost about $0.0070 against a $0.0040 ceiling, and a first call that times out has to fail early
   enough to leave room for a second, so neither call gets the whole time budget. Dropping it also
   means the daily limit of 10 gives 10 real assessments instead of 5 assessments and 5 retries. **A
@@ -253,8 +255,38 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   pnpm. **Nx is rejected and stays rejected.** Three things travel with this: `typescript` is pinned
   to **6.0.3** because typescript-eslint cannot run on TypeScript 7 yet, `bundling.nodeModules` must
   not be used in CDK, and everything needs Node 22 or newer.
-- **DynamoDB runs in provisioned capacity mode, fixed at 25 write and 25 read units, decided
-  2026-08-26.** The always-free amount covers provisioned capacity only; an on demand table spends
+- **The assessment runs in the background: Option E, decided 2026-09-17.** The API answers `202`
+  at once, a Step Functions workflow makes the model call in its own function, and the phone gets
+  the result over one server-sent-events stream. This replaces "the phone waits" from Option A.
+  It changes four earlier rules: a retry of the model call is allowed, at most 2 more tries,
+  declared once in the workflow; one photo may cost up to 3 calls, about $0.012; the 30-second
+  promise is kept by a waiting screen; an attempt is refunded when no call was made. The grown
+  shape for runs 2 to 6 is drawn in `docs/400-architecture/08-async-options-short.md` §8 and is
+  approved as the target. Option F (upload straight to S3, every write an event) was not taken:
+  nothing planned needs its extra pieces. ADR-0014, ADR-0015 and ADR-0016 carry the decision.
+- **Sending the photo outside the EU is accepted for run 1, decided 2026-09-17 (gate 65).** The
+  photo and the plant nickname go to Anthropic on every assessment, and that is the feature, not a
+  fault. It is accepted because in run 1 there is one account and it is the owner's: self sign-up is
+  off and the owner creates every account by hand. GDPR Article 2(2)(c) leaves out processing by a
+  natural person for a purely personal or household activity. **This ends on the day a second
+  person's photo enters the product**, which is the same trigger as gate 5 and gate 31, and it has
+  to be answered before that person signs in.
+- **Nothing is deleted automatically in run 1, decided 2026-09-17 (gate 66).** The 11-month warning
+  and the 12-month deletion of an idle account both move to run 3, where the monthly `sweep`
+  function does them together. So no deletion can happen without a warning, because no deletion
+  happens. **A DynamoDB time-to-live was considered and is wrong:** it deletes one item, so it would
+  remove the profile row and leave the pots, the assessments, the photos and the Cognito account
+  behind. What run 1 accepts is a promise on screen that nothing yet keeps, recorded as RR-11.
+- **`image/gif` is not an accepted photo format, decided 2026-09-17 (gate 68).** JPEG, PNG and
+  WebP. A phone camera never makes a GIF, and the GIF decoder is one of three named in the July 2026
+  libvips advisory. Every message that lists the formats now lists three.
+- **`sharp` is marked external and copied into the Lambda bundle, decided 2026-09-17 (gate 73).**
+  esbuild cannot bundle a native module, and `bundling.nodeModules` stays banned by ADR-0012. A CDK
+  `afterBundling` hook copies `node_modules/sharp` and `node_modules/@img` into the asset.
+- **DynamoDB runs in provisioned capacity mode, decided 2026-08-26. The split between tables was
+  set by gate 43 on 2026-08-27: `prod` at 20 read and 20 write units, `preview` at 5 and 5.** The
+  free allowance of 25 and 25 is per Region and per payer account, shared by every table, so the two
+  together must never pass it. The always-free amount covers provisioned capacity only; an on demand table spends
   credit on its first read, and this account closes when the credit is gone. AWS's own guidance
   prefers on demand for most work, so this is a free-plan decision and is written down as one in
   ADR-0002. Auto scaling stays off, because it would raise the numbers past the free line without
@@ -485,7 +517,7 @@ option it rejected. Do not treat a name below as a decision already made.
 | Which features are worth building **later**, including ones nobody has asked for yet | 100 Consulting, then 200 Product | `03-market.md`, then the PRD's Out list |
 | How sign-in works — the protocol, the flow, and where tokens live | 400 Architecture | an ADR, plus `05-patterns.md` |
 | How the two account types are enforced, and where the check runs | 400 Architecture, checked by 900 Security | an ADR, then `docs/900-security/02-mitigations.md` |
-| How the product repository is laid out, and what would justify splitting it further | 400 Architecture | `docs/ADR/0001-repository-layout.md` |
+| How the product repository is laid out, and what would justify splitting it further | 400 Architecture | `docs/ADR/0001-keep-one-product-repository.md`, **answered 2026-08-25**, with the package manager replaced by ADR-0012 |
 | Which component library the web app builds on | 400 Architecture proposes, **the owner accepts** — a library is a new dependency | an ADR, plus `docs/500-engineering/00-conventions.md` |
 | Whether the product repo uses Turborepo, Nx or plain npm workspaces | 400 Architecture | the same ADR |
 
@@ -591,7 +623,7 @@ Run 1 is different from every run after it, because most of what it writes is no
 | Written once in run 1, later runs only **read** it | Rewritten for **every** feature |
 | --- | --- |
 | `docs/100-consulting/` — brief, market scan, decisions | `docs/200-product/` — stories, PRD, traceability |
-| `docs/400-architecture/` — options, C4, patterns, ADRs | `docs/300-design/01-CONTEXT.md`, `02-SPEC.md` |
+| `docs/400-architecture/` — options, C4, patterns, ADRs | `docs/300-design/<feature>/01-CONTEXT.md` and `02-SPEC.md` |
 | `docs/500-engineering/00-conventions.md`, `docs/context/stack.md` | `docs/500-engineering/01-contracts.md`, `03-api-spec.md` |
 | `docs/800-infra/` — environments, IaC, CI/CD, cost limits | `docs/900-security/01-threats.md` for the new surface |
 | `docs/300-design/03-tokens.md` | `docs/600-qa/01-test-cases.md`, `02-ai-evals.md` |
