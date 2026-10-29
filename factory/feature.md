@@ -293,6 +293,56 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   asking. A relational store is not an option on this plan at all: RDS was a twelve-month trial,
   Aurora had no free offer, and trials are switched off on the free account plan.
 
+**Four of the five points below were chosen by the assistant on 2026-09-17, on the owner's
+instruction to take the best-practice option in each case. The fifth, gate 82, is still open.** Gate
+8 is the other decision of this shape on this run. Each one names the option that lost, so a wrong
+choice is one row to find, not a search.
+
+- **A retry after a failed assessment carries a new `requestId`, decided 2026-09-17 (gate 76).** The
+  `IDEM#` row exists so that one tap is one charge. It answers a repeat of the same id with the same
+  run, and a failed run keeps its id, so sending the same id again could only ever replay the
+  failure. That is the normal rule for an idempotency key wherever one is used: the same key returns
+  the same answer, including the same error, and a genuine second attempt needs a new key. So the
+  browser makes a new id when the API has **answered** with a failure, not only when a new photo is
+  picked. **When the request got no answer** — the network dropped before the `202` arrived — the
+  browser sends the **same** id again. It cannot know whether the first send started a run, and a
+  new id there would start a second run and charge twice.
+  `03-api-spec.md` §4a already assumes this and says so; `02-web-spec.md` §4.2 holds the one sentence
+  that disagrees, and that sentence is the thing to change. **The option that lost:** let the API
+  start a fresh run on the same id when it sees a failed row. It keeps one id per photo, and it was
+  rejected because it changes the rule in ADR-0014 for a case the ordinary rule already covers.
+- **A failed assessment still counts against the person's 10 a day, until somebody decides otherwise
+  (gate 82).** This falls straight out of the decision above and is written down rather than hidden.
+  A new `requestId` is a new request, and the daily limit is checked after the id is claimed, so a
+  retry spends one of the ten. That is fair when the photo was bad and unfair when the model timed
+  out. **This one is not decided. It is gate 82 and it belongs to the owner**, because it is a
+  product rule about what a person pays for.
+- **The 40 evaluation photos: licensed for the two labelled groups, the owner's own for the rest, and
+  no photo of a real home goes in the public repository, decided 2026-09-17 (gate 77).** Group A
+  (20 photos with a named fault) and group B (6 healthy plants) come from a source whose licence
+  allows this use, named per photo in `labelSource`. Groups C (8 unusable), D (4 hard) and E (2
+  adversarial) can be the owner's own photos, because none of those three needs plant knowledge — a
+  photo too dark to judge is too dark whoever took it. The owner's photos live **outside** the
+  repository, in the private bucket the `ai-eval` job reads, and only the label rows are committed.
+  **The option that lost:** commit the owner's own photos to the public repository with the EXIF
+  stripped. It is the simplest and it was rejected twice over — the repository is public, the repo
+  rule says test data holds no real personal data, and publishing is the one step that cannot be
+  taken back.
+- **Every group A label comes from a named reference, decided 2026-09-17 (gate 78).** Each of the 20
+  faults is written into `labelSource` with the source and the date it was checked. The label is then
+  a citation somebody can challenge by opening the source, not an opinion. It also fits the photo
+  decision above, because a licensed reference photo usually arrives with its fault already named.
+  **The options that lost:** the owner writes each label, which makes NFR-20 measure the model
+  against one person's guess and leaves the most important number in the product resting on it; or
+  drop group A and label only B, C and E, which measures refusal and honesty and stops measuring
+  accuracy — the number this product exists for.
+- **`DAILY_LIMIT` must be between 1 and 20, decided 2026-09-17 (gate 75).** The default stays 10,
+  which is about $0.04 of model calls a day at $0.004 a call. The top of the range is about $0.08 a
+  day against a $5 balance. The range exists so that a typing mistake cannot empty the balance: 200
+  or 2000 is refused when the API starts, not discovered at three in the morning. Raising the ceiling
+  stays a decision somebody makes on purpose. **The options that lost:** 1 to 100, and 1 to 1000. At
+  1000 a single bad day costs $4 of a $5 balance, which is a limit in name only.
+
 ## What "confidence" means on this project
 
 The scope list asks the model call to return "a verdict, a confidence, and a next action". This

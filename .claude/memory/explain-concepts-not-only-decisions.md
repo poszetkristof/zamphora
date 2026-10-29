@@ -56,7 +56,9 @@ from a registry, an AWS quota checked on a day, a real deadline such as when the
 Those keep a claim honest. **Where a change is itself the lesson, tell it as a sequence** — "this was
 decided three times, and the third time is the interesting one" — and leave the dates out.
 
-**`docs/` and `factory/` are the opposite.** There a dated correction note is required, because those
-files are a record of decisions and a reader has to know when one was taken.
+**The same holds for `docs/`.** No "rewritten on <date>" block, no "closed <date>" beside a gate,
+no story of the edit. The owner removed one by hand on 2026-10-29 and called it noise. The only
+place a date belongs is the ledgers in `factory/runs/` — `human-gates.md`, `seam-ledger.md`,
+`run-record.md` — because they exist to record when a decision was taken.
 
 See [[learning-style]] and [[where-things-are]].

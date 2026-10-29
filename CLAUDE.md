@@ -93,7 +93,7 @@ surprises you or you are about to argue with a rule.
 | --- | --- | --- |
 | Anything at all | — | `docs/context/stack.md` |
 | **Any `.ts` / `.tsx`, or any new file or folder** | **`coding-standards`** | `docs/500-engineering/00-conventions.md` |
-| Tests | **`testing-patterns`** | `docs/600-qa/00-test-plan.md` *(not written yet)* |
+| Tests | **`testing-patterns`** | `docs/600-qa/<slug>/00-test-plan.md` says what is tested and which job runs it. `01-test-cases.md` is the case list |
 | JSX, forms, dialogs, lists, ARIA | **`accessibility`** | `docs/300-design/03-tokens.md` |
 | Auth, uploads, user input, AI calls, any response body | **`security`** | `docs/900-security/02-mitigations.md` §8 is the short list of "do not" instructions. Read it before the rule, not after |
 | The web app | `coding-standards` | `docs/500-engineering/02-web-spec.md` |
@@ -102,9 +102,6 @@ surprises you or you are about to argue with a rule.
 | Anything crossing the wire | `coding-standards` | `docs/500-engineering/01-contracts.md` |
 | Anything under `infra/` | — | `docs/800-infra/01-iac-plan.md` is the resource list. `02-cost-guardrails.md` before adding any service |
 | "Why is it like this?" | — | `docs/ADR/` |
-
-**One of those docs does not exist yet.** 600 QA has not run, so the testing skill stands on its
-own until it does.
 
 **900 Security ran on 2026-09-01.** `docs/900-security/` holds the asset list, the threat model,
 the mitigations and the evidence pack. Two things in it change what you may write:
@@ -116,6 +113,10 @@ the mitigations and the evidence pack. Two things in it change what you may writ
   first deploy, not before the first line of code.** Gate 65, which blocked the photo path, was
   answered on 2026-09-17: sending the photo outside the EU is accepted for run 1, and the trigger to
   re-open it is the day a second person uses the app.
+
+**600 QA ran on 2026-09-17**, and the line is complete. Five more gates are open: 74, 79, 80, 81 and
+82. The top of `docs/600-qa/001-photo-assessment/00-test-plan.md` lists them. None of them blocks
+code.
 
 ## Hard rules
 

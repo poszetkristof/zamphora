@@ -5,7 +5,7 @@ description: Vitest conventions for this repo — colocation, React Testing Libr
 
 # Testing patterns
 
-Full reference: `docs/600-qa/00-test-plan.md`.
+Full reference: `docs/600-qa/<slug>/00-test-plan.md`, and the cases in `01-test-cases.md` beside it.
 
 ## Layout
 

@@ -786,3 +786,112 @@ tabbing to the last field. The fix is `scroll-padding-bottom` sized to the bar.
 (SC 2.5.8); 44×44 is SC 2.5.5, which is **AAA**. The project is stricter on purpose, and the skill
 now says which line is the standard and which is ours — a reviewer's citation has to survive being
 challenged.
+
+## 600-qa, 2026-09-17
+
+The last role on the line, and the only one that reads all seven earlier roles at once. It reported
+**10 seams**. Six of them are `under-supply` — a file the role needed is not in its declared inputs
+— which is the same shape as findings 14, 21, 31 and 34 in this ledger, and changes 18, 21, 23 and
+26 in `run-record.md`. That makes it the most repeated failure of the whole run.
+
+### Finding 41 — the try-again button does nothing, and three documents each look correct alone
+
+**The sharpest finding of the run, and the only one that breaks a story outright.** The retry path
+after a failed assessment is written in three files. Each sentence is reasonable on its own. Put
+together they cancel each other out.
+
+1. `02-web-spec.md` §4.2: the `requestId` is made when the photo is chosen, and **"a new one is only
+   made when a new photo is picked"**.
+2. US-09 AC-2 and `02-SPEC.md` SC-1 state 15: after a failure the photo is still on screen and the
+   person sends **the same photo** again, without taking a new one.
+3. `03-api-spec.md` §4a: the assessment id is written on the `IDEM#` row **before** the `202`
+   (ADR-0014). A repeat of the same `requestId` that carries an id is answered `202` with **that
+   same run**.
+
+So the person taps try again → the same `requestId` goes up → the API hands back the assessment that
+already failed → the stream replays `state: failed` at once. **The button is dead for the ten
+minutes of the `IDEM#` time-to-live.** That breaks US-09 AC-1 and AC-3, and `03-evidence.md` EV-24
+expects the opposite.
+
+`03-api-spec.md` §4a contradicts itself inside one sentence: *"On a failure the row keeps the id,
+**so** a second send after a failed run is a new request with a new `requestId`."* The "so" does not
+follow. Nothing in the web spec makes that new id.
+
+**Checked by hand on 2026-09-17 before recording**, because the role marked it a hard stop. Both
+passages read as the role reported them. Gate G-901-4 was closed "by structure" on 2026-09-17 on the
+belief this could not happen; that belief is wrong. **Label: `contradiction`.** It is gate 76.
+
+### Finding 42 — the evidence pack asserts a status code that an ADR changed
+
+`03-evidence.md` EV-23 asserts **"exactly ten `201`s"**. The route has answered **`202`** since
+ADR-0014, which is the asynchronous change of 2026-09-17. EV-23 also asserts `modelCalls`, while
+NFR-12 counts **assessments started**, and the `preview` environment answers from a stub rather than
+a model. A check written against the wrong number and the wrong counter passes or fails for reasons
+that have nothing to do with the daily limit.
+
+**Label: `stale`.** This is finding 14 again — a sentence that still carries a value a later decision
+replaced. The 2026-09-17 sweep did not reach it.
+
+### Finding 43 — a pass bar measured against a set whose answer is fixed by its own contents
+
+`06-nfrs.md` gives NFR-22 the job `ai-eval` and the method *"counted from the stored assessments"*.
+NFR-22 caps how often the model answers `cannot-tell`. The golden set contains photos that are
+**unusable on purpose**, and the honest answer to those is `cannot-tell`. So the share is decided by
+how many unusable photos the set holds, not by how the model behaves. The two readings — measure it
+on the whole set, or measure it on real user traffic — give different numbers and neither is named.
+
+**Label: `ambiguous`.** The role split the measurement and wrote both, rather than picking one
+quietly.
+
+### Findings 44 to 49 — six files the role needed and may not read
+
+The same wiring bug, six times, in one role call. Each line names the file, and the fact inside it
+that no declared input can answer.
+
+| # | File not in `reads:` | The fact it holds, and who points at it |
+| --- | --- | --- |
+| 44 | `docs/300-design/03-tokens.md` | The 3:1 focus ring, the 44 px touch target, the two radii and the one shadow. `02-SPEC.md` carries **no hex value on purpose**, so no numeric check can be written from the inputs |
+| 45 | `docs/100-consulting/00-context-brief.md` §4 | The per-token prices. Without them nobody can say whether the judge's 40 calls fit under NFR-11's $0.20, which was priced for 40 assessment calls at $0.16 |
+| 46 | `factory/runs/001-photo-assessment/human-gates.md` | The text of gates 64, 69 and 71, which `02-mitigations.md` names as open and hands to this role. Same shape as seam S-901-8 |
+| 47 | `docs/400-architecture/05-patterns.md` | Both `01-contracts.md` and `03-api-spec.md` name it as the authority **above themselves**. Same shape as findings 31 and 34, and as seam S-901-1 |
+| 48 | `docs/300-design/001-photo-assessment/01-CONTEXT.md` | `02-SPEC.md` §1 says its MUST NOT list *"is part of this spec"*. A spec that declares another file part of itself needs that file in the same hands |
+| 49 | `docs/800-infra/03-observability.md` | NFR-06's replacement query and alarms 3, 6 and 12. The role had to leave NFR-06 with no check and say so |
+
+**Label on all six: `under-supply`.** Findings 46, 47 and 48 each match a header that says *"read
+next by"* or *"part of this spec"* and a map that does not deliver the file. That mechanical check is
+still the owed general fix from change 26.
+
+### Finding 50 — a test is asked for against a list that no file declares
+
+`01-contracts.md` §11b asks for a test that the keys of the `detail` map are **exactly** the failure
+codes. No input declares `FailureCode` as one named `const` array. The codes are split across
+`01-contracts.md` §8.1 and §8.2, so the test can only be written against a list somebody assembles
+by hand — and then it checks the hand-made list, not the contract.
+
+**Label: `thin`.** The repo rule says a closed list lives in one named `const`. This one does not yet.
+
+## The owner's review of 600-qa, 2026-10-29
+
+### Finding 51 — five more files QA needed, and it did not report them
+
+The role reported six missing inputs (findings 44 to 49). A review against its real output found
+five more. QA used facts from each of them and got the facts only second-hand.
+
+| File not in `reads:` | What QA needed from it |
+| --- | --- |
+| `docs/800-infra/01-iac-plan.md` | TC-10-5, TC-NF-05b and TC-NF-38 check the CDK output, and this is the file that describes it |
+| `docs/800-infra/00-environments.md` | The preview environment, the test accounts, and the pre-deploy checklist where gate 71 belongs |
+| `docs/ADR/` | QA cites ADR-0004, 0006, 0014 and 0016 through other files. 500, 800 and 900 all read the ADRs |
+| `docs/900-security/00-assets.md` | What counts as personal data. QA reasoned about the golden-set photos without it |
+| `docs/500-engineering/00-conventions.md` | How and where tests are written |
+
+**Label: `under-supply`.** A role does not always notice what it was not given. That is one more
+reason the check owed by change 26 must be a script, and not a role reporting on itself.
+
+### Finding 52 — the files were correct and too long to check
+
+The three QA files were 1,272 lines. The owner could not check them, and a spec nobody checks is
+trusted anyway. They were rewritten in plain English by hand, keeping every case. Nothing in the
+slot contract limits length or asks for plain English, so the next run will produce the same.
+
+**Label: `thin`** — on the slot contract, not on the files.
