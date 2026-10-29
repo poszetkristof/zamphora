@@ -386,6 +386,11 @@ fields @timestamp, assessmentId, msg
 | filter attempts > 1
 ```
 
+**A throttled try is not in this count, and that is correct.** When Lambda refuses `assess` with
+`Lambda.TooManyRequestsException`, the function never starts, so it writes no line and makes no
+model call. The workflow retries it for free (ADR-0018). The `Throttles` metric on `assess` counts
+those tries instead.
+
 **The cannot-tell share, for NFR-22:**
 
 ```

@@ -270,7 +270,7 @@ detect         is there a package.json yet?
 | `quality` | `pnpm format:check`, `pnpm lint` | ADR-0001 rule 1 lives in the linter: no relative import crosses an app border |
 | `audit` | `pnpm audit --audit-level=high` | A high or critical advisory stops the merge. Low and moderate are reported and do not fail |
 | `test` | Per workspace, in a matrix over `apps/web`, `apps/api`, `packages/contracts`: `pnpm type-check`, then `pnpm test` | NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-42, NFR-43, NFR-52 |
-| `infra-assert` | `cdk synth` and assertions, no AWS call | **NFR-40**, the capacity total in §6, and since 2026-09-17 the state machine's retry cap (NFR-05, NFR-38) |
+| `infra-assert` | `cdk synth` and assertions, no AWS call | **NFR-40**, the capacity total in §6, and since 2026-09-17 the state machine's call cap and its one path into `Refund` (NFR-05, NFR-38) |
 | `build` | `pnpm build` | A change that does not build cannot ship |
 | `ci-ok` | Asserts every job above succeeded | §9 |
 
@@ -288,11 +288,14 @@ detect         is there a package.json yet?
   against it, so it needs no credential and costs nothing (`06-nfrs.md` §1). Two assertions on day
   one. First, the photo bucket's lifecycle rule expires objects at exactly 180 days (NFR-40).
   Second, the DynamoDB read and write capacity is 20 in `prod` and 5 in `preview`, and the total
-  never adds up to more than 25 (gate 43, `01-iac-plan.md` §4.1). **Four more since 2026-09-17**,
-  on the state machine (`01-iac-plan.md` §4.4b): the type is `STANDARD`; there is no machine-level
-  `TimeoutSeconds`; the `Assess` retry list is exactly the four named errors with `MaxAttempts: 2`
-  and `retryOnServiceExceptions` off; and `Refund` is reachable only from the refusal choice. Plus
-  one on roles: the `api` function's role has no read on the model key parameter.
+  never adds up to more than 25 (gate 43, `01-iac-plan.md` §4.1). **Five more since 2026-09-17**,
+  on the state machine. `01-iac-plan.md` §4.4b lists them, and ADR-0018 sets the last two. In
+  short: the type is `STANDARD`; there is no machine-level `TimeoutSeconds`; the `Assess` `Retry`
+  list is exactly `Lambda.TooManyRequestsException` with `MaxAttempts: 2`, and
+  `retryOnServiceExceptions` is off; the three provider errors are in the `Catch` that counts
+  `callsMade`, and `RetryOrStop` stops at 3; and every path into `Refund` passes `AnyCallMade` with
+  `callsMade` at 0. Plus one on roles: the `api` function's role has no read on the model key
+  parameter.
 - **The router test is in `test` and it is the one that guards a security rule.** NFR-32: a test
   walks the whole Nest.js router and asserts every route carries `@Anonymous()`, `@Roles('USER')` or
   `@Roles('ADMIN')`. A new route with none fails the build before anybody can call it (ADR-0004).
@@ -547,12 +550,16 @@ is not a test.*
 - **The script prints its total before it starts and refuses to run if the set is larger than 50
   photos** (NFR-11).
 - It runs the golden set for NFR-20, NFR-21 and NFR-22, which is 600 QA's work.
-- ADR-0006 uses it once against all three models — 40 × ($0.0040 + $0.0080 + $0.020) = **$1.28** —
-  to choose the model by measurement instead of by price.
-- **The id it runs against is the dated snapshot `claude-haiku-4-5-20251001`, never the
-  `claude-haiku-4-5` alias** (gate 53). An eval run is a measurement, so the model behind it has to
-  be one exact version. An alias can move to a newer version with no deploy and no warning, and the
-  measurement would then describe a model nobody chose.
+- **It chooses the model by measurement instead of by price (ADR-0006), on the models ADR-0017
+  allows.** The first comparison runs on the two Haiku models only (gate 85): 40 × ($0.0040 +
+  $0.0004) = **about $0.18**, estimated, inside NFR-11's $0.20. One run on Sonnet 5.5 alone is
+  about $0.32, which is over NFR-11. So Sonnet 5.5 is measured only if neither Haiku model meets
+  NFR-20 and NFR-21, and that run needs a new decision by the owner.
+- **Every id it runs against names one fixed version** (ADR-0017). For Haiku 4.5 that is the dated
+  id `claude-haiku-4-5-20251001`, never the `claude-haiku-4-5` alias (gate 53). `claude-haiku-5-5`
+  has no date and is already a fixed version. An eval run is a measurement, so the model behind it
+  has to be one exact version. An alias can move to a newer version with no deploy and no warning,
+  and the measurement would then describe a model nobody chose.
 
 ### `retention-audit.yml`
 
@@ -671,7 +678,7 @@ checklist in §10, written as its own line so it cannot be folded into something
 | `quality` | `ci.yml` | Formatting, and ADR-0001 rule 1 in the linter: no relative import crosses an app border |
 | `test` | `ci.yml` | Type errors, and NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-42, NFR-43, NFR-52 |
 | `audit` | `ci.yml` | A high or critical dependency advisory |
-| `infra-assert` | `ci.yml` | **NFR-40**, the 180-day lifecycle rule, the 25-unit capacity total, and the state machine's retry cap (NFR-05, NFR-38) |
+| `infra-assert` | `ci.yml` | **NFR-40**, the 180-day lifecycle rule, the 25-unit capacity total, and the state machine's call cap and its one path into `Refund` (NFR-05, NFR-38) |
 | `build` | `ci.yml` | A change that does not build cannot ship |
 | `bundle-budget` | `pr-preview.yml` | NFR-50 |
 | `e2e` | `pr-preview.yml` | NFR-33, NFR-37, NFR-08 |

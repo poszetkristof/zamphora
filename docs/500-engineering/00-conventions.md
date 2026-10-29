@@ -145,8 +145,9 @@ switched on.
   vendor error (ADR-0005, `05-patterns.md` §4 and §8).
 - **One place in the product throws on purpose: the `assess` handler.** It turns exactly three of
   those values — `provider-timeout`, `provider-throttled`, `provider-unavailable` — into thrown
-  errors with those names, because Step Functions can only retry an error, never a returned value
-  (ADR-0014). Every other outcome is still returned.
+  errors with those names, because the workflow's `Catch` matches an error, never a returned value.
+  That `Catch` counts the call before the workflow tries again (ADR-0014, ADR-0018). Every other
+  outcome is still returned.
 - Every API answer that is not a success is the same envelope, `Problem`, defined in
   `01-contracts.md` §8. It carries a `code` from a closed list and a `retryHint` of `may-work` or
   `will-not-work`.
@@ -165,6 +166,9 @@ memory cache: the kill-switch, the daily limit, and the model id (ADR-0006, ADR-
 
 - **Every value read from `CONFIG` is checked against a closed list or a range.** A value that fails
   the check is ignored and the compiled-in default is used instead. It is never sent to the API.
+  The one range is for `DAILY_LIMIT`: a whole number from 1 to 20 (gate 75). The one closed list is
+  for `MODEL_ID`: exactly `claude-haiku-4-5-20251001`, `claude-haiku-5-5` and `claude-sonnet-5-5`,
+  and the default is `claude-haiku-4-5-20251001` (ADR-0017). `03-api-spec.md` §6 owns both checks.
 - **A failed read keeps the last known value.** If there has never been a known value, the model
   call does not run (ADR-0009).
 - **Never cache the session and never cache the daily count** (ADR-0002).
@@ -257,7 +261,7 @@ the architecture and the code agree.
 | NFR-02 ≤ 20,000 ms server share | `apps/api` constant `REQUEST_DEADLINE_MS = 20_000`, applied by one Nest interceptor that answers `deadline-passed` | `test` |
 | NFR-03 ≤ 18,000 ms model call | `packages/llm` constant `MODEL_TIMEOUT_MS = 18_000`, passed as an `AbortSignal` to the adapter | `test` |
 | NFR-04 at most 3 model calls, 1 normally | The `assess` handler calls `LlmProvider.assess()` on exactly one line. A stub counts calls in every failure case; three timeouts give exactly 3 | `test` |
-| NFR-05 only the workflow retries | The adapter builds its client with `maxRetries: 0`. No wait-and-try-again code exists anywhere. The synthesised state machine carries one `Retry` with `MaxAttempts: 2` | `test`, `infra-assert` |
+| NFR-05 only the workflow retries | The adapter builds its client with `maxRetries: 0`. No wait-and-try-again code exists anywhere. In the synthesised state machine, the `Assess` task's only `Retry` is on `Lambda.TooManyRequestsException`, with `MaxAttempts: 2`. The three provider errors are in its `Catch`, and `RetryOrStop` runs `Assess` again only while `callsMade` is under 3 (ADR-0018) | `test`, `infra-assert` |
 | NFR-06 ≤ 2,000 ms cold start | The functions are bundled by esbuild and run on Node 24. Not testable in CI; read `@initDuration` from the logs | runtime |
 | NFR-07 ≤ 60,000 ms tap to result | `apps/web` constant `RESULT_DEADLINE_MS = 60_000`, the give-up timer on the waiting screen | `perf-flow` |
 | NFR-08 ≤ 1,000 ms stream delivery | `watch` reads the row every 500 ms | `e2e` |
@@ -278,7 +282,7 @@ the architecture and the code agree.
 | NFR-35 zero sessions older than 30 days | The session expiry is checked in code on every request. DynamoDB TTL is never trusted to have deleted it | `test` |
 | NFR-36 zero model calls with no session | The guard runs before the controller, so the provider is unreachable without a session | `test` |
 | NFR-37 zero result screens with no AI notice | One `ResultLayout` component renders `NoticeLines`, and SC-3, SC-4 and SC-5 all use it | `e2e` |
-| NFR-38 zero refunds after a made call | The `Refund` state is reachable only from the two refusal branches of the workflow (ADR-0016) | `test`, `infra-assert` |
+| NFR-38 zero refunds after a made call | The `Refund` state is reachable only through `AnyCallMade`, and only when `callsMade` is 0. Every `Catch` of a provider error adds 1 to `callsMade` (ADR-0016, ADR-0018) | `test`, `infra-assert` |
 | NFR-40 lifecycle rule at exactly 180 days | The CDK stack for the bucket. 800 Infra owns it | `infra-assert` |
 | NFR-41 zero objects older than 182 days | A scheduled job that lists the bucket | `retention-audit` |
 | NFR-42 zero copies of a photo | One write path, `PhotoRepository.put()`. A test asserts no other code path writes an image, and that no photo URL is served through a cache | `test` |

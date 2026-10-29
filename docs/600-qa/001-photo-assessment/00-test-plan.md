@@ -28,7 +28,6 @@ measured is in `02-ai-evals.md`.
 | 79 | US-15 AC-8: does a screen that you visit twice count once or twice? |
 | 80 | Is 10 the right minimum number of `likely` answers for the accuracy figure? |
 | 81 | Is 8 in 10 the right bar for the judge agreeing with a person? |
-| 82 | Does a failed assessment still count against the 10 per day? |
 
 Gates 69 and 71 (from 900 Security) are hard stops before the first deploy.
 
@@ -329,14 +328,14 @@ blocks nothing.
 | Gate | Question | Status |
 | --- | --- | --- |
 | 74 | Must the golden-set run (and the other release gates in §7.2) pass before the first production deploy? | **Open.** The owner's |
-| 75 | What is the valid range for `DAILY_LIMIT`? | **Closed: 1 to 20.** TC-13-7 can run once `03-api-spec.md` §6 names the range (500-engineering repair) |
-| 76 | After a failed assessment, may the person send the same photo again? | **Closed.** A new `requestId` when the API **answered** with a failure. The same `requestId` when the request got **no answer**. Cases TC-09-9 and TC-09-10. `02-web-spec.md` §4.2 still needs the 500-engineering repair |
+| 75 | What is the valid range for `DAILY_LIMIT`? | **Closed: 1 to 20.** `03-api-spec.md` §6 names it, and TC-13-7 tests it |
+| 76 | After a failed assessment, may the person send the same photo again? | **Closed.** A new `requestId` when the API **answered** with a failure. The same `requestId` when the request got **no answer**. Cases TC-09-9 and TC-09-10. `02-web-spec.md` §4.2 holds the rule |
 | 77 | Where do the 40 golden-set photos come from? | **Closed.** See section 9 |
 | 78 | Who writes the expected verdict for each photo in group A? | **Closed.** A named reference, written in `labelSource` with the date it was checked |
 | 79 | US-15 AC-8: is SC-1 counted once or twice? | **Open.** Goes back to 200-product. TC-15-7 runs with "count once" |
 | 80 | Is 10 the right minimum of `likely` answers? | **Open.** QA's proposal, no source |
 | 81 | Is 8 in 10 the right bar for the judge? | **Open.** QA's proposal, no source |
-| 82 | Does a failed assessment count against the 10 per day? | **Open.** The owner's. Today it counts |
+| 82 | Does a failed assessment count against the 10 per day? | **Closed.** Yes, whenever the model was called. A try is given back only when no call was made (ADR-0016) |
 
 Gates 64, 69 and 71 are also open. They come from 900 Security. 69 and 71 are hard stops before the
 first deploy.
@@ -349,7 +348,7 @@ A **seam** is a place where the line gave a role less than it needed. These are 
 | Finding | What was wrong | Label | Effect |
 | --- | --- | --- | --- |
 | 41 | Three files together made the try-again button do nothing for 10 minutes: `02-web-spec.md` §4.2, US-09 AC-2, `03-api-spec.md` §4a | contradiction | Answered by gate 76 |
-| 42 | `03-evidence.md` EV-23 expects `201` and counts `modelCalls`. The API answers `202` since ADR-0014, and NFR-12 counts assessments started | stale | TC-08-2 uses the right values. EV-23 needs a 900-security repair |
+| 42 | `03-evidence.md` EV-23 expected `201` and counted `modelCalls`. The API answers `202` since ADR-0014, and the daily limit counts `attempts` | stale | Repaired. EV-23 and TC-08-2 both count `attempts` |
 | 43 | NFR-22 is measured on a golden set that holds unusable photos on purpose. The result then describes the set, not the model | ambiguous | `02-ai-evals.md` §4.3 splits it in two |
 | 44 | `docs/300-design/03-tokens.md` was not an input | under-supply | §16 and §17 of the cases name tokens, not values |
 | 45 | The prices in `00-context-brief.md` §4 were not an input | under-supply | The judge's cost cannot be computed |

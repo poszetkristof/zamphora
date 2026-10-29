@@ -126,7 +126,7 @@ This section needs **two** test accounts in `preview`.
 | # | Kind | Test | Expected | AC | Job |
 | --- | --- | --- | --- | --- | --- |
 | TC-08-1 | N | Make 10 assessments, then an 11th | 429 `daily-limit-reached`. No model call. Refused before the photo is written | AC-1, AC-3, NFR-12 | `test` |
-| TC-08-2 | N | Send 10 requests at the same time on a new day, then one more | Exactly ten `202`, then a refusal. `assessmentsStarted` is exactly 10. (EV-23 still says `201` and `modelCalls` — finding 42) | NFR-12, EV-23 | `test` |
+| TC-08-2 | N | Send 10 requests at the same time on a new day, then one more | Exactly ten `202`, with ten different assessment ids, then `429 daily-limit-reached`. `attempts` on the person's `QUOTA#<day>` row is exactly 10. Not `modelCalls` (up to 3 per assessment) and not `assessmentsStarted` (written at the end of each run, for every account) | NFR-12, EV-23 | `test` |
 | TC-08-3 | P | Read the refusal and the screen | It says the limit is reached and when it resets. `quotaResetsAt` is UTC; the screen shows local time | AC-2 | `test`, `e2e` |
 | TC-08-4 | N | Use 3, then 8 | With 7 left, no limit message. `LimitNote` shows only at 2 or fewer | AC-4 | `e2e` |
 | TC-08-5 | N | Make the model call fail, then read the counter | The failed attempt counts. The workflow's own retries do not count again | AC-5, NFR-12 | `test` |
@@ -151,8 +151,7 @@ This section needs **two** test accounts in `preview`.
 **The rule behind TC-09-9 and TC-09-10 (gate 76).** If the API **answered** with a failure, the next
 try is a new request, so it gets a new id. If the request got **no answer**, the phone does not know
 whether it worked, so it sends the same id again. The API then returns the first run instead of
-charging twice. `02-web-spec.md` §4.2 still says "a new one is only made when a new photo is
-picked". It needs a 500-engineering repair before the screen is built.
+charging twice. `02-web-spec.md` §4.2 and `03-api-spec.md` §4a hold the full rule.
 
 ## 11. US-10 — How long photos are kept, and deleting them
 
@@ -191,7 +190,7 @@ picked". It needs a 500-engineering repair before the screen is built.
 | TC-13-4 | N | Turn it off while a call is running | That call finishes, because it is already paid. The result is saved | AC-4 | `test` |
 | TC-13-5 | P | Turn it back on | Normal use continues | AC-5 | `test` |
 | TC-13-6 | N | Make the config read fail; then start a function that never read a value | A failed read keeps the last value. With no value ever read, the call does not run | §6 | `test` |
-| TC-13-7 | N | Write `DAILY_LIMIT` 0, 21 and 10,000, and a `MODEL_ID` that does not exist | Each bad value is refused and the built-in default is used. **Valid range is 1 to 20** (gate 75). Runs once `03-api-spec.md` §6 names the range | T-14 | `test` |
+| TC-13-7 | N | Write `DAILY_LIMIT` 0, 21 and 10,000, and a `MODEL_ID` that does not exist | Each bad value is refused and the built-in default is used. **Valid range is 1 to 20** (gate 75, `03-api-spec.md` §6) | T-14 | `test` |
 
 The real kill-switch timing is EV-29, run once on `prod`. It is a release gate.
 
@@ -306,8 +305,8 @@ one runs.
 | EV-33 to EV-35 | Workflow retry and refund, stream URL, the `api` role | `infra-assert` | Merge |
 | EV-36 | A stream with no session answers nothing | `e2e` | Merge |
 
-**Three checks need a fix before they run.** EV-23 expects `201` and `modelCalls` (finding 42).
-EV-24 part two must follow gate 76 (TC-09-9, TC-09-10). EV-08 was never run.
+**EV-08 was never run.** It is a release gate (`00-test-plan.md` §7.2). EV-23 and EV-24 count
+`attempts`, the counter the daily limit limits, and EV-24 follows gate 76.
 
 **Each check has three empty fields: output, date, result.** Filling them with real output is the
 work. A sentence instead of output does not count.

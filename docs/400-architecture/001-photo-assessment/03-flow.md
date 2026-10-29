@@ -70,10 +70,18 @@ the second call lands at about 30 seconds on the bad run.
 
 ## 3. The retry, and why it is safe now
 
-**Decided by the owner on 2026-09-17 (ADR-0014).** The workflow retries the `Assess` task at most
-twice, only on `provider-timeout`, `provider-throttled` and `provider-unavailable`. The `assess`
-handler throws exactly those three as errors so the workflow can see them; everything else is
-returned as a value and never retried.
+**Decided by the owner on 2026-09-17 (ADR-0014). How the workflow does it is ADR-0018, accepted by
+the owner at gate 84.** The workflow calls the model again at most twice, and only after
+`provider-timeout`, `provider-throttled` or `provider-unavailable`. The `assess` handler throws
+exactly those three as errors so the workflow can see them; everything else is returned as a value
+and never retried.
+
+The workflow handles the three with a `Catch`, not a `Retry`. The `Catch` adds 1 to `callsMade`,
+the number of model calls this run has made, and `RetryOrStop` runs `Assess` again while that number
+is under 3. A `Retry` cannot record that a call was made, and the refund needs exactly that fact: an
+attempt is given back only when the whole run made no call (ADR-0016, gate 82). A throttled start of
+`assess` is different. The function never ran, so it is retried with a plain `Retry` and does not
+count.
 
 This was "no retry" from 2026-08-26, and the reason it was is worth keeping. While the phone waited,
 a retry broke two numbers at once: two calls cost about $0.0070 against a $0.0040 ceiling, and a
@@ -81,9 +89,9 @@ first call had to fail early enough to leave room for a second. Moving the asses
 background removed both. The cost ceiling is now $0.012 per photo (NFR-10), and no call has to be
 cut short to leave room for another.
 
-**The cap is two lines and both must stay:** `MaxAttempts: 2` in the workflow and `maxRetries: 0`
-in the adapter. Every retry is a billed Step Functions transition and a paid call, so the cap is a
-cost control, not a convenience.
+**The cap is two lines and both must stay:** "`callsMade` under 3" in the workflow's `RetryOrStop`
+and `maxRetries: 0` in the adapter. Every retry costs Step Functions transitions and a paid call, so
+the cap is a cost control, not a convenience.
 
 ## 4. The clocks, and why no platform clock is on the paid path
 
@@ -136,13 +144,14 @@ sequenceDiagram
     A-->>W: 202, the assessment id
     W->>U: The waiting screen confirms the run. The promise is kept
     W->>X: GET /api/assessments/:id/events, one open connection
-    S->>T: UpdateItem state = running, only if it was queued
+    S->>T: UpdateItem state = running, only if it was queued. callsMade = 0
     S->>M: Task: assess
-    M->>T: Re-read the kill-switch and the breaker. Off or open means refuse, no call, refund
+    M->>T: Re-read the kill-switch and the breaker. Off or open means refuse, no call
     M->>AN: POST /v1/messages, output_config.format
     AN-->>M: An answer, or a timeout, a 429, a 503
     M-->>S: A parsed answer, or a named failure. Three failures are thrown as errors
-    Note over S,M: Retry only the three thrown errors. At most 2 more, after 2 s and 4 s
+    Note over S,M: A throttled start is retried at most twice, free. A thrown error adds 1 to callsMade, and Assess runs again while it is under 3, after 2 s and 4 s
+    Note over S,T: A refusal, or a throttle that did not clear, refunds the attempt only when callsMade is 0
     S->>T: UpdateItem the result onto the row. UpdateItem the day rollup
     X->>T: GetItem every 500 ms, a heartbeat every 5 s
     X-->>W: event: done, with the four fields

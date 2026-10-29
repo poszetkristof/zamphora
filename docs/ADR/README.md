@@ -17,7 +17,7 @@ carry the weight:
 | [0003](0003-sign-in-with-openid-connect-and-keep-tokens-on-the-server.md) | Sign in with OpenID Connect through Cognito, and keep every token on the server | Accepted |
 | [0004](0004-refuse-every-route-by-default-and-key-data-by-owner.md) | Refuse every route by default, and put the owner in the partition key | Accepted |
 | [0005](0005-one-model-call-behind-a-port-with-structured-output.md) | Make one model call, behind one port, with structured output | Accepted. "No retry" superseded in part by 0014 |
-| [0006](0006-choose-the-model-by-measuring-it.md) | Choose the model by measuring it, and run on Haiku 4.5 until the measurement exists | Accepted |
+| [0006](0006-choose-the-model-by-measuring-it.md) | Choose the model by measuring it, and run on Haiku 4.5 until the measurement exists | Accepted. Model list, date rule and retirement table superseded by 0017 |
 | [0007](0007-keep-photos-in-one-private-bucket-with-a-lifecycle-rule.md) | Keep photos in one private bucket, and let a lifecycle rule delete them | Accepted |
 | [0008](0008-count-the-daily-limit-with-an-atomic-conditional-write.md) | Count the daily limit with one atomic conditional write in the API | Accepted |
 | [0009](0009-hold-the-kill-switch-in-the-table-and-cache-it-for-30-seconds.md) | Hold the kill-switch in the table, and cache it for 30 seconds | Accepted |
@@ -25,14 +25,19 @@ carry the weight:
 | [0011](0011-build-the-components-on-base-ui.md) | Build the components on Base UI, delivered by shadcn/ui | Accepted 2026-08-26 |
 | [0012](0012-run-the-workspace-on-pnpm-and-turborepo.md) | Run the workspace on pnpm and Turborepo | Accepted 2026-08-26. Supersedes part of 0001 |
 | [0013](0013-run-every-test-on-vitest.md) | Run every test on Vitest, in all three packages | Accepted 2026-08-26 |
-| [0014](0014-run-the-assessment-as-a-step-functions-workflow.md) | Run the assessment as a Step Functions workflow | Accepted 2026-09-17. Supersedes part of 0002 and 0005 |
+| [0014](0014-run-the-assessment-as-a-step-functions-workflow.md) | Run the assessment as a Step Functions workflow | Accepted 2026-09-17. Supersedes part of 0002 and 0005. Retry and refund arrows superseded in part by 0018 |
 | [0015](0015-deliver-the-result-over-one-server-sent-events-stream.md) | Deliver the result over one server-sent-events stream | Accepted 2026-09-17 |
-| [0016](0016-refund-an-attempt-when-no-call-was-made.md) | Refund an attempt when no model call was made | Accepted 2026-09-17 |
+| [0016](0016-refund-an-attempt-when-no-call-was-made.md) | Refund an attempt when no model call was made | Accepted 2026-09-17. Table of paths superseded in part by 0018 |
+| [0017](0017-allow-three-model-ids-each-a-fixed-version.md) | Allow exactly three model ids, each one a fixed version | Accepted 2026-10-29 by the owner (gate 83). Supersedes part of 0006 |
+| [0018](0018-refund-only-when-the-run-made-no-model-call.md) | Refund an attempt only when the whole run made no model call | Accepted 2026-10-29 by the owner (gate 84). Supersedes part of 0014 and 0016 |
 
 **0001 to 0011** were written by the 400-architecture role on 2026-08-25, from the chosen direction
 in `docs/400-architecture/00-options.md`. **0012** was written on 2026-08-26 after the owner chose
 pnpm and Turborepo. **0014 to 0016** were written on 2026-09-17 after the owner chose Option E, the
-background assessment, in `docs/400-architecture/00-options.md` §11.
+background assessment, in `docs/400-architecture/00-options.md` §11. **0017 and 0018** were written
+on 2026-10-29 in a repair pass. 0017 records the owner's list of allowed model ids (gate 83). 0018
+closes seam ledger finding 58. Both supersede rather than correct, because other roles' files were
+built on the old text.
 
 **Two records changed on 2026-08-26 and both are worth knowing about:**
 

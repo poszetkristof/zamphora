@@ -76,15 +76,17 @@ function; everything else reaches the static files of `apps/web` in a private bu
   (ADR-0003).
 - **One model call per assessment in the normal case, at most three**, through `LlmProvider`
   (ADR-0005, ADR-0014). The only retry is the workflow's; the adapter has `maxRetries: 0`. Default
-  model id `claude-haiku-4-5-20251001`, held in the table, not in code (ADR-0006).
+  model id `claude-haiku-4-5-20251001`, held in the table, not in code (ADR-0006). The table may
+  hold only one of three ids: `claude-haiku-4-5-20251001`, `claude-haiku-5-5` or
+  `claude-sonnet-5-5` (ADR-0017, `03-api-spec.md` §6).
 
 ## 4. The gotchas, all of them real
 
 | Gotcha | What to do |
 | --- | --- |
 | API Gateway cuts a request off at **30 seconds** and cannot be raised. Its 504 has a body nobody here wrote | The model call is not behind the gateway any more (ADR-0014). The `api` function still fails at **20,000 ms** and answers for itself, and it answers in about a second in practice |
-| The Anthropic SDK retries on its own by default | Set `maxRetries: 0` on the client. The only retry is the workflow's `Retry` with `MaxAttempts: 2` (ADR-0014, NFR-05). Two hidden retries would turn three calls into nine |
-| CDK's `LambdaInvoke` task adds a hidden retry of six attempts on Lambda service errors | Set `retryOnServiceExceptions: false` and write one explicit `Retry` list. One of those errors can arrive after the call was made |
+| The Anthropic SDK retries on its own by default | Set `maxRetries: 0` on the client. The only retry of a model call is the workflow's `RetryOrStop`, which runs `Assess` again while `callsMade` is under 3 (ADR-0018, NFR-05). Two hidden retries would turn three calls into nine |
+| CDK's `LambdaInvoke` task adds a hidden retry of six attempts on Lambda service errors | Set `retryOnServiceExceptions: false`. The only `Retry` is on `Lambda.TooManyRequestsException`, `MaxAttempts: 2`, because then the function never ran. A hidden retry on another error can run after the call was made (ADR-0018) |
 | A timeout on the whole state machine skips every `Catch`, so the row stays `running` for ever | No machine-level timeout. `TimeoutSeconds` and a `Catch` on every task |
 | Step Functions Express has no free amount and runs a step at least once | Standard only. Express could call the model twice for one photo with no rule saying so |
 | API Gateway's HTTP API cannot stream, and the REST API that can corrupts uploads | The stream is a Lambda Function URL. The upload stays on the HTTP API |

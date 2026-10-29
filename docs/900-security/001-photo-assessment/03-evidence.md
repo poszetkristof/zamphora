@@ -546,42 +546,144 @@ Serve this page from any other origin, open it in a browser that is signed in, a
 
 ### EV-23 — The daily limit holds under ten at once (NFR-12, US-08, T-38)
 
+**Proves:** the conditional increment in `03-api-spec.md` §5 lets exactly ten requests through in one
+UTC day, and refuses the eleventh.
+
+**The number to read is `attempts` on the person's own row**: `PK = USER#<sub>`,
+`SK = QUOTA#<yyyy-mm-dd>` (`03-api-spec.md` §5). That is the counter the daily limit limits. The two
+day-rollup counters in `03-api-spec.md` §8 are the wrong numbers for this check:
+
+- `modelCalls` counts calls to the provider. One assessment can make up to 3 of them, so it does not
+  match the number of `202`s.
+- `assessmentsStarted` is written by the workflow's `Rollup` step, at the end of each run. So it
+  moves after the `202`, not at the same time, and it counts every account in the environment.
+
+**Run it on an account with no assessment today**, so `attempts` starts empty. Do not run it in the
+last minute before midnight UTC, because the day is part of the key.
+
+**One limit of `preview`, said plainly.** The `api` function's reserved concurrency there is 2
+(`00-environments.md` §4). So at most two of the ten requests run at the same moment, and Lambda
+turns the rest away before any code runs. A request that was turned away never reached the
+`requestId` claim at step 6c, so the script sends it again with the **same** `requestId` until the
+API itself answers. Two at once is still enough to catch a read-then-write: two requests that read
+the same value write the same value, and the counter ends below the number of `202`s.
+
 ```bash
-seq 1 10 | xargs -P 10 -I{} curl -s -o /dev/null -w '%{http_code}\n' \
-  -X POST "https://<host>/api/assessments" -b "__Host-session=<session>" \
-  -F potId=<pot> -F locale=hu -F requestId=$(uuidgen) -F photo=@plant.jpg
-# then one more
-curl -s -o - -w '\n%{http_code}\n' -X POST "https://<host>/api/assessments" \
-  -b "__Host-session=<session>" -F potId=<pot> -F locale=hu \
-  -F requestId=$(uuidgen) -F photo=@plant.jpg
+DAY=$(date -u +%F)
+send() {   # one new requestId, sent again only while Lambda turns it away
+  rid=$(uuidgen)
+  while true; do
+    out=$(curl -s -w '\n%{http_code}' -X POST "https://<host>/api/assessments" \
+      -b "__Host-session=<session>" -F potId=<pot> -F locale=hu \
+      -F requestId="$rid" -F photo=@plant.jpg)
+    status=$(tail -n 1 <<<"$out"); body=$(head -n -1 <<<"$out")
+    if [ "$status" = 202 ] || grep -q '"code"' <<<"$body"; then echo "$status $body"; return; fi
+    sleep 1
+  done
+}
+export -f send
+seq 1 10 | xargs -P 10 -I{} bash -c send
+# then one more, with its own new requestId
+send
+# then the counter
+aws dynamodb get-item --table-name <the preview table> \
+  --key "{\"PK\":{\"S\":\"USER#<sub>\"},\"SK\":{\"S\":\"QUOTA#$DAY\"}}" \
+  --query 'Item.attempts.N' --output text
 ```
 
-**Pass:** exactly ten `201`s, then one `429` with `"code":"daily-limit-reached"` and a
-`quotaResetsAt` in `details`. `modelCalls` in the day rollup is exactly 10, never 11.
-**Fail:** eleven successes, or fewer than ten, or `modelCalls` at 11. **Note this spends ten stub
-calls, never real ones — `preview` uses the stub provider** (`00-environments.md` §3).
+**`uuidgen` runs inside `send`, once per request.** Written straight into an `xargs` line, the shell
+runs it once, before `xargs` starts, and all ten requests carry the same id. Then §4a answers nine of
+them from the first one, and the check measures the request-id row instead of the limit.
+
+**Pass:** ten lines start with `202`, and the ten `assessmentId` values are all different. The
+eleventh line is `429` with `"code":"daily-limit-reached"` and a `quotaResetsAt` in `details`.
+`attempts` reads `10`.
+**Fail:** an eleventh `202`; fewer than ten `202`s; two `202`s with the same `assessmentId`; or
+`attempts` at any value other than 10.
+
+**One answer is not a failure of the limit.** A `503 workflow-not-started` refunds its attempt
+(`03-api-spec.md` §4f), so `attempts` ends one lower. If that happens, run the check again on a fresh
+account or on the next UTC day.
+
+**Note this spends stub calls, never real ones — `preview` uses the stub provider**
+(`00-environments.md` §3).
 
 | Output | Date run | Result |
 | --- | --- | --- |
 | | | |
 
-### EV-24 — One tap is one charge, and a failure does not lock the person out (R-08, T-16)
+### EV-24 — One tap is one charge, and a failure does not lock the person out (R-08, T-16, gate 76)
+
+**Proves:** the rule in `03-api-spec.md` §4a. A resend of the same `requestId` gets the same answer
+as the first send, and it never spends a second attempt. A second try after an answered failure
+carries a new `requestId`, and the API treats it as a new request. When the browser makes a new id
+and when it sends the same one is gate 76 in `factory/feature.md`.
+
+**The number to read is `attempts`, as in EV-23**, and for the same reasons — not `modelCalls`.
+
+**Parts one and two need an account with at least 3 attempts left today.** Part three needs an
+account whose `attempts` is already at the limit, for example straight after EV-23.
 
 ```bash
-# same requestId twice, back to back
-RID=$(uuidgen)
-for i in 1 2; do
+DAY=$(date -u +%F)
+attempts() {
+  aws dynamodb get-item --table-name <the preview table> \
+    --key "{\"PK\":{\"S\":\"USER#<sub>\"},\"SK\":{\"S\":\"QUOTA#$DAY\"}}" \
+    --query 'Item.attempts.N' --output text
+}
+post() {     # $1 is the requestId
   curl -s -o - -w '\n%{http_code}\n' -X POST "https://<host>/api/assessments" \
     -b "__Host-session=<session>" -F potId=<pot> -F locale=hu \
-    -F requestId=$RID -F photo=@plant.jpg
-done
-# then force a provider failure in the stub, and send the SAME requestId again
+    -F requestId="$1" -F photo=@plant.jpg
+}
+stream() {   # $1 is the assessmentId, URL-encoded as in EV-19
+  curl -sS -N --max-time 60 -b "__Host-session=<session>" \
+    "https://<host>/api/assessments/$1/events"
+}
+
+# Part one: the same requestId twice, back to back
+attempts                            # write it down as A
+RID=$(uuidgen); post "$RID"; post "$RID"
+attempts                            # expect A + 1
+
+# Part two: a run that failed
+# force a provider failure in the stub, so every call fails
+FAILED=$(uuidgen); post "$FAILED"   # 202. Write down the assessmentId
+stream <that id>                    # wait for the state event
+attempts                            # write it down as B
+post "$FAILED"                      # the SAME requestId again
+stream <that id>
+attempts                            # expect B
+# turn the forced failure off
+post "$(uuidgen)"                   # a NEW requestId: the person's second try
+attempts                            # expect B + 1
+
+# Part three: a refusal that is written on the IDEM# row
+LIMITED=$(uuidgen); post "$LIMITED"; post "$LIMITED"
+attempts                            # expect the limit, unchanged
 ```
 
-**Pass, part one:** the second call returns the same assessment, and `modelCalls` moved by 1, not 2.
-**Pass, part two:** after a forced failure, sending the same `requestId` again is **allowed to run**.
-**Fail:** part two answers `409 request-in-flight` for ten minutes. That is R-08, and it means the
-recovery path the owner chose on 2026-08-26 does not work.
+The stream closes at 55 seconds (`03-api-spec.md` §4e). If it closes before a `state` event
+arrives, open it again. The row already holds whatever happened.
+
+**Pass, part one:** both answers are `202` with the same `assessmentId`, and `attempts` moved by 1,
+not 2.
+**Pass, part two:** the first stream sends one `state` event with `failed`. The same `requestId`
+sent again gets `202` with the **same** `assessmentId`, its stream sends that same `failed` event,
+and `attempts` does not move. So there is no second run and no second charge. The new `requestId`
+gets `202` with a **different** `assessmentId`, and `attempts` moves by 1. That move is expected: a
+new id is a new request. Whether a retry after a failure should spend one of the ten is gate 82, and
+it is open.
+**Pass, part three:** both answers are `429` with `"code":"daily-limit-reached"` and a
+`quotaResetsAt`, and `attempts` does not move. The second answer comes from the `failureCode` on the
+`IDEM#` row.
+**Fail, part one:** two different `assessmentId` values, or `attempts` moved by 2. One tap was
+charged twice.
+**Fail, part two:** the same `requestId` starts a second run — a different `assessmentId`, or
+`attempts` moves. That is the option gate 76 rejected, and it charges again for a resend. Or the new
+`requestId` is refused with `409 request-in-flight`. That is the lock-out in R-08.
+**Fail, part three:** the second answer is `409 request-in-flight`. That means the refusal was not
+written on the `IDEM#` row, and the person waits up to `IDEM_STALE_MS` for a clear answer.
 
 | Output | Date run | Result |
 | --- | --- | --- |

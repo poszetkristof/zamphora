@@ -197,33 +197,34 @@ callback compares. Recorded as seam S-901-2.
 
 ### R-08 — A failed assessment locks the person out of their own retry (T-16, score 12)
 
-`03-api-spec.md` §4a: the browser makes one UUID **when the photo is chosen**, so a resend carries
-the same id. The `assessmentId` is written onto the `IDEM#` row only at step 14, which only runs on
-success. Nothing clears the row on failure. Since 2026-08-26 there is no automatic retry and *"the
-person taps again"* is the whole recovery path.
+The `IDEM#<requestId>` row makes one tap one charge: a resend of the same `requestId` gets the same
+answer as the first send (`03-api-spec.md` §4a). The risk is that the same protection also stops a
+person from trying again after a failure. A failure shows a screen, and the person taps again, so
+that tap is the whole recovery path.
 
-**Both readings of the current text break something**, which is why this is a decision and not a bug
-fix:
+**When this risk was scored, no input said when the browser makes a new id.** Both readings of the
+text broke something:
 
-- If the browser reuses the id after a failure, the person gets `409 request-in-flight` for ten
+- If the browser reused the id after a failure, the person got `409 request-in-flight` for ten
   minutes after every failure.
-- If the browser makes a new id after a failure, the protection against a double charge is gone for
+- If the browser made a new id on every tap, the protection against a double charge was gone for
   exactly the case it was written for — a slow upload where the person taps twice.
+
+**That question is answered by gate 76 in `factory/feature.md`**, which says when the browser makes a
+new id and when it sends the same one. `03-api-spec.md` §4a says what the API answers in each case.
+With both in place, no path locks the person out, and one tap is still one charge.
 
 | Fix | What | Protects |
 | --- | --- | --- |
-| **Preventive** | **Write the outcome on the `IDEM#` row, not only the success.** On a failure, set a `failedAt` and the failure code. A second send carrying the same id and finding a failure row is allowed to proceed and overwrite. A row with neither an `assessmentId` nor a `failedAt` is genuinely in flight, and only then is `409` correct | **A** |
+| **Preventive** | **Every outcome is written on the `IDEM#` row, so a resend always gets a final answer** (`03-api-spec.md` §4a). The `assessmentId` is written at step 9, before the `202`, whether the run later succeeds or fails. A refusal at steps 7 to 9 writes its `failureCode` on the row instead. **A second try after an answered failure carries a new `requestId`** (gate 76), so it is a new request and not a replay of the failure | **A** |
 | **Detective** | Count `409 request-in-flight`. It should be close to zero. A rising count means this rule is wrong | I |
-| **Responsive** | The row carries a 10-minute time-to-live, so the worst case already ends by itself. Nothing else is needed once it is counted | A |
+| **Responsive** | A row with neither field answers `409` only until `IDEM_STALE_MS` (22 seconds) after the claim. After that it answers `unknown` with `retryHint: 'may-work'`, so the worst case ends by itself. The 10-minute time-to-live only tidies the table | A |
 
-**This is 500 Engineering's file to change, not this one.** Recorded as seam S-901-3 and gate
-G-901-4, because it changes behaviour a person sees.
-
-**Closed by structure on 2026-09-17.** ADR-0014 writes the `assessmentId` onto the `IDEM#` row
-**before** the `202`, at step 9 of `03-api-spec.md` §4, whether the run later succeeds or fails. A
-resend finds the id and is answered with the same run. So the preventive fix above is no longer
-needed, the `409` can only happen inside the second between the claim and the write, and T-16 is
-now Low. The detective count stays: it is cheap and it would show a regression.
+**Closed.** The preventive fix is written into `03-api-spec.md` §4a and §4f, and T-16 is Low
+(`01-threats.md` §7). EV-24 in `03-evidence.md` is the check. The detective count stays: it is cheap
+and it would show a regression. **One question stays open, and it is not this role's.** A second try
+with a new id passes the daily limit like any other request, so it spends one of the person's ten.
+Whether a failed run should count is gate 82, and it belongs to the owner.
 
 ### R-09 — A crafted image corrupts memory in the `api` function (T-19, score 8 since 2026-09-17)
 
@@ -338,7 +339,7 @@ of life is otherwise found from an error message.
 | Fix | What | Protects |
 | --- | --- | --- |
 | **Preventive** | The check in `01-threats.md` §5 is the control, and it ran: every package named in a specification was read from the npm registry before it was accepted. **Do it again for every new name in every run** | **I** |
-| **Detective** | The plugin is at a pinned version path (`ai-factory/0.2.3/`). A version change is visible. A role writing a package name that no registry answers for is caught by the check above | I |
+| **Detective** | The plugin is at a pinned version path (`ai-factory/0.2.4/`). A version change is visible. A role writing a package name that no registry answers for is caught by the check above | I |
 | **Responsive** | Remove the name from the specification. Nothing has been installed yet, so in run 1 this costs one edit | A |
 
 ---
@@ -517,7 +518,7 @@ ledger is a `missed` gate, which `handoff-map.yaml` weighs the same as a broken 
 | **G-901-1** | **The lethal trifecta fired on this role.** It held the whole repository, fetched 8 outside pages, and a fetched URL is a way to send data out. Nothing was sent, no fetched page changed the task, and every URL came from a search result this role chose. Does the owner accept that shape for a research role, or should web access be narrowed? | **(a)** Accept, and keep the rule that every outside fact carries its link and the date. **(b)** Narrow web access to a list of allowed domains. **(c)** Split the role: one pass with the web and no repository, one with the repository and no web | `recorded-open` |
 | **G-901-2** | **Personal data leaves the EU on every assessment (R-01, RR-01).** The photo is of the inside of a home. Does the owner accept the transfer, and what is the compliance position for run 1? | **(a)** Accept for run 1, as a project with one user who is the owner, and re-open the day it is offered to anyone else — the same shape gate 25 already used for the EU AI Act. **(b)** Accept and write a short data statement into the product. **(c)** Do not accept, which means the feature does not ship | **closed 2026-09-17: (a), by the owner.** Accepted for run 1 on the household-activity reading, with the re-open trigger written into RR-01. **The hard stop is lifted, so the photo path may be built** |
 | **G-901-3** | **The 12-month deletion and its warning have no mechanism (R-02, R-04).** Both are the owner's own decisions from 2026-08-24, and neither exists in the plan | **(a)** Build neither in run 1 and say so in writing, so no deletion happens without a warning. **(b)** Build the deletion with a DynamoDB `ttl` on the profile item plus a check in code, and delay the warning to the notifications run. **(c)** Build both, which needs email and pulls gate 29's decision forward | **closed 2026-09-17: (a), by the owner.** Neither in run 1. Both ship in run 3's monthly `sweep`. **Option (b) was also found to be wrong** — a DynamoDB TTL deletes one item and would orphan the rest of the account. See R-02 |
-| **G-901-4** | **A failed assessment may lock the person out of their own retry for ten minutes (R-08).** Which rule does the owner want? | **(a)** Write the failure on the `IDEM#` row, so a second send is allowed after a failure and refused only while one is genuinely running. **(b)** The browser makes a new id on a retry, which gives back the double-charge risk the row was added to stop | **closed 2026-09-17 by structure.** ADR-0014 writes the id on the `IDEM#` row before the `202`, so the lock-out cannot happen and neither option is needed. See R-08 |
+| **G-901-4** | **A failed assessment may lock the person out of their own retry for ten minutes (R-08).** Which rule does the owner want? | **(a)** Write the failure on the `IDEM#` row, so a second send is allowed after a failure and refused only while one is genuinely running. **(b)** The browser makes a new id on a retry, which gives back the double-charge risk the row was added to stop | **answered 2026-09-17 as gate 76** in `factory/feature.md`, "Human decisions already made". The decision is written there and not repeated here. See R-08 |
 | **G-901-5** | **Drop `image/gif` from the accepted photo formats (R-09).** The libvips GIF loader is one of the three the July 2026 advisory names. A phone camera never produces a GIF. This changes a message a person reads, because US-01 AC-2 says the refusal names the formats | **(a)** Drop GIF, leaving JPEG, PNG and WebP. **(b)** Keep GIF and rely on the `sharp.block()` guard and the version pin alone | **closed 2026-09-17: (a), by the owner.** `ACCEPTED_PHOTO_TYPES` is JPEG, PNG and WebP |
 | **G-901-6** | **Every residual risk needs a named, reachable person and this role cannot supply one.** The owner is the only person on the project, and no readable input carries a name or a contact | **(a)** Write the name and a contact into `human-gates.md`, which is not published. **(b)** Name the alarm email address as the contact, which gate 58 keeps out of the repository | `hard-stop` for the ledger. The rest of this file does not depend on it |
 | **G-901-7** | **Splitting `POST /api/assessments` into its own function with its own IAM role (RR-03).** It is the structural answer to R-09 and it costs a second deployable unit | **(a)** Not now. ADR-0002's written trigger already covers when. **(b)** Do it now, because the decode path is the one place a compromise is plausible | **closed 2026-09-17** by gate 72 and ADR-0014: the model call has its own function and its own role. The decode stays in `api`, which is RR-10 |
@@ -537,8 +538,8 @@ guessing the fact is the failure.
 | --- | --- | --- | --- | --- |
 | **S-901-1** | The CI workflow triggers, the two OpenID Connect roles' trust policies, and what each role may deploy | `docs/800-infra/04-ci-cd.md` — **not in this role's `reads:` block** | **under-supply** | **Closed 2026-09-17 by reading the file.** T-27 and R-05 were scored at 15 because the fact was unknown; two of the three properties hold and the score is now 10. The seam itself is real and the fix still belongs in the plugin: `04-ci-cd.md` must be added to `900-security`'s `reads:` (run-record change 23), or the next run scores the same wasted Critical again |
 | **S-901-2** | Whether `GET /api/auth/callback` compares the `state` in the query with the `state` in the cookie and refuses on a mismatch | `docs/500-engineering/03-api-spec.md` §3, or ADR-0003 | **under-supply** | R-07. The cookie's contents are written down; the comparison is not |
-| **S-901-3** | Whether the browser reuses `requestId` after a failed assessment | `docs/500-engineering/03-api-spec.md` §4a | **under-supply** | R-08. Both readings of the current text break something |
-| **S-901-4** | The valid range for `DAILY_LIMIT`. `03-api-spec.md` §6 says every `CONFIG` value is checked "against a closed list or a range" and names no range | `docs/500-engineering/03-api-spec.md` §6, or ADR-0008 | **under-supply** | T-14. A limit of 10,000 typed by hand would be $40 a day against a $5 balance |
+| **S-901-3** | Whether the browser reuses `requestId` after a failed assessment | `docs/500-engineering/03-api-spec.md` §4a | **under-supply** | R-08. **Answered 2026-09-17 as gate 76** in `factory/feature.md`. `03-api-spec.md` §4a now carries the rule |
+| **S-901-4** | The valid range for `DAILY_LIMIT`. `03-api-spec.md` §6 said every `CONFIG` value is checked "against a closed list or a range" and named no range | `docs/500-engineering/03-api-spec.md` §6, or ADR-0008 | **under-supply** | T-14. A limit of 10,000 typed by hand would have been $40 a day against a $5 balance. **Answered 2026-09-17 as gate 75** in `factory/feature.md`. `03-api-spec.md` §6 now names the range |
 | **S-901-5** | The Cognito password policy. `01-iac-plan.md` §4.3 says "Cognito's own" and no input says what that is. Nothing anywhere mentions multi-factor sign-in for the product's own users | `docs/800-infra/01-iac-plan.md` §4.3 | **under-supply** | T-21. The account is the strongest key to one person's photos and its strength is unstated |
 | **S-901-6** | What happens when `LLM_PROVIDER` is missing or misspelled | `docs/800-infra/00-environments.md` §4 | **under-supply** | T-30. If the fallback is the real adapter, a pull request can spend the $5 balance |
 | **S-901-7** | The path of the file the global guard lives in | No input. **No application code exists yet**, so this is a fact that does not exist rather than one that was withheld | **clean, but open** | §3.1. The first task that writes the guard records the path there |
@@ -614,8 +615,9 @@ The owner moved the assessment into a Step Functions workflow (ADR-0014), the re
 (ADR-0015), and allowed a refund when no call was made (ADR-0016). `01-threats.md` §7 scores the
 four threats that came with it. This section says what to do about them.
 
-**Closed.** R-08, because the id is on the `IDEM#` row before the `202`. RR-03 and gate G-901-7,
-because the model call has its own function and its own role. What RR-03 left behind is RR-10.
+**Closed.** R-08, because the id is on the `IDEM#` row before the `202` and gate 76 says when the
+browser makes a new id (see R-08). RR-03 and gate G-901-7, because the model call has its own
+function and its own role. What RR-03 left behind is RR-10.
 
 **Smaller.** R-09, because the decoding function cannot read the model key.
 

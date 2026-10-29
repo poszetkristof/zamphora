@@ -217,11 +217,11 @@ order is the specification. **Nothing in the `api` function calls the provider.*
 | 5b | **Decode and re-encode the photo to JPEG. Use the re-encoded bytes from here on** | `wrong-format` | §4b below. Strips EXIF, proves the bytes are an image, fixes rotation |
 | 6 | Read the kill-switch from the `CONFIG` cache | `feature-off` | US-13 AC-1, AC-3. NFR-34 |
 | 6b | **Read the circuit breaker row. If it is open and the retry moment has not passed, stop** | `provider-unavailable` | Gate 50, `02-cost-guardrails.md` §5.6. **Before step 7, so an open breaker does not spend one of the person's ten** |
-| 6c | **Claim the request id: conditional `PutItem` on `SK = IDEM#<requestId>`** | — **not a failure**; answer with the stored id | §4a below. A resend of the same photo gets the same run |
+| 6c | **Claim the request id: conditional `PutItem` on `SK = IDEM#<requestId>`** | — **not a failure**; answer from what the stored row holds | §4a below. A resend of the same `requestId` gets the same answer as the first send |
 | 7 | **The daily limit: one conditional `UpdateItem`** | `daily-limit-reached` | US-08 AC-1, AC-3. NFR-12. §5 below |
 | 8 | Write the photo to S3 at `photos/<userId>/<potId>/<createdAt>.jpg` | `unknown` | ADR-0007 (gate 38). **The timestamp, not the assessment id** — the id contains a `#` |
 | 9 | **Write the assessment row with `state: queued`**, the locale and the photo key, and store the assessment id on the `IDEM#` row | `unknown` | §8 below. The id is stored **before** the `202`, so a resend returns it |
-| 10 | **`StartExecution` on the workflow, with `name` = the assessment id** | `workflow-not-started` — and the attempt is refunded with `ADD attempts -1` (ADR-0016) | Step Functions returns the same run for a repeated start with the same name, so a duplicate is harmless |
+| 10 | **`StartExecution` on the workflow, with `name` = the assessment id** | `workflow-not-started` — the assessment row is marked `failed`, and the attempt is refunded with `ADD attempts -1` (ADR-0016). §4f below | Step Functions returns the same run for a repeated start with the same name, so a duplicate is harmless |
 | 11 | Answer **`202 AssessmentAccepted`**, in about a second | — | The waiting screen confirms the run. This is what keeps the 30-second promise |
 
 **The workflow then does the rest**, and §4b below says exactly what the `assess` handler does.
@@ -236,8 +236,12 @@ integration, with no Lambda in between (`05-patterns.md` §13).
 - **The limit is counted before the photo is written**, so a refused request leaves no object behind.
 - **The photo is written before the run starts**, which is the order ADR-0007 sets. A failed
   assessment therefore leaves one object in the bucket, covered by the same 180-day rule.
-- **An attempt is refunded only when no call was made** (ADR-0016): `StartExecution` failed here, or
-  `assess` found the switch off or the breaker open. Never for a call that failed.
+- **An attempt is refunded only when the whole run made no model call** (ADR-0016, ADR-0018). The
+  API refunds when `StartExecution` failed here (§4f). The workflow keeps `callsMade`, the number of
+  model calls this run has made, and refunds only through its `AnyCallMade` state when `callsMade`
+  is 0. Two endings reach that state: `assess` found the switch off or the breaker open, or `assess`
+  was throttled until its retries ran out. Never for a call that failed, and never when an earlier
+  try of the same run called the model.
 - **A `cannot-tell` answer is a finished assessment, not an error** (US-05 AC-3). It is persisted
   as `done`, and the attempt counts (US-05 AC-5).
 - **A failure inside the run is stored with its reason** on the row, as `state: failed` with a
@@ -253,13 +257,14 @@ signal** (`03-flow.md` §2, step 3), and a weak signal is exactly when a person 
 browser resends. Each duplicate was a second quota increment, a second S3 object, a second **paid**
 model call and a second row — for one result on screen. The person would lose two of their ten.
 
-**The browser makes one UUID per photo send** and puts it in the form body as `requestId`. It is
-made when the photo is chosen, not when the request starts, so a resend carries the same id.
+**The browser makes the `requestId`** and puts it in the form body. The API never makes one. When
+the browser sends the same id again and when it makes a new one is set in `02-web-spec.md` §4.2.
 
 ```
 Step 6c:
   PutItem
     Key                  PK = USER#<sub>, SK = IDEM#<requestId>
+    Item                 claimedAt = now
     ConditionExpression  attribute_not_exists(PK)
     ttl                  now + 10 minutes
 ```
@@ -269,12 +274,57 @@ to be step 3a, before the photo was even decoded. It moved so that a request the
 to refuse anyway never leaves a row behind.
 
 - **The condition passes** — this send is new. Carry on to step 7.
-- **The condition fails** — this send has been seen. Read the row. If it carries an `assessmentId`,
-  answer `202` with that id, exactly as the first call did; the run is the same run and the phone
-  opens the same stream. If it does not, the first call has not reached step 9 yet: answer `409`
-  with `request-in-flight`, and the screen keeps waiting. **On a failure the row keeps the id**, so
-  a second send after a failed run is a new request with a new `requestId`, never a lock-out
-  (R-08 in `02-mitigations.md`).
+- **The condition fails** — this send has been seen. Read the row, and answer by what it holds.
+  No row of the table below runs step 7 again, so a resend never spends a second attempt.
+
+| The row holds | The API answers | What it means |
+| --- | --- | --- |
+| An `assessmentId` | `202` with that id, exactly as the first call did. The phone opens the same stream | It is the same run, whatever its state is now: `queued`, `running`, `done` or `failed`. So the same id sent again after a failed run gets the same failure again. The API never starts a second run on an id it has seen |
+| A `failureCode`, and no `assessmentId` | The same failure again, with the same code. For `daily-limit-reached`, `quotaResetsAt` is worked out again | The first call was refused after the claim. See "A refusal after the claim" below |
+| Neither, and `claimedAt` is less than `IDEM_STALE_MS` ago | `409` with `request-in-flight`. The screen keeps waiting | The first call has not reached step 9 yet |
+| Neither, and `claimedAt` is `IDEM_STALE_MS` ago or more | `unknown`, with `retryHint: 'may-work'` | The first call cannot still be running, and it ended without writing what happened |
+
+**A refusal after the claim is written on the row.** Three steps can refuse a request after step 6c
+and before step 9 is finished: step 7 (`daily-limit-reached`), step 8 and step 9 (`unknown`). Before
+the API answers such a failure, it writes the code onto the `IDEM#` row:
+
+```
+UpdateItem
+  Key                  PK = USER#<sub>, SK = IDEM#<requestId>
+  UpdateExpression     SET failureCode = :code
+  ConditionExpression  attribute_not_exists(assessmentId)
+```
+
+Steps 7 to 9 run inside one `try` in the service, so every failure there takes this path, a thrown
+bug included. Only the request that made the claim reaches that `try`. A resend that was answered
+from the row writes nothing.
+
+**If this write fails**, the API logs it and still answers the first failure as it would have. The
+row then holds neither field. A resend of the same id gets `409` until `IDEM_STALE_MS` has passed
+since the claim, and `unknown` after that. So a failed write costs the person a short wait. It never
+costs a second attempt, and the TTL is still only a tidy-up.
+
+```ts
+export const IDEM_STALE_MS = 22_000;   // the api function's timeout (§7)
+```
+
+`IDEM_STALE_MS` is the `api` function's timeout, so after it the first call cannot still be
+running. If 800 Infra changes that timeout, this constant changes in the same change. The same rule
+also covers a first call that was stopped before it could write anything, for example by the
+function timeout.
+
+**The option chosen: write the refusal on the row.** The same id then gets the same answer, which is
+the normal rule for an idempotency key (gate 76), and the browser makes a new id after it, as it
+does after any answered failure. **The option that lost: delete the row when the request is
+refused.** It also ends the stuck `409`, but when step 8 or 9 fails, step 7 has already spent one
+attempt, so a resend with the same id would run step 7 again and spend a second attempt for one tap.
+
+**A second try after a failure needs a new `requestId`, and the browser makes it** (`02-web-spec.md`
+§4.2, gate 76). The API does nothing special for it. The new id passes the condition at step 6c, so
+it is a new request. That is why a failed run is never a lock-out (R-08 in `02-mitigations.md`). The
+new request then passes the daily limit at step 7 like any other, so it spends one of the person's
+ten. Gate 82 settled whether the failed run itself counts: it counts whenever the model was called,
+and it is given back only when the whole run made no call (ADR-0018, §4 above).
 
 **Ten minutes is deliberate.** It is longer than the whole 30-second promise and short enough that
 the rows never accumulate. The TTL is a tidy-up, not a rule — nothing depends on it firing on time
@@ -337,18 +387,28 @@ In order:
 
 1. **Re-read the kill-switch and the breaker** on the same 30-second cache the API uses. If the
    switch is off or the breaker is open, **return a refusal value** — `feature-off` or
-   `provider-unavailable`. The workflow's `Refund` step gives the attempt back, because no call was
-   made (ADR-0016).
+   `provider-unavailable`. The workflow sends a refusal to `AnyCallMade`. That state gives the
+   attempt back through `Refund` only when `callsMade` is 0. When an earlier try of the same run
+   already called the model, the try counts (ADR-0016, ADR-0018).
 2. Read the row and the re-encoded photo object. Build `AssessmentRequest` (§4c).
 3. **One** call to `LlmProvider.assess()`, with an 18,000 ms abort. The client is built with
    `maxRetries: 0`, because the SDK retries on its own by default and two hidden retries would turn
    three calls into nine.
 4. **On `provider-timeout`, `provider-throttled` or `provider-unavailable`: update the breaker row,
-   then throw an error with that name.** Step Functions can only retry an error, never a returned
-   value, so this is the one place in the product that throws on purpose. The workflow retries at
-   most twice, after 2 seconds and then 4.
+   then throw an error with that name.** The workflow's `Catch` matches these three error names, and
+   it cannot match a returned value, so this is the one place in the product that throws on
+   purpose. The `Catch` adds 1 to `callsMade`. Then `RetryOrStop` runs `Assess` again while
+   `callsMade` is under 3, after 2 seconds and then 4. So the workflow calls the model again at most
+   twice (ADR-0018). **Do not put these three names in a `Retry`.** A `Retry` cannot record that a
+   call was made, and the refund depends on that fact.
 5. **On every other outcome, return it as a value**: a parsed answer with its cost computed from
    the `usage` block, or a named failure. Neither is ever retried.
+
+**The `Assess` task has one `Retry`, and it costs nothing.** It covers
+`Lambda.TooManyRequestsException` only, with `MaxAttempts: 2`, after 2 seconds and then 4. Lambda
+sends that error when `assess` is already running once (reserved concurrency 1, below). So the
+function did not run and no call was made. When these retries run out, the run goes to
+`AnyCallMade` like a refusal, and the failure is recorded as `provider-unavailable` (ADR-0018).
 
 **Once the model has answered, the write always finishes, because the money is already spent.**
 That rule is kept from run 1, and it is now easier to keep: `Persist` and `Rollup` are workflow
@@ -383,6 +443,50 @@ for the ceiling**, so a generous ceiling costs nothing and a tight one is the on
 `answer-truncated` — a `will-not-work` failure that ends the person's attempt with no way forward.
 1024 is roughly seven times the expected size. **Do not tune this number down to save money; it does
 not save any.**
+
+### 4f. When `StartExecution` fails at step 10
+
+Step 9 has already written the assessment row as `queued` and stored its id on the `IDEM#` row. If
+step 10 fails and nothing else happens, the row stays `queued` for good. No workflow will ever move
+it, so the stream never sends a final event. A resend of the same id gets `202` and then a wait that
+ends only at `RESULT_DEADLINE_MS`.
+
+So before it answers, the API makes two writes, in this order:
+
+```
+1. UpdateItem  the assessment row
+     UpdateExpression     SET state = 'failed', failureCode = 'workflow-not-started'
+     ConditionExpression  state = 'queued'
+2. UpdateItem  PK = USER#<sub>, SK = QUOTA#<yyyy-mm-dd>
+     UpdateExpression     ADD attempts -1
+```
+
+`state` is a reserved word in DynamoDB, so the code names it through `ExpressionAttributeNames`.
+Write 2 is the refund, exactly as ADR-0016 sets it: one atomic `ADD`, made by the API before it
+answers.
+
+| What happens to write 1 | What the API does next | What the person sees |
+| --- | --- | --- |
+| **It succeeds** | Write 2, the refund. Then it answers `503 workflow-not-started` | The failure screen. The stream sends one `failed` event at once, and a resend of the same id gets `202` and then that same `failed` event. The browser makes a new id after it (`02-web-spec.md` §4.2) |
+| **Its condition fails**, because the row has already left `queued` | No refund. It answers `202` with the id, as at step 11 | The normal wait. The start did reach Step Functions after all, and `ClaimRun` took the row, so the run is real. ADR-0016 refunds only when no call was made |
+| **It fails with an error** | It logs the error with the assessment id, so the row can be found. Then write 2, the refund, and the answer `503 workflow-not-started`, as ADR-0016 says for a failed start | The failure screen, and the browser makes a new id. The row stays `queued`. Only when that answer is lost does a resend of the same id get `202` and wait until `RESULT_DEADLINE_MS` |
+
+**Why write 1 also protects the refund.** Once the row is `failed`, `ClaimRun` cannot move it from
+`queued` to `running`. So if the start did reach Step Functions after all, that run stops at
+`ClaimRun` with no model call, and the refund stays true. The one gap is the third row of the table:
+when write 1 fails and the start did go through, that run makes its call with the attempt refunded.
+It needs a failed start and a failed write on the same request, both of which are rare.
+
+**One tap is still one charge.** No path in this section runs step 7 again. The refund runs at most
+once, in the request that made the claim, because a resend is answered from the `IDEM#` row and
+never reaches step 10.
+
+**The option chosen: mark the assessment row `failed`, but only while it is still `queued`.** The row
+then tells the truth, the stream and a resend both get a final answer, and the condition stops a late
+start from making a call after the refund. **The option that lost: write `workflow-not-started` on
+the `IDEM#` row, as §4a does for a refusal before step 9.** A resend would get a clear answer, but
+the assessment row would stay `queued` for good, the stream would never send a final event, and
+nothing would stop a late start.
 
 ## 5. The daily limit
 
@@ -432,7 +536,7 @@ export const CONFIG_CACHE_MS = 30_000;
 **30,000 ms, not 60,000.** Gate G-8 promises 60 seconds; thirty leaves the rest as headroom so a
 slow read still lands inside the promise (NFR-34). Do not raise it.
 
-Four rules, each one a "do not" in ADR-0009 or ADR-0006:
+Four rules, each one a "do not" in ADR-0009, ADR-0006 or ADR-0017:
 
 - **Do not read the row on every request.** The cache is the design.
 - **A failed read keeps the last known value.** The switch does not flip itself on a network blip.
@@ -440,11 +544,42 @@ Four rules, each one a "do not" in ADR-0009 or ADR-0006:
   own configuration should not be spending money.
 - **Every value is checked against a closed list or a range on read**, and an invalid value falls
   back to the compiled-in default rather than being used. A bad value in this partition would
-  otherwise break three things at once.
+  otherwise break three things at once. The one range is for `DAILY_LIMIT`, and the one closed list
+  is for `MODEL_ID`. Both are below.
 
-**The model id is always fully dated.** Never a moving alias such as `claude-haiku-latest`, because a
-silent upgrade would move the accuracy measurement with nothing in the repository changing
-(ADR-0006).
+**`DAILY_LIMIT` must be a whole number from 1 to 20** (gate 75 in `factory/feature.md`).
+
+```ts
+export const DAILY_LIMIT_MIN = 1;
+export const DAILY_LIMIT_MAX = 20;   // gate 75. Raising it is a code change, made on purpose
+```
+
+A value outside the range is not used. For example, 200 or 2000 is refused, and the limit stays at
+the compiled-in 10. The check runs on every read, so it also runs on the first read after the
+function starts. This is what stops a typing mistake in the table from emptying the credit balance.
+At the top of the range a person can spend about $0.08 of model calls a day. **Raising the top is a
+decision somebody makes on purpose**, so it is a change to this constant and not a value typed into
+the table.
+
+**`MODEL_ID` must be one of exactly three ids** (ADR-0017, gate 83). The list lives beside the
+`CONFIG` reader in `apps/api`, because the value does not cross the wire (`00-conventions.md` §4).
+
+```ts
+export const ALLOWED_MODEL_IDS = [
+  'claude-haiku-4-5-20251001',
+  'claude-haiku-5-5',
+  'claude-sonnet-5-5',
+] as const;
+export const DEFAULT_MODEL_ID = 'claude-haiku-4-5-20251001';   // ADR-0017. Change it only after the golden set
+```
+
+Any other value is refused and never sent to the API, and the compiled-in default is used instead.
+That includes the bare alias `claude-haiku-4-5`, any `-latest` alias and any Opus id. **The id must
+name one fixed version**, because a silent upgrade would move the accuracy measurement with nothing
+in the repository changing (ADR-0006). For Haiku 4.5 the fixed version is the dated id. The two 5.5
+ids have no date, and each one is already a fixed version. **The list is the pin:** a value that is
+not on it never reaches the API, so a moving alias cannot arrive by accident. Adding an id to the
+list is a new decision by the owner (ADR-0017).
 
 **The `AI_ENABLED` row holds one field.** `05-patterns.md` §1 still describes it as holding "on or
 off, who changed it, when". ADR-0009 was corrected on 2026-08-26 and its summary now says: **do not
