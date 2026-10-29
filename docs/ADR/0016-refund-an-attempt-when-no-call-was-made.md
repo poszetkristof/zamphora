@@ -1,6 +1,9 @@
 # ADR-0016 — Refund an attempt when no model call was made
 
-- **Status:** Accepted 2026-09-17, by the owner (gate 72)
+- **Status:** Accepted 2026-09-17, by the owner (gate 72). **The table of paths below is superseded
+  in part by [ADR-0018](0018-refund-only-when-the-run-made-no-model-call.md) (gate 84):** a run throttled until its retries ran out is refunded too, and a refusal is
+  refunded only when no earlier try in the same run called the model. The rule of this record
+  stands unchanged.
 - **Date:** 2026-09-17
 - **Adds one sentence to:** ADR-0008 (the daily limit) and ADR-0009 (the kill-switch). Everything
   else in both stands.
@@ -42,6 +45,9 @@ decrements the counter for any other reason. The refund is one atomic `ADD`, so 
 - **No refund.** Rejected. A person would lose one of ten for a switch the owner flipped.
 
 ## Agent-Readable Summary
+
+> **Read ADR-0018's summary with this one.** Inside the workflow, a refund happens only when the
+> run's `callsMade` is 0, and that check also covers a run throttled until its retries ran out.
 
 > Refund an attempt with one `UpdateItem ADD attempts -1` only when no model call was made: the
 > kill-switch or the breaker refused inside `assess`, or `StartExecution` failed. Do not refund on

@@ -59,7 +59,7 @@ request, against the credit.
 | **AWS Systems Manager Parameter Store** | Standard parameters have no charge, and no monthly limit is named ([Systems Manager pricing](https://aws.amazon.com/systems-manager/pricing/), checked 2026-09-01) | Standard tier only. Advanced parameters are charged | Never create an advanced parameter |
 | **Amazon SNS** | Always Free. *"This always free service is available on the Free and Paid plan"* | 1,000,000 publishes, 100,000 HTTPS deliveries and **1,000 email deliveries** a month ([SNS on the free tier](https://aws.amazon.com/pm/sns/), checked 2026-09-01) | A handful of alarm emails a month is far below 1,000 |
 | **CloudFront Functions** | Always Free | **2,000,000 invocations a month** ([CloudFront FAQ](https://aws.amazon.com/cloudfront/faqs/), checked 2026-09-01) | Used for the URL rewrite (`01-iac-plan.md` §4.6), a few hundred a month. Charged per million past the allowance |
-| **AWS Step Functions, Standard** | Always Free. *"4,000 state transitions per month"*, and it does not expire ([Step Functions pricing](https://aws.amazon.com/step-functions/pricing/), checked 2026-09-17) | About 7 transitions per assessment, so 310 a month at the daily cap uses about 2,200 of 4,000 | $0.025 per 1,000 transitions after. **Express has no free amount and is never used** (`01-iac-plan.md` §4.4b) |
+| **AWS Step Functions, Standard** | Always Free. *"4,000 state transitions per month"*, and it does not expire ([Step Functions pricing](https://aws.amazon.com/step-functions/pricing/), checked 2026-09-17) | About 7 transitions per assessment, so 310 a month at the daily cap uses about 2,200 of 4,000. A paid retry adds 3 more: `RetryOrStop`, `Backoff` and `Assess` again (ADR-0018). If all 310 took two paid retries, the month would use about 4,000, at the edge of the allowance | $0.025 per 1,000 transitions after. **Express has no free amount and is never used** (`01-iac-plan.md` §4.4b) |
 | **Lambda Function URL** | Lambda pricing, nothing extra ([Function URLs](https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html), checked 2026-09-17) | Inside Lambda's 1 million requests. A stream of 55 seconds is billed as one long invocation, about 0.06 GB-seconds at 1024 MB | Charged as any Lambda call. One open stream per assessment |
 | **Amazon SQS** | Always Free, 1,000,000 requests ([SQS pricing](https://aws.amazon.com/sqs/pricing/), checked 2026-09-17) | Used only as the dead-letter queue, which nothing reads. Near zero | Never a queue a function polls, because polling an idle queue costs requests |
 | **AWS X-Ray** | Always Free, 100,000 traces recorded a month ([X-Ray pricing](https://aws.amazon.com/xray/pricing/), checked 2026-09-17) | A few hundred a month | Charged per million traces past that. Sampling is left at the default |
@@ -70,7 +70,7 @@ request, against the credit.
 | **NAT Gateway** | None. There is no free offer | **This design has no VPC and therefore no NAT Gateway** | Not applicable — see §6 |
 | **DynamoDB point-in-time recovery** | None. **$0.20 per GB per month** ([DynamoDB provisioned pricing](https://aws.amazon.com/dynamodb/pricing/provisioned/), checked 2026-09-01) | **Off** (gate 46, §8) | This table holds no photo bytes — text, counters and short strings only. At a few hundred MB that is **a few cents a month**, not a real trade. §8 states the reason as cost; that reason does not hold. **Re-open with the owner** |
 | **GitHub Actions** | Not AWS. Free and unlimited on a public repository | Unlimited minutes, and CodeQL scanning at no charge (gate 47) | Not applicable while the repository is public |
-| **Anthropic Messages API** | Not AWS. A separate account | About $5, topped up by hand | The feature answers `no-credit`. That failure is never retried; only a timeout, a 429 or a 503 is, at most twice (ADR-0014) |
+| **Anthropic Messages API** | Not AWS. A separate account | About $5, topped up by hand | The feature answers `no-credit`. That failure is never retried. Only a timeout, a 429 or a 503 leads to another call, at most twice in one run (ADR-0018) |
 
 **Three findings from that table are worth saying in words.**
 
@@ -161,9 +161,13 @@ the total settles at roughly 36 MB.
 It would have been bigger than the compute, the storage and the gateway together. Removing it
 removed about 99% of the AWS bill.
 
-**One thing can move the Anthropic line, and it has a date.** Claude Haiku 4.5 retires no sooner
-than **2026-10-15** (gate 62). A different model would change the per-assessment cost, so the date is
-step 8 of the before-first-deploy checklist in `00-environments.md` §10.
+**One thing can move the Anthropic line: the model.** Claude Haiku 4.5 is the default, and its
+earliest retirement date, **2026-10-15**, has passed (ADR-0017). Anthropic emails a notice at least
+60 days before it retires a model. That email is the trigger to run the golden set and switch the
+default. The two other allowed models are estimated at about $0.0004 (Haiku 5.5) and $0.0080
+(Sonnet 5.5) per assessment, from ADR-0017's table. Sonnet 5.5 as the default would break NFR-10,
+so that switch would be the owner's spending decision. Step 8 of the before-first-deploy checklist in
+`00-environments.md` §10 carries the re-check.
 
 **These figures are for the expected case and prove nothing about the bad case.** §5 and §6 are
 about the bad case.
@@ -212,27 +216,32 @@ number to watch, not a number that is enforced. NFR-14 also carries the arithmet
 daily limit does not guarantee it: one person using all ten every day for 184 days spends about
 $6.44.
 
-### 3. Retry cap — two, in one place, on three names
+### 3. Retry cap — three calls at most, counted in one place, on three names
 
-**Rewritten 2026-09-17 (ADR-0014).** From 2026-08-26 until then there was no retry anywhere,
-because a second call sat under the same 30-second clock as the first. The call now runs in the
-background, so a capped retry is allowed again, and the cap is the guardrail:
+Until ADR-0014 there was no retry anywhere, because a second call sat under the same 30-second clock
+as the first. The call now runs in the background, so a capped retry is allowed again, and the cap
+is the guardrail. ADR-0018 sets how the cap is counted:
 
 ```
-MaxAttempts: 2       in the state machine, on the Assess task. Three calls at most
+callsMade under 3    in RetryOrStop, a Choice in the state machine. Three calls at most
 maxRetries: 0        on the Anthropic client. The SDK must never retry underneath
 retryOnServiceExceptions: false   on the CDK task. No hidden six-attempt retry
+MaxAttempts: 2       on the Assess task, for Lambda.TooManyRequestsException only.
+                     The function did not run, so this retry is free
 ```
 
-**Only three names are retried:** `provider-timeout`, `provider-throttled`, `provider-unavailable`.
-The `assess` handler throws them as errors so the workflow can see them. Every other failure —
-refusal, truncation, bad request, empty balance, unreadable answer — is returned as a value and
-never retried, because it would fail the same way again.
+**Only three names lead to another call:** `provider-timeout`, `provider-throttled`,
+`provider-unavailable`. The `assess` handler throws them as errors so the workflow can see them.
+They go to a `Catch`, not a `Retry`. The `Catch` adds 1 to `callsMade`, the number of model calls
+this run has made. A `Retry` keeps no record that a call was made, and the refund in guardrail 4
+depends on that record (ADR-0018). Every other failure — refusal, truncation, bad request, empty
+balance, unreadable answer — is returned as a value and never retried, because it would fail the
+same way again.
 
-**Every retry costs twice: a Step Functions transition and a paid call.** So the cap is written
-once, in CDK, and `infra-assert` reads it off the synthesised template (NFR-05). The worst case for
-one photo is three calls, about $0.012 (NFR-10), and the daily limit still caps a person at ten
-photos, so the worst day is about $0.12.
+**Every paid retry costs twice: three Step Functions transitions and a paid call.** So the cap is
+written once, in CDK, and `infra-assert` reads it off the synthesised template (NFR-05). The worst
+case for one photo is three calls, about $0.012 (NFR-10), and the daily limit still caps a person at
+ten photos, so the worst day is about $0.12.
 
 **A test enforces the count.** NFR-04: a stub provider counts calls. Every non-retried failure gives
 exactly 1, and a stub that throws three timeouts gives exactly 3.
@@ -254,8 +263,11 @@ where it got to, and nothing is picked up twice:
 - **`ClaimRun` moves the row from `queued` to `running` with a condition**, so a run started twice
   makes the call once. The execution name is the assessment id, which gives the same protection
   one level up.
-- **An attempt is given back only when no call was made** — the switch was off, the breaker was
-  open, or the run could not be started (ADR-0016, NFR-38). Never after a call.
+- **An attempt is given back only when the whole run made no model call** (ADR-0016, ADR-0018,
+  NFR-38). Inside the workflow, the one path is the `AnyCallMade` state, and it refunds only when
+  `callsMade` is 0. Two endings reach it: the switch was off or the breaker was open, or `assess`
+  was throttled until its retries ran out. Outside the workflow, the API refunds when the run could
+  not be started. Never after a call, not even when the call came on an earlier try of the same run.
 - **A failure inside the run is written on the row by name**, as `state: failed` with a
   `failureCode`, so the count in NFR-23 can be taken. An EventBridge rule writes it for a run that
   died outside its own error handling (`01-iac-plan.md` §4.4b).
@@ -308,8 +320,9 @@ That row is the owner's kill-switch. So two things stay true at once, and neithe
 **Where the check runs.** Twice. In the `api` function, straight after the kill-switch is read and
 **before** the daily limit is counted — between step 6 and step 7 of `03-api-spec.md` §4 — so an
 open breaker never spends one of the person's ten. And again in `assess`, just before the call,
-because the breaker may have opened in the seconds between; that refusal gives the attempt back
-(ADR-0016). It is the same reasoning as US-08 AC-3, which requires that a refusal costs no money.
+because the breaker may have opened in the seconds between. That refusal gives the attempt back,
+unless an earlier try of the same run already called the model (ADR-0016, ADR-0018). It is the same
+reasoning as US-08 AC-3, which requires that a refusal costs no money.
 
 **What the person sees while it is open.** This role's reading is that the existing
 `provider-unavailable` is the right answer. It needs no new failure code, no new screen and no
@@ -375,7 +388,7 @@ because none of them depends on anybody reading an email.
 | **Provisioned DynamoDB, 20/20 plus 5/5** | `01-iac-plan.md` §4.1 | A runaway loop is **throttled**, so the requests fail and somebody notices. On demand, the same loop succeeds and eats the credit (ADR-0002) |
 | **Lambda reserved concurrency 10 on `api`, 1 on `assess`** | `01-iac-plan.md` §4.4, §4.4b | A loop cannot start a thousand copies of a function. One paid call at a time is the whole cap on the model side |
 | **Lambda timeout 22 seconds on `api`, 30 on `assess`, 60 on `watch`** | `01-iac-plan.md` §4.4, §4.4b | A hung request cannot burn GB-seconds forever |
-| **Step Functions Standard, `MaxAttempts: 2`, no machine timeout** | `01-iac-plan.md` §4.4b | Express would bill every run. A retry cap written in one place is a cost cap. A machine timeout would strand rows |
+| **Step Functions Standard, a cap of 3 calls in `RetryOrStop`, no machine timeout** | `01-iac-plan.md` §4.4b | Express would bill every run. A call cap written in one place is a cost cap (ADR-0018). A machine timeout would strand rows |
 | **`retryOnServiceExceptions: false` on the `Assess` task** | `01-iac-plan.md` §4.4b | CDK's hidden six-attempt retry cannot call the model again after a call was made |
 | **The EventBridge rule has `retryAttempts: 2` and `maxEventAge: 5 minutes`** | `01-iac-plan.md` §4.4b | The default is 185 attempts over 24 hours. A broken `mark-failed` function would be invoked all day |
 | **No function reads a queue** | `01-iac-plan.md` §4.4b | Lambda polling an idle SQS queue still makes receive requests. The one queue is a dead-letter queue nobody reads |

@@ -85,6 +85,12 @@ Everything that can run without AWS runs without AWS:
   the `assess` handler as a local process. The stream — the `watch` handler run as a plain Node
   process on a second local port, because response streaming needs no Lambda to work locally.
 
+**Not verified: whether Step Functions Local can run the current state machine.** Since ADR-0018 the
+definition keeps a workflow variable, `callsMade`, set with `Assign`. A workflow variable is a named
+value the run keeps from start to end. Nobody has checked whether Step Functions Local supports
+variables. Check it on the first local run. If it does not, the retry and refund paths are checked
+by `infra-assert` and in `preview` only, and the local run covers the other steps.
+
 **DynamoDB Local and MinIO are both accepted tools** (gate 51, owner, 2026-08-27). Each runs in
 Docker on the owner's machine, costs nothing, and never touches the AWS account. Here is why they
 are worth two new tools. Without them, local work has only two options. It writes into the real
@@ -159,8 +165,9 @@ Every container in `02-containers.mmd` appears here. The CDK construct for each 
   ADR-0010).
 - The clocks: 20,000 ms in the `api` function, 25,000 ms on the `Assess` task, 18,000 ms on the
   model call, and no timeout on the state machine (`05-patterns.md` §7).
-- `maxRetries: 0` on the adapter, and `MaxAttempts: 2` on the one workflow retry (ADR-0005,
-  ADR-0014).
+- `maxRetries: 0` on the adapter, the cap of three model calls per run in the workflow's
+  `RetryOrStop` state, and `MaxAttempts: 2` only on the free retry of a throttled `assess`
+  (ADR-0005, ADR-0018).
 - The refuse-by-default route guard (ADR-0004).
 - The bucket is private with Block Public Access on, everywhere (ADR-0007).
 - The circuit breaker's numbers: 5 failures, 10 minutes, one test call
@@ -357,18 +364,21 @@ A checklist, in order. Each line is a thing a person does once. The pipeline hal
 6. The owner writes the three `CONFIG` rows into the table by hand: `AI_ENABLED`, `DAILY_LIMIT`,
    `MODEL_ID` (`03-api-spec.md` §6). These are data, not infrastructure, and ADR-0009 says nothing
    in the application writes them.
-7. **Write `MODEL_ID` as `claude-haiku-4-5-20251001`, the dated snapshot** (gate 53). Both id forms
-   are real. `claude-haiku-4-5` is an alias that points at that snapshot today
-   ([models overview](https://platform.claude.com/docs/en/about-claude/models/overview), checked
-   2026-08-28). The dated one is used because a provider can move an alias to a newer version, and
-   that would change the cost, the timing and the answers with no deploy and no warning.
-8. **Re-check when Claude Haiku 4.5 retires** (gate 62). The date on record is **2026-10-15**, which
-   is about seven weeks after this plan was written, and Haiku 4.5 is the default model (same page,
-   checked 2026-08-28). **The date is written down because a default model reaching end of life is
-   otherwise found by an error message.** The fix is cheap: ADR-0006 keeps the model id in a
-   DynamoDB row and not in code, so moving to another model is one edit and no deploy. Moving to
-   Sonnet 5 now was rejected on cost — gate row 62 has the arithmetic. **Re-check again if run 1 is
-   still running in October 2026.**
+7. **Write `MODEL_ID` as `claude-haiku-4-5-20251001`, the default** (ADR-0017). The app accepts
+   exactly three ids: `claude-haiku-4-5-20251001`, `claude-haiku-5-5` and `claude-sonnet-5-5`. It
+   refuses any other value and uses the default instead, so a typing mistake here is not sent to
+   the API (`03-api-spec.md` §6). Each allowed id names one fixed version. For Haiku 4.5 that is the
+   dated id, never the alias `claude-haiku-4-5` (gate 53). A provider can move an alias to a newer
+   version, and that would change the cost, the timing and the answers with no deploy and no
+   warning.
+8. **Re-check the retirement dates of the three allowed models** (gate 62, ADR-0017). Haiku 4.5 is
+   the default, and its earliest retirement date, **2026-10-15**, has passed. The other two retire
+   no sooner than 2027. ADR-0017 has the table, checked 2026-10-29. **The date is written down
+   because a default model reaching end of life is otherwise found by an error message.** Anthropic
+   emails a notice at least 60 days before it retires a model. That email is the trigger to run the
+   golden set on the two Haiku models (gate 85) and switch the default. The switch is one edit to
+   the `CONFIG` row and no deploy, as long as the new id is on the list. Re-check the dates again
+   whenever the golden set runs.
 
 **Four more, added 2026-09-17 by the security review of this pack** (`../900-security/02-mitigations.md`
 §4 and R-05). Each one is a promise that nobody has tested:

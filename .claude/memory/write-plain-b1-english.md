@@ -34,6 +34,9 @@ document the owner cannot read in one look is a document the owner cannot check.
 - The first screen says what the file decides, what is still open, and what to do next.
 - Keep every essential fact. Cut repetition, side remarks and second explanations. Say each fact
   once and point to the file that owns it.
+- **No hard word budget.** The owner rejected one: it makes a model shrink text until the structure
+  breaks. Keep length down with good examples, and never trade a well-built sentence for a shorter
+  one.
 - No edit history in a document. Git records it. See [[explain-concepts-not-only-decisions]].
 - **Never compress into fragments.** On 2026-09-17 a pass turned readable prose into dense notes
   the owner could not follow, and every file was restored from git. Short means fewer facts per

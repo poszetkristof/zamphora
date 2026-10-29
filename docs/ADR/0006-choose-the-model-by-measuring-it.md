@@ -2,6 +2,9 @@
 
 - **Status:** Accepted. **Corrected in place 2026-08-28** for gates 53 and 62: the two model id
   forms are both real, and the run-1 default has a retirement date. Nothing in the decision moved.
+  **Superseded in part by [ADR-0017](0017-allow-three-model-ids-each-a-fixed-version.md)
+  (2026-10-29, gate 83):** the list of models to compare, the rule that every id carries a date, and
+  the retirement table. The rest of this record stands.
 - **Date:** 2026-08-25
 
 ## Context
@@ -73,6 +76,10 @@ would drift with nobody able to say when.
 > million tokens, Sonnet 5 is $2 and $10, Opus 5 is $5 and $25 — the same 1 : 2 : 5 ratio the
 > per-assessment figures use. Nothing in decision 2 or the $0.0040 ceiling needs to move.
 
+> **Decisions 1 and 5 are superseded by ADR-0017.** From the 4.6 generation on, a model id with no
+> date is itself a fixed version, so the rule is now "the id is on the closed list of three", not
+> "the id carries a date". The three models to compare are the three on that list.
+
 **6. The cost of every call is computed from the `usage` block the API returns**, never from the
 estimate in the table above. The two prompt and answer estimates are named in seam ledger finding 4
 as the weakest numbers in the brief.
@@ -95,6 +102,9 @@ A model reaching end of life is otherwise found from an error message on a live 
 these three dates before the first deploy, and again whenever the golden set is run.** Changing
 model is one edit of the `CONFIG` row and no deploy (decision 4), so this is a calendar problem
 rather than an engineering one — but only if somebody is holding the calendar.
+
+> **This table is superseded by the one in ADR-0017**, which lists the three allowed models and
+> names the retirement notice email as the trigger to switch.
 
 ## Consequences
 
@@ -135,6 +145,9 @@ account.
 agreement figure would be an average over a mixture nobody recorded.
 
 ## Agent-Readable Summary
+
+> **Read ADR-0017's summary first.** It names the closed list of three allowed ids, and it replaces
+> the "fully dated" rule below. The rest of this summary still applies.
 
 > The model id lives in the `CONFIG` partition of the DynamoDB table as a fully dated id, and the
 > run-1 default is `claude-haiku-4-5-20251001`. Do not hard-code a model id in a request, and do not

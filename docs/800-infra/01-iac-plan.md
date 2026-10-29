@@ -399,6 +399,10 @@ has answered `202`. Step Functions is the AWS service that runs a list of steps 
 error handling written as configuration, not code. The **Standard** type has an Always Free
 allowance of 4,000 state transitions a month; the Express type has none.
 
+The retry and refund paths below follow ADR-0018. A workflow variable is a named value the run keeps
+from start to end. Step Functions sets one with `Assign`. This machine keeps one, `callsMade`, the
+number of model calls this run has made.
+
 ```
 stepfunctions.StateMachine
   stateMachineType      STANDARD             <- REQUIRED. Express has no free amount
@@ -407,17 +411,28 @@ stepfunctions.StateMachine
   logs                  ERROR level only, to a log group with 30-day retention
   definition
     ClaimRun            DynamoDB UpdateItem, state queued -> running, with a condition.
-                        A failed condition ends the run: a duplicate start
+                        A failed condition ends the run: a duplicate start.
+                        Assign callsMade = 0, with no new state     <- ADR-0018
     Assess              LambdaInvoke(assess)
                           timeout            Duration.seconds(25)   <- per attempt
                           retryOnServiceExceptions  false           <- REQUIRED, see below
-                          Retry  errors  ProviderTimeout, ProviderThrottled,
-                                         ProviderUnavailable, Lambda.TooManyRequestsException
+                          Retry  errors  Lambda.TooManyRequestsException only
                                  maxAttempts 2, interval 2 s, backoffRate 2
-                          Catch  all -> RecordFailure
-    Choice              a refusal value (feature-off, provider-unavailable from a
-                        closed breaker) -> Refund; otherwise -> Persist
-    Refund              DynamoDB UpdateItem, ADD attempts -1 on the day counter (ADR-0016)
+                                 <- free: the function never ran
+                          Catch  ProviderTimeout, ProviderThrottled, ProviderUnavailable
+                                   -> RetryOrStop, Assign callsMade = callsMade + 1
+                          Catch  Lambda.TooManyRequestsException, the retries ran out
+                                   -> AnyCallMade, failureCode provider-unavailable
+                          Catch  all others -> RecordFailure
+    Choice              a refusal value (feature-off, or provider-unavailable from an
+                        open breaker) -> AnyCallMade; a named failure -> RecordFailure;
+                        an answer -> Persist
+    RetryOrStop         Choice. callsMade under 3 -> Backoff; callsMade = 3 -> RecordFailure
+    Backoff             Wait. 2 s after the first failed call, 4 s after the second.
+                        Then -> Assess
+    AnyCallMade         Choice. callsMade = 0 -> Refund; above 0 -> RecordFailure
+    Refund              DynamoDB UpdateItem, ADD attempts -1 on the day counter (ADR-0016).
+                        Then -> RecordFailure
     Persist             DynamoDB UpdateItem, the answer onto the row, state done.
                         Retry on DynamoDB errors, maxAttempts 3
     Rollup              DynamoDB UpdateItem on the day rollup. Retry the same way
@@ -456,8 +471,17 @@ sqs.Queue               the dead-letter queue. Nothing reads it. Retention 4 day
 - **`retryOnServiceExceptions: false` is the setting most likely to be left alone, and it must not
   be.** The CDK `LambdaInvoke` task adds a hidden retry of six attempts on Lambda service errors.
   One of those errors, `Lambda.Unknown`, can arrive **after** the model call was made, and a hidden
-  retry would make the call again. The explicit list above is the whole retry policy
-  (`02-cost-guardrails.md` §5, guardrail 3).
+  retry would make the call again. The one explicit `Retry` and the `RetryOrStop` cap above are the
+  whole retry policy (`02-cost-guardrails.md` §5, guardrail 3).
+- **`callsMade` is how the run knows whether it called the model** (ADR-0018). A `Retry` keeps no
+  record of what an earlier try did. When its retries run out, the `Catch` sees only the last error.
+  So the three provider errors go to a `Catch` that adds 1 to `callsMade`, and `RetryOrStop` holds
+  the cap of three calls. Only `Lambda.TooManyRequestsException` keeps a `Retry`, because the
+  function never ran and the retry costs nothing. **Do not move the three provider errors back into
+  a `Retry`. Do not draw any other arrow into `Refund`.** Do not give `assess` write access to the
+  assessment row to record calls; the fact lives in the run. *The exact CDK property for `Assign`
+  was not checked in this pass. Check it when the stack is written — the requirement is the
+  variable, not the spelling.*
 - **No timeout on the machine.** A machine-level timeout ends the run without running any `Catch`,
   so the row would stay `running` for ever and the phone would wait out its 60 seconds for nothing.
   Every task has its own timeout and its own `Catch`. The EventBridge rule is the net under that:
@@ -477,9 +501,14 @@ sqs.Queue               the dead-letter queue. Nothing reads it. Retention 4 day
   idle queue that a Lambda function reads still costs receive requests, so no function reads one.
   The owner looks at this queue after an alarm (`03-observability.md` §5).
 - **Every function here creates its own log group with retention**, as §4.4 says for `api`.
-- **`infra-assert` checks four things on the synthesised template:** the type is `STANDARD`, the
-  machine has no `TimeoutSeconds`, the `Assess` retry list is exactly the four names above with
-  `MaxAttempts: 2`, and `Refund` is reachable only from the refusal choice (NFR-05, NFR-38).
+- **`infra-assert` checks five things on the synthesised template** (NFR-05, NFR-38, ADR-0018):
+  1. The type is `STANDARD`.
+  2. The machine has no `TimeoutSeconds`.
+  3. The `Assess` `Retry` list is exactly `Lambda.TooManyRequestsException` with `MaxAttempts: 2`,
+     and `retryOnServiceExceptions` is off.
+  4. `ProviderTimeout`, `ProviderThrottled` and `ProviderUnavailable` are in the `Catch` that adds 1
+     to `callsMade`, never in a `Retry`, and `RetryOrStop` compares `callsMade` with 3.
+  5. Every path into `Refund` passes `AnyCallMade` with `callsMade` at 0.
 
 ### 4.5 `ZamphoraWebStack` — the static files
 
@@ -775,7 +804,7 @@ Five things, each with its reason. Anything else in the console is a mistake.
   today: 20 and 5.
 - **The Lambda runtime and CI's `node-version` name the same number.** Both are 24 (§4.4), for all
   four functions.
-- **The four `infra-assert` checks on the state machine pass** (§4.4b), and the `api` role has no
+- **The five `infra-assert` checks on the state machine pass** (§4.4b), and the `api` role has no
   read on the model key parameter.
 - **`infra-assert` runs on every push that touches `infra/`.** It makes no AWS call, so it needs no
   credential and costs nothing (`06-nfrs.md` §1). NFR-40 is the first assertion it carries.

@@ -293,8 +293,9 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   asking. A relational store is not an option on this plan at all: RDS was a twelve-month trial,
   Aurora had no free offer, and trials are switched off on the free account plan.
 
-**Four of the five points below were chosen by the assistant on 2026-09-17, on the owner's
-instruction to take the best-practice option in each case. The fifth, gate 82, is still open.** Gate
+**Four of the six points below were chosen by the assistant on 2026-09-17, on the owner's
+instruction to take the best-practice option in each case. The owner chose the other two: gate 82
+and the list of allowed models.** Gate
 8 is the other decision of this shape on this run. Each one names the option that lost, so a wrong
 choice is one row to find, not a search.
 
@@ -311,12 +312,37 @@ choice is one row to find, not a search.
   that disagrees, and that sentence is the thing to change. **The option that lost:** let the API
   start a fresh run on the same id when it sees a failed row. It keeps one id per photo, and it was
   rejected because it changes the rule in ADR-0014 for a case the ordinary rule already covers.
-- **A failed assessment still counts against the person's 10 a day, until somebody decides otherwise
-  (gate 82).** This falls straight out of the decision above and is written down rather than hidden.
-  A new `requestId` is a new request, and the daily limit is checked after the id is claimed, so a
-  retry spends one of the ten. That is fair when the photo was bad and unfair when the model timed
-  out. **This one is not decided. It is gate 82 and it belongs to the owner**, because it is a
-  product rule about what a person pays for.
+- **A try counts whenever the model was called, even when the call failed (gate 82, the owner's
+  answer).** A timeout on our side still costs the person one of their ten. A try is given back only
+  when no model call was made, as ADR-0016 already says. The reason: the ten tries a day are the
+  only daily limit on AI spend (ADR-0008). If a failure on our side gave the try back, only the
+  circuit breaker would limit a broken model, at up to about 144 calls a day. **The option that
+  lost:** give the try back on every failure on our side. It is fairer to the person, but it would
+  change ADR-0016 and remove the daily spend limit.
+- **The allowed `MODEL_ID` values are `claude-haiku-4-5-20251001`, `claude-haiku-5-5` and
+  `claude-sonnet-5-5` (the owner's answer to finding 56).** Any other value is refused. The default
+  stays `claude-haiku-4-5-20251001` until the golden-set run has measured the others, as ADR-0006
+  says. Facts behind the choice, from Anthropic's
+  [models overview](https://platform.claude.com/docs/en/about-claude/models/overview),
+  [model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations) and
+  [pricing](https://platform.claude.com/docs/en/about-claude/pricing) pages, checked 2026-10-29:
+  - Haiku 4.5 can be retired any time after 15 October 2026, with at least 60 days' notice.
+  - Haiku 5.5 costs $0.10 per million input tokens and $0.50 per million output tokens, for prompts
+    up to 100,000 tokens. That is a tenth of Haiku 4.5.
+  - Sonnet 5.5 costs $2 and $10, the same as Sonnet 5. It is supported until at least
+    28 September 2027.
+  - From the 4.6 generation on, a model id with no date is itself a fixed version. So
+    `claude-haiku-5-5` cannot change under the app, just like a dated id.
+  - All three support the structured outputs ADR-0005 needs. 400-architecture checked the
+    [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+    page on 2026-10-29. ADR-0017 holds the list and the sources.
+
+  ADR-0017 holds this list and supersedes part of ADR-0006. **The first golden-set run compares
+  the two Haiku models only** (gate 85): about $0.18, under the $0.20 NFR-11 allows for one run.
+  Sonnet 5.5 is measured only if neither Haiku is right 8 times in 10, and that needs a new
+  decision. Opus is not on the list, because one month of 500 assessments on it breaks the $10
+  limit. **The option that lost:** only Haiku 5.5 and Sonnet 5.5. It would change the default before anyone measured the
+  new models.
 - **The 40 evaluation photos: licensed for the two labelled groups, the owner's own for the rest, and
   no photo of a real home goes in the public repository, decided 2026-09-17 (gate 77).** Group A
   (20 photos with a named fault) and group B (6 healthy plants) come from a source whose licence

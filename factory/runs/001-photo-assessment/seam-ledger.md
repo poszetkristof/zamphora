@@ -895,3 +895,134 @@ trusted anyway. They were rewritten in plain English by hand, keeping every case
 slot contract limits length or asks for plain English, so the next run will produce the same.
 
 **Label: `thin`** — on the slot contract, not on the files.
+
+## Repair passes — 500, 400 and 900, 2026-10-29
+
+Three roles repaired what 600-qa found (findings 41, 42 and gates 75, 76). Each one changed only the
+named passages; the diffs were checked by hand. While doing it, they found the problems below. The
+first two were fixed in the same pass. The rest are open, and each names who should pick it up.
+
+### Finding 53 — a refused request could leave a `409` for ten minutes — fixed
+
+The API claims the `IDEM#` row at step 6c. If it then refused the request at step 7, 8 or 9, the row
+held nothing. When that answer was lost on the network, the browser sent the same id again (gate
+76) and got `409 request-in-flight` until the row expired. **Fixed by 500:** the refusal is written
+on the row, so the same id gets the same answer. A row that holds nothing answers `409` only until
+`IDEM_STALE_MS` (22 seconds). **The option that lost:** delete the row on refusal. A resend would then
+run the daily limit again and spend a second attempt for one tap. `03-api-spec.md` §4a.
+
+### Finding 54 — a failed workflow start left the run `queued` for good — fixed
+
+When `StartExecution` failed at step 10, the attempt was refunded, but the assessment row stayed
+`queued`. The stream never sent a final event. **Fixed by 500:** the row is marked `failed`, but only
+while it is still `queued`, so a late start cannot make a call after the refund. One rare case is
+named and left open: the start fails, the write fails, and the start had in fact gone through.
+`03-api-spec.md` §4f.
+
+### Finding 55 — gate 76 does not name the `deadline-passed` case
+
+The `202` arrived, then the phone's own deadline ended the wait. That is neither "the API answered
+with a failure" nor "no answer". 500 chose **the same id**: no second charge, and the person gets the
+same run back. **Label: `ambiguous`, settled by the role.** Re-open only if 600-qa disagrees.
+
+### Finding 56 — the closed list of allowed `MODEL_ID` values is named nowhere
+
+`03-api-spec.md` §6 and `00-conventions.md` §6 say a `CONFIG` value is checked against "a closed
+list", and no file lists the allowed model ids. **Label: `thin`.** Which models are allowed is the
+owner's choice (ADR-0006). Read next by 500-engineering, once the owner names the list.
+
+### Finding 57 — a refused `CONFIG` value is not logged
+
+Nothing says whether a refused value, for example `DAILY_LIMIT = 200`, writes a log line or raises an
+alarm. A typing mistake would then be fixed in silence and never noticed. **Label: `thin`.** Read next
+by 500-engineering and 800-infra (`03-observability.md`).
+
+### Finding 58 — a throttled `assess` call made no model call, and no path refunds it
+
+When `assess` is throttled (`Lambda.TooManyRequestsException`) after its retries, no model call was
+made. ADR-0016 says an attempt is refunded when no call was made. But the `Refund` state is reachable
+only from the refusal branch. Either the ADR's rule has a gap or the state machine does. **Label:
+`under-supply`.** In `preview` (stub waits 8 s, `assess` concurrency 1) this can happen during EV-23.
+Read next by 800-infra (`01-iac-plan.md`, the state machine) and 500-engineering.
+
+### Finding 59 — no input says how the `preview` stub is told to fail
+
+EV-24 part two needs a failure from a deployed stub, and EV-18 counts `modelCalls` in `preview`.
+No input says how the stub is switched to fail, or whether stub calls are counted. **Label: `thin`.**
+Read next by whoever writes the stub `LlmProvider` task.
+
+### Finding 60 — two cost figures for the top of the `DAILY_LIMIT` range
+
+`factory/feature.md` and `03-api-spec.md` §6 say about $0.08 a day at 20: one call each.
+`01-threats.md` T-14 says $0.24: three calls each, the worst case with retries. Both are right, and
+neither says which case it counts. `00-assets.md` A-15 still gives only the default of 10.
+**Label: `thin`.** Read next by 900-security on its next pass.
+
+### Finding 61 — edit-history lines in role files
+
+The new writing rule says "no edit history inside a document". Older role files still carry lines
+such as "Updated 2026-09-17, twice" and "Added 2026-08-31", for example in `05-patterns.md`,
+`02-web-spec.md` and the header of `02-mitigations.md`. They were written before the rule existed.
+**Label: `stale`.** Each role removes them on its next pass. A sweep by hand would edit files the
+roles own.
+
+## 400-architecture repair pass, 2026-10-29
+
+The pass had two jobs: bring ADR-0006 in line with the owner's model list (gate 83), and fix finding
+58. It wrote ADR-0017 (accepted, the owner's list) and ADR-0018 (proposed, gate 84).
+
+- **Finding 56 is answered by ADR-0017**, and closed: 500-engineering wrote the list into
+  `03-api-spec.md` §6 and `00-conventions.md` §6 in its next repair pass.
+- **Finding 58 is fixed in the design by ADR-0018, which waits for the owner at gate 84.** The pass
+  also found a second fault of the same kind: a run whose first call timed out and whose next try met
+  an open breaker was refunded, although a call was made.
+
+### Finding 62 — files outside 400's write list still describe the old retry and refund
+
+`docs/400-architecture/08-async-options.md`, `08-async-options-short.md` and `README.md` sit in 400's
+folder but are not on its write list. They still describe the `Retry` on the three provider errors.
+So may every 500, 800 and 600 file that names `MaxAttempts: 2` on those errors, or draws `Refund` only
+from the refusal branch: likely `01-iac-plan.md`, `03-api-spec.md`, the NFR-38 test cases and EV-23.
+**Label: `stale`.** Read next by 500-engineering, 800-infra, 600-qa and 900-security, once gate 84 is
+answered. The two `08-*` files need only a pointer to ADR-0018.
+
+### Finding 63 — NFR-11 was set for a run on Haiku prices
+
+NFR-11 allows $0.20 for one `ai-eval` run. A golden-set run on Sonnet breaks it. That was already true
+for Sonnet 5 in ADR-0006, and nobody noticed. **Label: `thin`.** It is gate 85.
+
+## 500 and 800 repair passes for ADR-0017 and ADR-0018, 2026-10-29
+
+Both ADRs were accepted by the owner (gates 83 and 84) before these passes ran.
+
+- **Finding 58 is closed.** ADR-0018 is accepted. 500 brought `03-api-spec.md`,
+  `00-conventions.md` and `docs/context/stack.md` in line with it, and 800 brought all five of its
+  files in line.
+- **Finding 62 is partly done.** The 400, 500 and 800 parts are done. Still open: 600-qa (the NFR-05
+  and NFR-38 test cases), 900-security (EV-23 and any evidence that names the old retry), and the
+  two `08-async-options*` files in `docs/400-architecture/`, which no role owns.
+
+### Finding 64 — nobody checked whether Step Functions Local supports workflow variables
+
+ADR-0018 gives the state machine a workflow variable, `callsMade`, set with `Assign`.
+`00-environments.md` §2 says the local run uses the same state machine definition. Nobody checked
+whether Step Functions Local can run a definition with variables. 800 did not check it on the web,
+because its contract allows web checks only for prices and free allowances. **Label: `thin`.**
+`00-environments.md` §2 now says how to check it on the first local run, and what to do if it fails.
+Read next by whoever writes the first `infra/` task.
+
+### Finding 65 — three small mismatches 800 saw outside its task
+
+800 left these alone, because the pass was limited to ADR-0018 and ADR-0017. **Label: `stale`.**
+Read next by 800-infra on its next pass.
+
+- `01-iac-plan.md` §4.3: the code block says `featurePlan LITE <- gate 52`, but the text and gate 52
+  say Essentials.
+- `01-iac-plan.md` §4.7 and the CloudWatch row in `02-cost-guardrails.md` §2 say eleven alarms.
+  `03-observability.md` §5 and `02-cost-guardrails.md` §4 say twelve.
+- `00-environments.md` says "the thirteen ADRs". There are eighteen.
+
+A note for the same pass: the free throttle retry costs no model call, but each retry is still a
+Step Functions transition. The 4,000-transition figure in `02-cost-guardrails.md` §2 counts only the
+paid retries. Above the free allowance, the price is $0.025 per 1,000 transitions.
+

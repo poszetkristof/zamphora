@@ -135,12 +135,21 @@ the screen falls back to `GET /api/assessments/:id` every 2 seconds — that is 
 never the first choice. A `failed` event shows `FailureNote` from the row's `failureCode`, with the
 same mapping as §8.
 
-**The `requestId` is made at `photo-chosen`, not at `sending`.** **Added 2026-08-31.** One UUID per
-photo the person picks. It goes in the form body of `POST /api/assessments` and the API uses it to
-make sure one tap is one charge (`03-api-spec.md` §4a). **A resend of the same photo must carry the
-same id** — that is the whole point — so it is stored with the chosen photo in the state, and a new
-one is only made when a new photo is picked. If the API answers `409 request-in-flight`, the screen
-stays in `asking` and keeps waiting; it does not send again.
+**The `requestId` is made at `photo-chosen`, not at `sending`.** **Added 2026-08-31.** It is a UUID,
+a random id that is unique. It goes in the form body of `POST /api/assessments`, and the API uses it
+to make sure one tap is one charge (`03-api-spec.md` §4a). The id is stored with the chosen photo in
+the state. The API answers a repeat of the same id with the same run, and that includes a run that
+failed (gate 76 in `factory/feature.md`). So the screen decides the id for the next send by what
+happened to the last one:
+
+| What happened to the last send | The next send carries | Why |
+| --- | --- | --- |
+| A new photo was picked | A new id | It is a new assessment |
+| **The API answered with a failure.** This is a `Problem` response, or a `failed` event for the run | **A new id.** The screen makes it when it shows the failure, and keeps the same photo | The same id would only return the same failure. A new id is a new request, so it spends one of the person's ten a day. Whether a failed run should count is open, as gate 82 |
+| **The request got no answer.** The network dropped before the `202` arrived, or `CLIENT_DEADLINE_MS` fired (§4.3) | **The same id** | The screen cannot know whether the first send started a run. A new id would start a second run and charge the person twice. If the first send reached the API, the same id returns that run. If it did not, the send is new |
+
+If the API answers `409 request-in-flight`, the screen stays in `uploading` and keeps waiting; it
+does not send again.
 
 Refusals that never reach `sending`: `wrong-format`, `photo-too-small`, `daily-limit-reached`,
 `feature-off`, `no-credit`, `offline`, and `empty` with no pot picked.

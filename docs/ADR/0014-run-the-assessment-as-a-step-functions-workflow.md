@@ -1,6 +1,9 @@
 # ADR-0014 — Run the assessment as a Step Functions workflow
 
-- **Status:** Accepted 2026-09-17, by the owner (gate 72)
+- **Status:** Accepted 2026-09-17, by the owner (gate 72). **Superseded in part by
+  [ADR-0018](0018-refund-only-when-the-run-made-no-model-call.md) (gate 84):** the `Retry` on the three provider errors and the arrows into `Refund`. As drawn here, a
+  throttled run that made no call loses its attempt, and a refused run that did make a call gets it
+  back. Both break ADR-0016.
 - **Date:** 2026-09-17
 - **Supersedes in part:** ADR-0002 (one function for everything) and ADR-0005 (no retry).
   Everything else in both records still stands.
@@ -35,6 +38,11 @@ stateDiagram-v2
     Refund --> RecordFailure
     Rollup --> [*]
 ```
+
+> **The retry arrow and the `Refund` arrow above are replaced by ADR-0018**, which draws the
+> current workflow. The three provider errors go to a `Catch` that counts the call, and `Refund` is
+> reached only when the run made no call at all. The second and the last bullet of "The rules that
+> make it safe" below change the same way.
 
 The pieces:
 
@@ -91,6 +99,9 @@ The rules that make it safe:
   model twice with no rule saying so.
 
 ## Agent-Readable Summary
+
+> **Read ADR-0018's summary with this one.** It replaces the retry list and the
+> `MaxAttempts: 2` cap on the three provider errors below. Everything else here stands.
 
 > The model call runs inside a **Step Functions Standard** workflow, in the `assess` function, and
 > nowhere else. Do not call `LlmProvider` from the `api` function. Do not use Express workflows. Do

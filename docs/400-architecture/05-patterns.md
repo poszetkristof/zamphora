@@ -18,16 +18,16 @@ are not two versions of the same text, and neither repeats the other.
 | 1 | The data key design | ADR-0002, ADR-0004 |
 | 2 | Sign-in, and the opaque session | ADR-0003 |
 | 3 | Refuse by default | ADR-0004 |
-| 4 | One port, one adapter, for the model | ADR-0005, ADR-0006 |
-| 5 | The counter that cannot be raced | ADR-0008 |
+| 4 | One port, one adapter, for the model | ADR-0005, ADR-0006, ADR-0017 |
+| 5 | The counter that cannot be raced | ADR-0008, ADR-0018 |
 | 6 | A switch read from a cache with a ceiling | ADR-0009 |
 | 7 | The clocks: one per task, none on the platform | ADR-0014, and `03-flow.md` §4 |
-| 8 | Failure is a value with a name | ADR-0005, ADR-0014 |
+| 8 | Failure is a value with a name | ADR-0005, ADR-0014, ADR-0018 |
 | 9 | Deletion belongs to the storage rule | ADR-0007 |
 | 10 | Language: codes on the wire | — |
 | 11 | Nothing crosses the wire except a contract | ADR-0001, ADR-0012 |
 | 12 | There is no admin route at all in run 1 | ADR-0009, ADR-0004 |
-| 13 | The workflow owns the run | ADR-0014, ADR-0015, ADR-0016 |
+| 13 | The workflow owns the run | ADR-0014, ADR-0015, ADR-0016, ADR-0018 |
 
 Every pattern below belongs to the whole product, not to this one feature. Later runs read this
 file and extend it. They do not rewrite it.
@@ -50,7 +50,7 @@ remember to write.
 | Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` | **`state` — `queued`, `running`, `done` or `failed` — and a `failureCode` when failed** (added 2026-09-17, ADR-0014). Then band, verdict, next action, follow-up days, language, photo key, model id, cost |
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` | The pot, the assessment it came from, the action text |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` | One number |
-| **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` | The assessment id once it exists, and a time-to-live 10 minutes out |
+| **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` | The fields are listed in `../500-engineering/03-api-spec.md` §4a, which owns them. This row fixes only the key shape |
 | A day's usage | `USAGE` | `<yyyy-mm-dd>` | Assessments started, model calls made, cost in millionths of a dollar |
 | The kill-switch | `CONFIG` | `AI_ENABLED` | On or off. **One field only** — see the note under this table |
 | **The circuit breaker** | `CONFIG` | `BREAKER` | How many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live |
@@ -59,8 +59,10 @@ remember to write.
 
 **`IDEM#<requestId>` is what makes one tap one charge.** `POST /api/assessments` is the only path
 that spends money and it had no protection against running twice, while the design's own budget
-allows a 4,000 ms upload — which is exactly when a person taps again. The browser makes one UUID per
-photo; the API claims it with a conditional `PutItem` before anything else happens
+allows a 4,000 ms upload — which is exactly when a person taps again. The browser makes a new UUID
+for a new photo, and for a retry after the API answered with a failure. When a request got no
+answer, the browser sends the same UUID again (gate 76 in `../../factory/feature.md`). The API
+claims it with a conditional `PutItem` before anything else happens
 (`../500-engineering/03-api-spec.md` §4a). This closes F-13 in `001-photo-assessment/07-adversarial.md`.
 
 **`CONFIG / BREAKER` is the automatic cost guard** (gate 50, `../800-infra/02-cost-guardrails.md`
@@ -333,9 +335,14 @@ Four properties fall out of this and each one is an acceptance criterion:
   operation on one item. A read-then-write would let all ten read 9.
 - **A failed call still counts** (`factory/feature.md`), because the counter moves before the call.
   A person whose call fails has spent one of their ten, because the money was spent either way.
-- **A refused run gives the attempt back**, and only when no call was made at all (ADR-0016).
-  Three paths reach it: `StartExecution` failed in the API; `assess` found the kill-switch off;
-  `assess` found the breaker open. The refund is one atomic `ADD attempts -1`, so it cannot race the
+- **A run that made no model call at all gives the attempt back, and only that run** (ADR-0016,
+  gate 82). Four endings can mean no call: `StartExecution` failed in the API; `assess` found the
+  kill-switch off; `assess` found the breaker open; `assess` was throttled until its retries ran
+  out. The API refunds the first one itself. The other three happen inside the workflow, where a
+  later try cannot see what an earlier try did. So the workflow counts the run's calls in
+  `callsMade`, and those three endings pass through `AnyCallMade`, which refunds only when
+  `callsMade` is 0. When an earlier try already called the model, the try counts (ADR-0018, gate
+  84). The refund is one atomic `ADD attempts -1`, so it cannot race the
   increment.
 - **The date is in the key**, so yesterday's counter is never read and never needs clearing. The TTL
   on the item exists only to stop the table growing, and nothing depends on it firing on time.
@@ -427,7 +434,9 @@ decline again, and an answer cut off for want of room will be cut off again in t
 **Do not** retry `no-credit`. `factory/feature.md` is explicit: running out of credit is a normal
 failure state, and retrying does not help. **Do not** write a retry anywhere in code: the adapter
 returns every failure as a value, the `assess` handler throws only the three retried names, and the
-workflow's `Retry` with `MaxAttempts: 2` is the only place a second call can come from.
+workflow's `RetryOrStop`, which runs `Assess` again only while `callsMade` is under 3, is the only
+place a second call can come from (ADR-0018). The workflow catches the three names with a `Catch`,
+not a `Retry`, so that it can count each call.
 
 **One name is missing a screen and it is recorded, not papered over.** `02-SPEC.md` §3.14 withdrew
 the `unreadable-answer` state from SC-5 and says out loud that the failure path still needs it. That
@@ -516,18 +525,23 @@ locally, against the table directly. 900 Security confirms or overrules that pla
 ## 13. The workflow owns the run
 
 **Added 2026-09-17 (ADR-0014 to ADR-0016).** The assessment runs in the background. This pattern
-says who does what, in order, so nobody builds a second way.
+says who does what, in order, so nobody builds a second way. ADR-0018 draws the states as a diagram.
 
 ```
 api          checks the switch and the breaker, counts the attempt, claims the IDEM row,
              re-encodes the photo, writes the row as queued,
              StartExecution with name = the assessment id, answers 202 in about a second
-ClaimRun     UpdateItem queued -> running, with a condition. A duplicate start stops here
+ClaimRun     UpdateItem queued -> running, with a condition. A duplicate start stops here.
+             Sets callsMade to 0
 Assess       the one model call, in the assess function. Re-reads the switch and the breaker first.
-             Retried at most twice, on the three thrown errors only
+             A throttled start is retried at most twice. It is free, because the function never ran
+RetryOrStop  after one of the three thrown errors, callsMade goes up by 1. Under 3, wait 2 s or
+             4 s and run Assess again. At 3, RecordFailure
+AnyCallMade  after a refusal, or a throttle that did not clear: Refund when callsMade is 0,
+             otherwise RecordFailure
 Persist      UpdateItem the result onto the row. Retried on DynamoDB errors, never money
 Rollup       UpdateItem the day rollup. Retried the same way
-Refund       ADD attempts -1, reached only when no call was made
+Refund       ADD attempts -1, reached only through AnyCallMade
 RecordFailure  UpdateItem state = failed, with the failure code
 mark-failed  an EventBridge rule on FAILED, TIMED_OUT or ABORTED writes failed on the row,
              for a run that died outside its own Catch
