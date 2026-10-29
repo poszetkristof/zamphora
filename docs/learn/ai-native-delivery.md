@@ -1029,40 +1029,51 @@ label, and a label is not a specification.**
 
 ### The break: a good document on each side, a gap in between
 
-Security writes this into `02-mitigations.md`:
+Three files on this run each wrote one part of the same behaviour, and each part is correct. The
+behaviour uses a `requestId`, which is an **idempotency key** (`backend-concepts.md` §22): the phone
+sends it so that one tap is one charge.
 
-> **Risk:** anyone can call the paid assessment endpoint in a loop and empty the budget.
-> **Fix:** add a rate limit to the endpoint.
+> `02-web-spec.md` §4.2 — the browser makes a new `requestId` **only when a new photo is picked**.
+> US-09 — after a failure the person sends **the same photo** again.
+> `03-api-spec.md` §4a — a repeated `requestId` gets **the same run** back, and a failed run keeps
+> its id.
 
-On its own it is fine. Real risk, real fix, you would approve it. Then QA reaches the rate limit and
-stops: **a rate limit of what?** Ten calls a minute? A thousand a day? No number, so no test.
+Read one at a time, all three pass a review. Put together, the try-again button sends the same id,
+the API hands back the run that already failed, and nothing happens for the ten minutes the API
+remembers the id. QA reported it as finding 41 and wrote **no** test case for that path, which is the honest
+answer: you do not test a behaviour nobody has decided yet. The answer became gate 76: a new
+id only after the API has answered with a failure, and the same id again when no answer came back.
 
-Neither file is broken. The mistake is in what passed between them, and reading either file alone
-will never show it — both look finished. This is the seam problem in one example, and it is why the
-run's real output is the review in section 11, not the folders.
+No single file is broken. The mistake is in what passed between them, and reading either file alone
+will never show it — all three look finished. This is the seam problem in one example, and it is why
+the run's real output is the review in section 11, not the folders.
+
+**QA is the only role that reads every role before it.** Its input list is 14 files, more than any
+other slot. The pre-mortem in section 8 is per role, so it cannot find a defect like this one — no
+single role owns it. A mistake that lives between three files needs a reader holding all three, and
+on this line that reader arrives last.
 
 ### What QA writes
 
-- `00-test-plan.md` — in scope, out of scope **with a reason**, the top 3 risks, entry and exit
-  rules
+- `00-test-plan.md` — in scope, out of scope **with a reason**, the top 3 risks, entry and exit rules
 - `01-test-cases.md`
 - `02-ai-evals.md` — the golden set, the rubric, the pass bar
 
-Two parts have no equal on a normal project:
+Three parts have no equal on a normal project:
 
 **Force at least five negative tests.** "Write tests for this" produces tests that pass, because that
-is what the words ask for. The useful half is the failures: a photo of a wall · a photo too dark to
-judge · a healthy plant the user thinks is sick · a model reply that breaks the schema · a model
-timeout.
+is what the words ask for. The useful half is the failures: a photo of a wall · a model reply that
+breaks the schema · a model timeout. The real run wrote 117 cases and **71 of them are negative**.
 
 **Check the judge, not only the model.** The golden set is 40 photos with a known correct verdict,
 and the pass bar is 8 in 10, taken from the NFR table. If a model scores the answers, score a sample
 by hand as well and write down how often the two agree. Skip that and the pass bar is measuring the
 judge.
 
-**Check before moving on:** are the five negatives there, and does a failed eval **block the
-release** or only warn? Calling a check critical and leaving it advisory is the same as not writing
-it.
+**A check that costs money can never be a merge gate.** The accuracy run calls a paid model 40 times,
+so it cannot block every pull request. It goes on a separate **release gate** list, and whether it is
+mandatory before a deploy is the owner's decision, not QA's. The wrong move is to call a check
+critical and leave it advisory, which is the same as not writing it.
 
 ---
 
@@ -1099,8 +1110,9 @@ it.** A first seam full of `clean` rows would mean the role guessed instead.
 
 ### A finding names a file and a fact
 
-- ✅ "600-qa under-supplied by 900-security on `02-mitigations.md` — the rate-limit fix has no number,
-  so no test case could be written against it."
+- ✅ "600-qa under-supplied by the handoff map on `docs/300-design/03-tokens.md` — the file is not
+  in its inputs, and `02-SPEC.md` carries no hex value on purpose, so the 3:1 focus ring and the
+  44 px touch target could not be checked as numbers."
 - ❌ "the roles should communicate better."
 
 The first one names the line you go and change. The second one will still be true next run.

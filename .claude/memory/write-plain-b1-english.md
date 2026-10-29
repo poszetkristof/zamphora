@@ -22,5 +22,19 @@ number that can be proved wrong" not "falsifiable".
 **Why:** long or figurative English makes the work harder to check. The user cannot review what
 they must first decode.
 
-**How to apply:** the same rule is in `CLAUDE.md` under "Reply style", so it loads every session.
-Keep both in step if either changes. See [[learning-style]].
+**How to apply:** the same rule is in `CLAUDE.md` under "Language — chat included", so it loads
+every session. Keep both in step if either changes. See [[learning-style]].
+
+## Documents too — readable at a glance
+
+On 2026-10-29 the owner read the three 600-qa files (1,272 lines) and said they cost too much
+effort. **The B1 rule applies to every file in `docs/` and `factory/`, not only to chat.** A
+document the owner cannot read in one look is a document the owner cannot check.
+
+- The first screen says what the file decides, what is still open, and what to do next.
+- Keep every essential fact. Cut repetition, side remarks and second explanations. Say each fact
+  once and point to the file that owns it.
+- No edit history in a document. Git records it. See [[explain-concepts-not-only-decisions]].
+- **Never compress into fragments.** On 2026-09-17 a pass turned readable prose into dense notes
+  the owner could not follow, and every file was restored from git. Short means fewer facts per
+  sentence, not fewer words per fact.

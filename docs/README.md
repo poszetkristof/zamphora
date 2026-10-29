@@ -16,7 +16,7 @@ infra surface, QA last because a real test plan needs everything else already wr
 | `300-design/` | 300-design | Journey map, `CONTEXT.md` + `SPEC.md` handoff, tokens | ☑ |
 | `400-architecture/` | 400-architecture | Options, C4 diagrams, timed flow, patterns, NFR budgets, pre-mortem. `08-async-options-short.md` is the background-run decision of 2026-09-17 | ☑ |
 | `500-engineering/` | 500-engineering | Conventions, contracts, web spec, API spec | ☑ |
-| `600-qa/` | 600-qa | Test plan, test cases, AI evaluation plan | ☐ |
+| `600-qa/` | 600-qa | Test plan, test cases, AI evaluation plan | ☑ |
 | `800-infra/` | 800-infra | Environments, IaC plan, cost guardrails, observability, CI/CD | ☑ |
 | `900-security/` | 900-security | Assets, threats, mitigations, evidence | ☑ |
 | `ADR/` | 400-architecture | Decisions. Each ends in an instruction with an explicit "do not". Sixteen so far | ☑ |

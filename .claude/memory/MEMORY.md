@@ -11,7 +11,7 @@ duplicate. Do not record what the repo already says — code structure, git hist
 already in `CLAUDE.md`.
 
 - [Who the user is](user-profile.md) — senior frontend growing into backend and AWS; and why the private reasons stay out of the repo.
-- [Write plain B1 English](write-plain-b1-english.md) — short sentences, common words, and a banned-word list that applies to chat too.
+- [Write plain B1 English](write-plain-b1-english.md) — short sentences, common words, a banned-word list that applies to chat too, and docs readable at a glance.
 - [Learning style](learning-style.md) — 80/20, context sentence then bullets, real values, the 6-month test.
 - [Explain the concept, not only the decision](explain-concepts-not-only-decisions.md) — name the term, its parts, the question each part answers, and the real tool. The user's own format.
 - [Be the copilot during a factory run](copilot-during-factory-runs.md) — explain the why before each role and the result after it. One role per session.

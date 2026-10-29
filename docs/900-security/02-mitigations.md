@@ -338,7 +338,7 @@ of life is otherwise found from an error message.
 | Fix | What | Protects |
 | --- | --- | --- |
 | **Preventive** | The check in `01-threats.md` §5 is the control, and it ran: every package named in a specification was read from the npm registry before it was accepted. **Do it again for every new name in every run** | **I** |
-| **Detective** | The plugin is at a pinned version path (`ai-factory/0.2.2/`). A version change is visible. A role writing a package name that no registry answers for is caught by the check above | I |
+| **Detective** | The plugin is at a pinned version path (`ai-factory/0.2.3/`). A version change is visible. A role writing a package name that no registry answers for is caught by the check above | I |
 | **Responsive** | Remove the name from the specification. Nothing has been installed yet, so in run 1 this costs one edit | A |
 
 ---
