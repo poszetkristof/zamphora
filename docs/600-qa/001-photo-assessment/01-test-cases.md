@@ -1,7 +1,7 @@
 # Test cases — photo assessment
 
-**Written by** 600 QA, run 1 (`001-photo-assessment`), 2026-09-17. **Read next by** whoever writes
-the first task.
+**Written by** 600 QA, run 1 (`001-photo-assessment`). **Read next by** whoever writes the first
+task.
 
 ---
 
@@ -13,13 +13,17 @@ Read `00-test-plan.md` first. It says what is in scope and which checks block a 
   safely, or does **not** do something it must not do.
 - **Job:** the CI job from `04-ci-cd.md` §3. `test` runs unit and integration tests. `infra-assert`
   checks the CDK output. Both are inside `ci-ok`. `e2e`, `perf-flow` and `bundle-budget` are inside
-  `preview-ok`. Both gates block a merge.
+  `dev-ok`. Both gates block a merge.
+- **`e2e` and `perf-flow` run in `dev`, which is permanent and shared.** Data from earlier runs
+  stays in it, so no case may assume an empty table or a known number of tries left. Each send
+  there uses one of the test account's 10 tries a day. `00-test-plan.md` §4.1 lists which case
+  uses which send.
 - **AC** is an acceptance criterion in `01-user-stories.md`. **NFR** is in `06-nfrs.md`. **C-n** is
   a "must not" rule in `02-SPEC.md` §7. **EV-n** is a check in `03-evidence.md`.
 - **Every value a test uses** — a band, a verdict code, a failure code, a photo limit — **comes from
   `@zamphora/contracts`.** A test with its own copy of a list only tests that copy.
 
-**Counts: 119 cases. 47 positive, 72 negative.** 14 of the 15 stories are covered, each with at
+**Counts: 129 cases. 51 positive, 78 negative.** 14 of the 15 stories are covered, each with at
 least one positive and one negative case. US-12 is out of run 1.
 
 ---
@@ -106,7 +110,8 @@ The stub model drives every case here. None of them costs money.
 
 ## 8. US-07 — Sign in once, and see only my own things
 
-This section needs **two** test accounts in `preview`.
+This section needs **two** test accounts in `dev`, A and B. `00-test-plan.md` §5, rule 5, says
+where they come from.
 
 | # | Kind | Test | Expected | AC | Job |
 | --- | --- | --- | --- | --- | --- |
@@ -126,12 +131,22 @@ This section needs **two** test accounts in `preview`.
 | # | Kind | Test | Expected | AC | Job |
 | --- | --- | --- | --- | --- | --- |
 | TC-08-1 | N | Make 10 assessments, then an 11th | 429 `daily-limit-reached`. No model call. Refused before the photo is written | AC-1, AC-3, NFR-12 | `test` |
-| TC-08-2 | N | Send 10 requests at the same time on a new day, then one more | Exactly ten `202`, then a refusal. `assessmentsStarted` is exactly 10. (EV-23 still says `201` and `modelCalls` — finding 42) | NFR-12, EV-23 | `test` |
-| TC-08-3 | P | Read the refusal and the screen | It says the limit is reached and when it resets. `quotaResetsAt` is UTC; the screen shows local time | AC-2 | `test`, `e2e` |
-| TC-08-4 | N | Use 3, then 8 | With 7 left, no limit message. `LimitNote` shows only at 2 or fewer | AC-4 | `e2e` |
+| TC-08-2 | N | Send 10 requests at the same time on a new day, then one more | Exactly ten `202`, with ten different assessment ids, then `429 daily-limit-reached`. `attempts` on the person's `QUOTA#<day>` row is exactly 10. Not `modelCalls` (up to 3 per assessment) and not `assessmentsStarted` (written at the end of each run, for every account) | NFR-12, EV-23 | `test` |
+| TC-08-3 | P | Read the refusal and the screen | It says the limit is reached and when it resets. `quotaResetsAt` is UTC; the screen shows local time | AC-2 | `test` |
+| TC-08-4 | N | Draw SC-1 with 7 tries left, then with 2 left | With 7 left, no limit message. `LimitNote` shows only at 2 or fewer | AC-4 | `test` |
 | TC-08-5 | N | Make the model call fail, then read the counter | The failed attempt counts. The workflow's own retries do not count again | AC-5, NFR-12 | `test` |
 | TC-08-6 | P | Turn the kill-switch off while a run waits, and separately make `StartExecution` fail | The attempt is given back, because no call was made | AC-5, NFR-38 | `test` |
 | TC-08-7 | N | Fail **after** the call was made | The counter does not go back | NFR-38 | `test` |
+| TC-08-8 | P | A run where the start of `assess` is throttled on all three tries | Refunded. 0 model calls. `callsMade` stays 0, the run reaches `Refund` through `AnyCallMade`, and the failure is `provider-unavailable` | AC-5, NFR-38, EV-33 | `infra-assert` |
+| TC-08-9 | N | A run where try 1 is a model timeout, then tries 2 and 3 are throttled starts | Not refunded. 1 model call. The throttled starts do not add to `callsMade`, and the earlier paid call keeps the try counted | NFR-38, T-45, EV-33 | `infra-assert` |
+| TC-08-10 | N | A run where try 1 is a model timeout, then try 2 meets an open breaker | Not refunded. 1 model call. A refusal after a paid call still counts (gate 82) | NFR-38, T-45, EV-33 | `infra-assert` |
+| TC-08-11 | P | A run where try 1 is a throttled start, then try 2 finds the kill-switch off | Refunded. 0 model calls | AC-5, NFR-38, EV-33 | `infra-assert` |
+| TC-08-12 | N | `assess` crashes after it starts, before it sends the request | Not refunded. The workflow cannot tell this from a crash after the call, so the try counts. This is kept on purpose (T-46, gate 82) | NFR-38, T-46 | `infra-assert` |
+
+**How TC-08-8 to TC-08-12 are driven.** They are the four runs in EV-33's table, plus T-46. The task
+that writes them chooses a walk of the synthesised state machine or the Step Functions test tooling
+in `dev` (`03-evidence.md` EV-33). The expected result is not a choice. Either way the check runs
+inside a merge gate.
 
 ## 10. US-09 — A message that says whether trying again helps
 
@@ -140,8 +155,8 @@ This section needs **two** test accounts in `preview`.
 | TC-09-1 | N | Go through every failure code | Each has exactly one retry hint and one message. The message map's keys are exactly the failure codes. The codes exist as **one** `const` list covering `01-contracts.md` §8.1 and §8.2 (finding 50) | AC-1 | `test` |
 | TC-09-2 | P | Fail the upload, go back to SC-1 | The pot and photo are still there. The photo is kept in memory, never in browser storage | AC-2, NFR-33 | `e2e` |
 | TC-09-3 | P | Stub times out three times | "Trying again may work", a try-again button, no task | AC-3 | `test`, `e2e` |
-| TC-09-4 | N | Kill-switch off, send a photo | "The feature is off, trying again will not work now". No try-again button | AC-4, C-10 | `test`, `e2e` |
-| TC-09-5 | N | Stub throws timeout ×3, then throttled ×3, then unavailable ×3 | Exactly three calls each time, never four. Only these three are retried, and only in the workflow | AC-5, NFR-04 | `test` |
+| TC-09-4 | N | Kill-switch off, send a photo | "The feature is off, trying again will not work now". No try-again button | AC-4, C-10 | `test` |
+| TC-09-5 | N | Stub throws timeout ×3, then throttled ×3, then unavailable ×3 | Exactly three calls each time, never four. Only these three lead to another call, and only through the workflow: the `Catch` adds 1 to `callsMade`, and `RetryOrStop` stops at 3 | AC-5, NFR-04 | `test` |
 | TC-09-6 | N | Stub returns bad request, refused, no credit, rejected photo | Exactly one call each. None retried. `no-credit` is a normal failure; the rest of the app works | AC-5, NFR-04 | `test` |
 | TC-09-7 | P | Read the row after each failure | `state: failed` with its own `failureCode` | AC-6 | `test` |
 | TC-09-8 | N | Draw `FailureNote` for every `will-not-work` code | No try-again button. Every `may-work` code has one | AC-1, C-10 | `test` |
@@ -151,8 +166,7 @@ This section needs **two** test accounts in `preview`.
 **The rule behind TC-09-9 and TC-09-10 (gate 76).** If the API **answered** with a failure, the next
 try is a new request, so it gets a new id. If the request got **no answer**, the phone does not know
 whether it worked, so it sends the same id again. The API then returns the first run instead of
-charging twice. `02-web-spec.md` §4.2 still says "a new one is only made when a new photo is
-picked". It needs a 500-engineering repair before the screen is built.
+charging twice. `02-web-spec.md` §4.2 and `03-api-spec.md` §4a hold the full rule.
 
 ## 11. US-10 — How long photos are kept, and deleting them
 
@@ -191,7 +205,12 @@ picked". It needs a 500-engineering repair before the screen is built.
 | TC-13-4 | N | Turn it off while a call is running | That call finishes, because it is already paid. The result is saved | AC-4 | `test` |
 | TC-13-5 | P | Turn it back on | Normal use continues | AC-5 | `test` |
 | TC-13-6 | N | Make the config read fail; then start a function that never read a value | A failed read keeps the last value. With no value ever read, the call does not run | §6 | `test` |
-| TC-13-7 | N | Write `DAILY_LIMIT` 0, 21 and 10,000, and a `MODEL_ID` that does not exist | Each bad value is refused and the built-in default is used. **Valid range is 1 to 20** (gate 75). Runs once `03-api-spec.md` §6 names the range | T-14 | `test` |
+| TC-13-7 | N | Write `DAILY_LIMIT` 0, 21 and 10,000. Write `MODEL_ID` as the alias `claude-haiku-4-5`, a `-latest` alias, an Opus id and a made-up id | Each bad value is refused and the built-in default is used. No refused model id reaches the provider; the call uses `claude-haiku-4-5-20251001`. **Valid range is 1 to 20** (gate 75). **Valid model ids are the three in `ALLOWED_MODEL_IDS`** (ADR-0017, `03-api-spec.md` §6) | T-14 | `test` |
+| TC-13-8 | P | Write `MODEL_ID` as each of `claude-haiku-4-5-20251001`, `claude-haiku-5-5` and `claude-sonnet-5-5`, then read `ALLOWED_MODEL_IDS` | Each one is accepted, and the stub provider receives that exact id. The list holds exactly these three, no more | T-14, ADR-0017 | `test` |
+| TC-13-9 | N | Feed the `CONFIG` reader an `AI_ENABLED` that is: no row, a row with no `enabled`, the string `"false"`, the string `"true"`, the number `1` | Off every time, and no model call. Exactly one `config-value-refused` line, with `configKey: AI_ENABLED`, `usedValue: false`, and `reason` `row-missing` for the first and `wrong-type` for the other four. A second read inside `CONFIG_CACHE_MS` writes no second line | NFR-39, ADR-0019 | `test` |
+| TC-13-10 | P | Feed it the boolean `true`, then the boolean `false` | `true` gives on, `false` gives off. Neither writes a line | NFR-39 | `test` |
+| TC-13-11 | N | Integration: cache `true`, replace the row with the string `"false"`, wait past `CONFIG_CACHE_MS`, send a photo | The provider is not called. `api` answers `feature-off` before it counts an attempt. This proves that a refused row replaces a cached `true` | NFR-39, `03-api-spec.md` §6 | `test` |
+| TC-13-12 | N | Search the `CONFIG` reader for a compiled-in value for `AI_ENABLED`, and for any code that reads a string as a boolean | None found. The only "on" check is `enabled === true`. A fallback to `true` would let a mistake made while switching the feature off keep the spending going | NFR-39, ADR-0019 | `test` |
 
 The real kill-switch timing is EV-29, run once on `prod`. It is a release gate.
 
@@ -208,13 +227,13 @@ The real kill-switch timing is EV-29, run once on `prod`. It is a release gate.
 
 | # | Kind | Test | Expected | AC | Job |
 | --- | --- | --- | --- | --- | --- |
-| TC-15-1 | P | Open SC-8, fill both fields, save | Exactly two fields. After saving, SC-1 opens with the new pot picked | AC-2, AC-7 | `e2e` |
+| TC-15-1 | P | Open SC-8, fill both fields, save. The name holds the run's number | Exactly two fields. After saving, SC-1 opens with the new pot picked, found by that name | AC-2, AC-7 | `e2e` |
 | TC-15-2 | N | Empty name, filled room | Refused with a clear message. Focus goes to the name. The room keeps its text | AC-4 | `e2e` |
 | TC-15-3 | N | Filled name, empty room | Refused. The room tells two pots with the same name apart | AC-9 | `test`, `e2e` |
 | TC-15-4 | N | 61-character name and 61-character room | Both refused. Test 0, 1, 60 and 61 | AC-4, AC-9 | `test` |
 | TC-15-5 | P | Two pots, same name, different rooms | Both accepted, no warning | AC-6 | `test` |
 | TC-15-6 | P | 30-character Hungarian name in `PotPicker` at 360 px and at 200% zoom | Nothing cut off, nothing overlaps. Use the Hungarian text | AC-5 | `e2e` |
-| TC-15-7 | P | New account: count screens from sign-in to the first photo | At most three. **Assumes a screen visited twice counts once** (Cognito → SC-1 → SC-8 → SC-1 = 3). Gate 79 asks 200-product to confirm | AC-8 | `e2e` |
+| TC-15-7 | P | Count the screens from sign-in to the first photo, as a new account sees them. The `dev` test account already has pots from earlier runs, so Playwright answers the pot list with an empty list | At most three. **Assumes a screen visited twice counts once** (Cognito → SC-1 → SC-8 → SC-1 = 3). Gate 79 asks 200-product to confirm | AC-8 | `e2e` |
 | TC-15-8 | N | As another account, ask for this pot | `not-found`, same body as a missing pot | AC-3, NFR-30 | `test` |
 
 ## 16. The 37 "must not" rules, as checks
@@ -234,7 +253,7 @@ the numbers.
 | 7 | Send tapped twice for one assessment | TC-01-9 | `e2e` |
 | 8 | A model call before the format and pot checks | TC-01-2, TC-01-4 | `test` |
 | 9 | A photo over 1,000 px sent | TC-01-5 | `e2e` |
-| 10 | A try-again button where retrying cannot help | TC-09-4, TC-09-8 | `test`, `e2e` |
+| 10 | A try-again button where retrying cannot help | TC-09-4, TC-09-8 | `test` |
 | 11 | An automatic retry from a screen | Search `apps/web` for retry code, and TC-09-5 | `test` |
 | 12 | A photo queued while offline | Offline e2e: nothing is sent or queued | `e2e` |
 | 13 | A task from `unsure` with no explicit yes | TC-03-2 | `test` |
@@ -297,17 +316,21 @@ one runs.
 | EV-15 | The timeouts are in the right order | `test`, `infra-assert` | Merge |
 | EV-16 | `LLM_PROVIDER` falls back to the stub | `test` | Merge |
 | EV-17 | No secret in the repository | `test`, plus two GitHub settings | Merge |
-| EV-18 to EV-24 | Preview checks: no session, other account, cookies, `state`, cross-site post, daily limit, one tap one charge | `e2e` | Merge |
+| EV-18 to EV-22 | Checks in `dev`: no session, other account, cookies, `state`, cross-site post | `e2e` | Merge |
+| EV-23 | The daily limit holds under ten at once. It needs 10 sends from a count of 0, more than `e2e` has (`00-test-plan.md` §4.1) | By hand in `dev` | Release |
+| EV-24, parts one and two | One tap is one charge, and a failed run does not lock the person out. They use sends 1, 5 and 6 in `00-test-plan.md` §4.1 | `e2e` | Merge |
+| EV-24, part three | A refusal at the limit is written on the `IDEM#` row. It needs the limit already reached, so it runs straight after EV-23 | By hand in `dev` | Release |
 | EV-25 | Prompt injection through a photo and a pot name | `ai-eval`, real model | Release |
 | EV-26 | Model text is never run as code | `e2e` | Merge |
 | EV-27 | The Content Security Policy is real and the app works | `e2e` | Merge |
 | EV-28 | The bucket needs a signed URL | `retention-audit` | Runtime |
-| EV-29 to EV-32 | Kill-switch timing, rollback, AWS multi-factor sign-in, model comparison | By hand, once | Release |
+| EV-29 to EV-32 | Kill-switch timing, rollback, AWS multi-factor sign-in, the model comparison on the two Haiku models | By hand, once | Release |
 | EV-33 to EV-35 | Workflow retry and refund, stream URL, the `api` role | `infra-assert` | Merge |
 | EV-36 | A stream with no session answers nothing | `e2e` | Merge |
 
-**Three checks need a fix before they run.** EV-23 expects `201` and `modelCalls` (finding 42).
-EV-24 part two must follow gate 76 (TC-09-9, TC-09-10). EV-08 was never run.
+**EV-08 was never run.** It is a release gate (`00-test-plan.md` §7.2). EV-23 and EV-24 count
+`attempts`, the counter the daily limit limits. EV-24 follows gate 76, and gate 82: a failed run
+that called the model keeps its try.
 
 **Each check has three empty fields: output, date, result.** Filling them with real output is the
 work. A sentence instead of output does not count.
@@ -323,12 +346,12 @@ work. A sentence instead of output does not count.
 | US-05 `cannot-tell` | TC-05-1, 4, 5, 6 | TC-05-2, 3, 7 | M-04 |
 | US-06 AI notice | TC-06-1 | TC-06-2, 3 | M-11 |
 | US-07 Sign in, own data only | TC-07-1 | TC-07-2 to 10 | M-06 |
-| US-08 Daily limit | TC-08-3, 6 | TC-08-1, 2, 4, 5, 7 | M-14 |
+| US-08 Daily limit | TC-08-3, 6, 8, 11 | TC-08-1, 2, 4, 5, 7, 9, 10, 12 | M-14 |
 | US-09 Retry message | TC-09-2, 3, 7, 9 | TC-09-1, 4, 5, 6, 8, 10 | M-08 |
 | US-10 Photo rules | TC-10-1, 4, 5, 6 | TC-10-2, 3, 7, 8, 9 | M-07 |
 | US-11 Two languages | TC-11-1, 2, 5, 6 | TC-11-3, 4, 7, 8 | M-09 |
 | US-12 Admin figures | none | none | M-15. Out of run 1 (gate 30) |
-| US-13 Kill-switch | TC-13-1, 2, 3, 5 | TC-13-4, 6, 7 | M-10 |
+| US-13 Kill-switch | TC-13-1, 2, 3, 5, 8, 10 | TC-13-4, 6, 7, 9, 11, 12 | M-10 |
 | US-14 Admin refused | TC-14-2 | TC-14-1, 3, 4 | M-18 |
 | US-15 Add a pot | TC-15-1, 5, 6, 7 | TC-15-2, 3, 4, 8 | M-23 |
 
@@ -345,9 +368,9 @@ Eight cases that belong to no single story. Four positive, four negative.
 | TC-NF-02 | P | Read the deadline constant; run a request with a slow step | `REQUEST_DEADLINE_MS` is 20,000, below the 22,000 ms function timeout. The app answers `deadline-passed`, not a platform 504 | NFR-02 | `test` |
 | TC-NF-03 | P | Read the model timeout; use a stub that never answers | `MODEL_TIMEOUT_MS` is 18,000, passed as an abort signal per attempt | NFR-03 | `test` |
 | TC-NF-05a | N | Search for a second model call or retry code around `LlmProvider` | None. The adapter has `maxRetries: 0`. The SDK retries by default, which would turn 3 calls into 9 | NFR-05 | `test` |
-| TC-NF-05b | N | Read the retry list in the CDK output | Only `ProviderTimeout`, `ProviderThrottled`, `ProviderUnavailable`, `Lambda.TooManyRequestsException`. `MaxAttempts: 2`. `retryOnServiceExceptions` off. Type `STANDARD`, no `TimeoutSeconds` — that would skip every `Catch` and leave the row `running` | NFR-05, EV-33 | `infra-assert` |
+| TC-NF-05b | N | Read the `Assess` task and `RetryOrStop` in the CDK output | The `Retry` names only `Lambda.TooManyRequestsException`, with `MaxAttempts: 2`. `ProviderTimeout`, `ProviderThrottled` and `ProviderUnavailable` are in the `Catch` that adds 1 to `callsMade`, and in no `Retry`. `RetryOrStop` compares `callsMade` with 3. `retryOnServiceExceptions` off. Type `STANDARD`, no `TimeoutSeconds` — that would skip every `Catch` and leave the row `running` | NFR-05, EV-33 | `infra-assert` |
 | TC-NF-10 | P | Compute cost from a recorded `usage` block, one above the limit | Matches the published prices. Cost comes from `usage`, never an estimate. Over-limit calls show in the day total. Stored as whole millionths of a dollar, because adding decimals loses precision | NFR-10 | `test` |
-| TC-NF-38 | N | Check which states lead to `Refund` | Only the two refusal branches. Never a state after `Assess` made a call | NFR-38, EV-33 | `infra-assert` |
+| TC-NF-38 | N | Check which states lead to `Refund` | Only `AnyCallMade`, and only when `callsMade` is 0. No other state has an arrow into `Refund` | NFR-38, EV-33 | `infra-assert` |
 | TC-NF-50 | P | Measure the gzipped JavaScript for SC-1 | Within the `size-limit` number. 170 KB is a guess; replace it with the real measurement in the first web task | NFR-50 | `bundle-budget` |
 | TC-NF-52 | N | Read every workflow file | Each has a `paths` filter | NFR-52 | `test` |
 

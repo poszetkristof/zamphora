@@ -1,10 +1,6 @@
 # Threats — what could go wrong, scored
 
 **Written by** 900 Security, run 1 (`001-photo-assessment`). **Date:** 2026-09-01.
-**Updated 2026-09-17, twice.** First for ADR-0014 to ADR-0016: three scores went down and four
-threats were added, which §7 lists. Then an audit lowered **T-27 from 15 to 10** by reading
-`04-ci-cd.md`, the file this role's inputs did not include (`02-mitigations.md` §11), and recorded
-that **T-19's fourth fix shipped** — `image/gif` left `ACCEPTED_PHOTO_TYPES` on gate 68.
 **Read next by** 600 QA, and by 900 Security on every later run.
 
 This file lists what could go wrong, one line at a time, with a score. `00-assets.md` says what is
@@ -26,8 +22,8 @@ score high enough.
 
 **This file belongs to the whole product.** Later runs **add** threats and **add** a section for
 their own feature. They do not rewrite the scoring scale, and they do not delete a threat an earlier
-run wrote. If a control ships and lowers a score, the row keeps its old score and gains a note
-saying what changed and when.
+run wrote. If a control ships or a fact changes a score, rewrite the row. The row shows only the
+current score and the reason for it. Git keeps the old value.
 
 ---
 
@@ -79,9 +75,7 @@ source is named on the row. Where it is judgement, the "why" column says so.
 disclosure (seeing what you should not), **D**enial of service (stopping it working), **E**levation
 of privilege (getting a permission you should not have).
 
-Every boundary TB-1 to TB-15 in `00-assets.md` §3 has at least one threat below. **TB-16 to
-TB-19, the four boundaries the background run added on 2026-09-17, are scored in §7** rather than
-here, so this section stays the record of the shape run 1 started from.
+Every boundary TB-1 to TB-19 in `00-assets.md` §3 has at least one threat below.
 
 ### TB-1 — the public internet reaches CloudFront
 
@@ -106,7 +100,7 @@ here, so this section stays the record of the shape run 1 started from.
 | T-07 | E | A route added in a later run carries no decorator, so nobody checks who may call it | 1 | 4 | **4** | Low | Whatever that route touches | This is designed away. The global guard refuses a route with no decorator, and NFR-32 walks the router on every build (ADR-0004). Listed so nobody removes either half |
 | T-08 | S | **Authorization code injection at `GET /api/auth/callback`.** The `state` in the query is not compared with the `state` in the `__Host-oauth` cookie, so an attacker's code is exchanged inside the victim's browser | 3 | 4 | **12** | **High** | 1 person, signed in to the **attacker's** account without knowing it. Every photo they then take goes to the attacker | ADR-0003 says the API checks the signature, issuer, audience and nonce. **No input says the `state` values are compared and the request refused on a mismatch.** Likelihood 3 because a step that is not written down is a step that gets missed |
 | T-09 | S | Cross-site request forgery on `POST /api/assessments` or `POST /api/care-tasks` | 2 | 3 | **6** | Medium | 1 person: a spent model call, or an unwanted care task | Already covered by `SameSite=Strict` plus one origin plus no CORS. The real risk is a later change to `Lax`, which would open it in silence |
-| T-10 | D | Ten assessments at once hold all ten reserved function copies for six to eight seconds, so every other route answers 429 | 1 | 2 | **2** | Low | 1 person, for about a second | **Lowered 2026-09-17.** The model call left the `api` function (ADR-0014). An assessment request now holds a copy for about one second, and the paid call runs in `assess` with its own concurrency of 1. The split ADR-0002 named as a trigger has happened |
+| T-10 | D | Ten assessments at once hold all ten reserved function copies for six to eight seconds, so every other route answers 429 | 1 | 2 | **2** | Low | 1 person, for about a second | The model call left the `api` function (ADR-0014). An assessment request now holds a copy for about one second, and the paid call runs in `assess` with its own concurrency of 1. The split ADR-0002 named as a trigger has happened |
 
 ### TB-4 — the browser reaches the API
 
@@ -119,10 +113,10 @@ here, so this section stays the record of the shape run 1 started from.
 
 | # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-13 | I | One account reads another account's rows | 1 | 5 | **5** | Medium | Everything one other person owns | Designed away: the owner id is the partition key and it comes from the session only (ADR-0004). It is not a check that can be forgotten. **ADR-0004 names where this protection can first be undone: the secondary index that run 3 adds for backbone 6** |
-| T-14 | T | A wrong value is typed by hand into the `CONFIG` partition — a model id that does not exist, or a daily limit of 10,000 | 3 | 3 | **9** | Medium | A wrong `MODEL_ID` fails every call, so the feature is dark. A wrong `DAILY_LIMIT` removes the spend ceiling: 10,000 × $0.0040 is **$40 a day** against a **$5** balance | The rows are written by hand with no validation on the way in (`01-iac-plan.md` §10). Reading validates against "a closed list or a range" (`03-api-spec.md` §6) — **but no input says what the range for `DAILY_LIMIT` is** |
-| T-15 | D | The kill-switch cannot be relied on when the table itself is the problem. A failed read keeps the last known value, which is `true`, so the calls keep going | 2 | 4 | **8** | Medium | Up to the whole **$5** balance, if the table is unreadable while the model call still works | ADR-0009 chose "keep the last known value" on purpose, and the reason is good. The gap is that the switch and the thing it switches share one dependency. There is no second switch written down anywhere |
-| T-16 | D | **The `IDEM#<requestId>` row is not cleared when an assessment fails, so the person's own next tap is refused with 409 for ten minutes** | 1 | 3 | **3** | Low | 1 person, for about one second | **Lowered 2026-09-17.** The `assessmentId` is now written on the `IDEM#` row **before** the `202`, at step 9 of `03-api-spec.md` §4, not after a successful call. A resend finds the id and gets the same run, whether that run later succeeded or failed. `409` is only possible in the second between the claim and the write. This is what R-08 in `02-mitigations.md` asked for, and the structure delivered it |
+| T-13 | I | One account reads another account's rows | 1 | 5 | **5** | Medium | Everything one other person owns | Designed away: the owner id is the partition key and it comes from the session only (ADR-0004). It is not a check that can be forgotten. The `watch` function also reads under the partition key of the session, so the stream adds no path across accounts. **ADR-0004 names where this protection can first be undone: the secondary index that run 3 adds for backbone 6** |
+| T-14 | T | A wrong value is typed by hand into the `CONFIG` partition — a model id that is not on the list, a dearer model that is on it, or a daily limit of 10,000 | 3 | 3 | **9** | Medium | A `MODEL_ID` outside the three ids in ADR-0017 is refused on read, and the default model answers. A `DAILY_LIMIT` outside 1 to 20 is refused on read, and the limit stays at the compiled-in 10. The worst pair that is accepted is a limit of 20 with `claude-sonnet-5-5`, at about $0.0080 a call (ADR-0017, an estimate it says may be low): **$0.16 a day** at one call per assessment, and **$0.48 a day** in the worst case of three calls each. That empties the **$5** balance in about 10 days. On the default model the same limit of 20 costs **$0.08 a day** at one call each, and **$0.24 a day** at three | The rows are written by hand with no validation on the way in (`01-iac-plan.md` §10). Reading validates against "a closed list or a range" (`03-api-spec.md` §6). **The range for `DAILY_LIMIT` is set by gate 75 in `factory/feature.md`, and the list for `MODEL_ID` by ADR-0017**, so a value like 10,000 or a misspelled id is refused rather than used. A wrong `MODEL_ID` does not turn the feature off. The score is 9 because an id that is on the list can still double the cost of every call, and the read accepts it without a warning |
+| T-15 | D | The kill-switch cannot be relied on when the table itself is the problem. A failed read keeps the last known value, which is `true`, so the calls keep going | 2 | 4 | **8** | Medium | Up to the whole **$5** balance, if the table is unreadable while the model call still works | ADR-0009 chose "keep the last known value" on purpose, and the reason is good. The gap is that the switch and the thing it switches share one dependency. `02-mitigations.md` §4 names the backup that does not share it: the `assess` function's reserved concurrency set to 0 |
+| T-16 | D | **The `IDEM#<requestId>` row is not cleared when an assessment fails, so the person's own next tap is refused with 409 for ten minutes** | 1 | 3 | **3** | Low | 1 person, for about one second | The `assessmentId` is written on the `IDEM#` row **before** the `202`, at step 9 of `03-api-spec.md` §4, not after a successful call. A resend finds the id and gets the same run, whether that run later succeeded or failed. `409` is only possible in the second between the claim and the write. This is what R-08 in `02-mitigations.md` asked for, and the structure delivered it |
 
 ### TB-6 — the API reaches the photo bucket
 
@@ -135,7 +129,7 @@ here, so this section stays the record of the shape run 1 started from.
 
 | # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-19 | E | **A crafted image reaches libvips through `sharp` and corrupts memory in the `api` function** | 2 | 4 | **8** | Medium | Every row in the table for every account, every object in the bucket (up to 1,800 photos), and the Cognito client secret. **Not the Anthropic API key any more** — since 2026-09-17 only the `assess` function can read it, and `assess` never decodes a photo (ADR-0014). Impact lowered from 5 to 4 for that reason | Four CVEs, published 2026-07-17, in the libvips loaders sharp uses: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591, rated High at CVSS 7.0 ([GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj), checked 2026-09-01). **The advisory names the GIF loader, and `image/gif` is in `ACCEPTED_PHOTO_TYPES`** (`01-contracts.md` §5). ADR-0002 hands this exact question to this role by name |
+| T-19 | E | **A crafted image reaches libvips through `sharp` and corrupts memory in the `api` function** | 2 | 4 | **8** | Medium | Every row in the table for every account, every object in the bucket (up to 1,800 photos), and the Cognito client secret. **Not the Anthropic API key** — only the `assess` function can read it, and `assess` never decodes a photo (ADR-0014). That is why the impact is 4 and not 5 | Four CVEs, published 2026-07-17, in the libvips loaders sharp uses: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591, rated High at CVSS 7.0 ([GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj), checked 2026-09-01). **The advisory names the GIF loader. `image/gif` is not in `ACCEPTED_PHOTO_TYPES`**, by the owner's answer to gate 68 on 2026-09-17 (`01-contracts.md` §5). That is the fourth preventive fix in `02-mitigations.md` R-09; the other three are still owed. ADR-0002 hands this exact question to this role by name |
 | T-20 | D | A small file that decodes into an enormous image — a "decompression bomb" — burns the whole 20,000 ms deadline and the function's memory | 3 | 3 | **9** | Medium | 1 request, and one of the person's ten attempts. Repeated, it holds the reserved concurrency | `sharp` has a `limitInputPixels` guard and **no input sets it**. A 2 MB PNG can decode to a very large surface. Likelihood 3 because it takes no skill |
 
 ### TB-8 — the adapter reaches Anthropic
@@ -172,10 +166,36 @@ Covered in §3, the LLM pass. TB-8 is where every LLM threat sits.
 
 | # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-27 | E | **A pull request from a stranger runs CI on a public repository, and CI can assume a role that builds a whole AWS environment** | 2 | 5 | **10** | **High** | Everything in T-23, reached without any human sign-in | **Lowered from 15 on 2026-09-17, by reading `04-ci-cd.md` §4**, which this role's `reads:` block did not give it (seam S-901-1). Two of the three properties R-05 asked for are written down and hold: `pr-preview.yml` carries `if: github.event.pull_request.head.repo.full_name == github.repository`, so a fork's pull request never runs it, `pull_request_target` is banned by name in §11, and gate 55 holds every outside run for approval. The preview role's trust `sub` is `repo:poszetkristof/zamphora:pull_request`, not `…:*`, and §4 says plainly why a `*` would be wrong. **The third property is planned and not yet verifiable:** the preview role "may assume the CDK deploy roles for `preview` stacks only" is a sentence, and the IAM policy it describes does not exist yet. So likelihood 2 rather than 1, and the check moves to the pre-deploy list |
+| T-27 | E | **A pull request from a stranger runs CI on a public repository, and CI can assume a role that deploys the whole `dev` environment** | 2 | 5 | **10** | **High** | Everything in T-23, reached without any human sign-in | **Scored by reading `04-ci-cd.md` §4**, which this role's `reads:` block does not give it (seam S-901-1). Two of the three properties R-05 asked for are written down and hold: `dev.yml` carries `if: github.event.pull_request.head.repo.full_name == github.repository`, so a fork's pull request never runs it, `pull_request_target` is banned by name in §11, and gate 55 holds every outside run for approval. The trust `sub` of the dev role, `zamphora-github-dev`, is `repo:poszetkristof/zamphora:pull_request`, not `…:*`, and §4 says plainly why a `*` would be wrong. **The third property is planned and not yet verifiable:** that the dev role may deploy the `dev` stacks only, and never writes a `CONFIG` row, is a sentence, and the IAM policy it describes does not exist yet. So likelihood 2 rather than 1, and the check moves to the pre-deploy list (`00-environments.md` §10 item 11) |
 | T-28 | I | A secret is committed to the public repository | 2 | 5 | **10** | **High** | Whatever the secret opens. For the Anthropic key that is the $5 balance; for the Cognito client secret it is the sign-in flow | The design is right: both secrets live in Parameter Store, CDK never holds a value, and `.claude/settings.json` denies reading `.env` files (`00-environments.md` §8). **No input names any secret scanning on the repository or in CI.** Likelihood 2 is the chance of one careless paste |
 | T-29 | T | A poisoned package runs an install script on the developer's machine or in CI and reads `~/.aws/credentials` | 2 | 5 | **10** | **High** | Everything in T-23 | pnpm 11 blocks install scripts unless the package is in `allowBuilds`, and ADR-0012 names this exact attack. **`sharp` may need to be in that list**, which is the one place the block gets relaxed |
-| T-30 | D | The `preview` environment calls the real provider, because `LLM_PROVIDER` is missing or misspelled | 2 | 4 | **8** | Medium | Up to the whole **$5** balance, spent by a pull request nobody is watching | `00-environments.md` §4 sets it from an environment variable read at start-up. **No input says what happens when the variable is absent.** If the fallback is the real adapter, this fails in the expensive direction |
+| T-30 | D | The `dev` environment calls the real provider, because `LLM_PROVIDER` is missing or misspelled | 1 | 4 | **4** | Low | Nothing while `dev` holds no model key: the Anthropic adapter finds no key and makes no paid call. Up to the whole **$5** balance only if a model key is also written into `dev`, which the owner never does (`00-environments.md` §8) | `00-environments.md` §4 sets it from an environment variable read at start-up. **No input says what happens when the variable is absent.** If the fallback is the real adapter, the missing key is the only wall left. Likelihood 1 because two separate mistakes have to happen: a wrong setting, and a key written where none belongs. EV-16 in `03-evidence.md` checks that the fallback is the stub |
+
+### TB-16 — CloudFront reaches the stream function
+
+| # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T-42 | D | **The `watch` function's URL is reachable without CloudFront.** A Function URL with `authType: NONE` is a public address. Anybody could hold a 55-second stream open, over and over, against the Lambda allowance, and try assessment ids under a stolen session | 2 | 4 | **8** | Medium | The Lambda free allowance, so the AWS credit (A-11); and A-03 for one account if a session is also held | `01-iac-plan.md` §4.4b sets `AWS_IAM` and origin access control, so only the distribution can call it. Likelihood 2 is one wrong CDK property, which `infra-assert` checks (EV-34) |
+
+### TB-17 — the API starts the workflow
+
+| # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T-47 | D | **One assessment gets a second run that makes paid calls.** A repeated `StartExecution` for the same assessment, or a start that reaches Step Functions after the API has already reported `workflow-not-started` and refunded the attempt | 1 | 2 | **2** | Low | 1 person. At most one extra run, so up to 3 extra calls, about **$0.012** on Haiku 4.5, against the **$5** balance | Three guards stop it. The start uses the assessment id as the run `name`, so Step Functions returns the same run for a repeated start. `ClaimRun` moves the row from `queued` to `running` with a condition, so a second run ends with no model call. After a failed start, the API marks the row `failed` only while it is `queued`, so a late start also stops at `ClaimRun` (`03-api-spec.md` §4 step 10 and §4f). The one gap, a failed start and a failed write on the same request, is named in `03-api-spec.md` §4f as rare. No personal data crosses this line: the run's input is the assessment key only |
+
+### TB-18 — the workflow runs the model call
+
+| # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T-43 | D | **A retry cap is raised or a hidden retry is left on.** `RetryOrStop` lets `Assess` run again once `callsMade` is 3, `retryOnServiceExceptions` is left at its default of six attempts, or `maxRetries` is above 0 on the client | 3 | 4 | **12** | **High** | Up to 6 × 3 calls per photo. At the default limit of 10 photos a day, a worst day is about **$0.70** instead of $0.12. At the top of the range, 20 a day, it is about **$1.44** instead of $0.24. All against the **$5** balance, on Haiku 4.5 | Three settings in three files that all have to be right, and two of them have a default that is wrong. Likelihood 3 because a default is the easiest thing to leave alone. The cap on paid calls is "`callsMade` under 3" in `RetryOrStop` (ADR-0018). The one `Retry` left, `MaxAttempts: 2` on `Lambda.TooManyRequestsException`, costs nothing, because the function never ran. Moving the three provider errors back into a `Retry` adds no calls, but it breaks the refund rule, which is T-45. `infra-assert` and the NFR-04 stub test are the controls (EV-33) |
+
+### TB-19 — the workflow writes the table
+
+| # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T-44 | D | **A row is left `running` for ever.** A machine-level timeout skips every `Catch`; an `assess` crash outside its own handler; a `mark-failed` invocation that fails twice | 2 | 2 | **4** | Low | 1 person, one attempt spent with no answer and no failure screen. The waiting screen ends at 60 seconds on its own | Three nets: per-task `Catch`, the EventBridge rule, and alarm 12 on the dead-letter queue. Impact 2 because the phone gives up by itself |
+| T-45 | T | **The `Refund` step is reached after a call was made**, so a person gets attempts back for calls that were paid | 2 | 3 | **6** | Medium | The daily ceiling stops being a ceiling: a person could spend more than 10 calls a day on the **$5** balance | `Refund` is reached only through `AnyCallMade`, and only when `callsMade` is 0 (ADR-0018). That guard matters: every failed call counts toward the circuit breaker, so a run whose call just failed is the run most likely to meet an open breaker on its next try. Without the guard, that run would be refunded after a paid call. NFR-38 and `infra-assert` check every path into `Refund` (EV-33). Likelihood 2 because it takes a change to the state machine, which is code review's job |
+| T-46 | D | **A try is counted although no model call was made.** `assess` dies after it started but before it sent the request. The workflow cannot tell this from a death after the call, so it counts the try | 1 | 2 | **2** | Low | 1 person, one of their ten tries for the day | ADR-0018 names this case and keeps it on purpose. When the workflow cannot tell whether a call was made, it counts, which is the side gate 82 chose: the ten tries a day are the only daily limit on AI spend. Likelihood 1 because it needs a crash in the first lines of the handler. A run throttled on every try made no call, so it gets its try back (ADR-0018, seam finding 58) |
 
 ### Retention — the promises that have no mechanism yet
 
@@ -210,11 +230,11 @@ says to aim for.
 | Item | Applies here? | Threat | L | I | **Score** | Band | Blast radius |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **LLM01:2026 Prompt Injection** | Yes | **T-34.** Instructions hidden in the photo (a plant photographed next to a sheet of printed text is still a photo) or typed into the plant nickname | 4 | 2 | **8** | Medium | 1 person gets a wrong verdict and wrong advice. Nothing else — no tool, no action, no second call |
-| **LLM02:2026 Sensitive Information Disclosure** | Yes | **T-35.** A photograph of the inside of a home, and a nickname the person typed, are sent to a third party outside the EU on every assessment | 5 | 3 | **15** | **Critical** | Every photo ever assessed: up to 1,800, about 180 in six months. Likelihood 5 because it is not an attack — **it is what the feature does** |
+| **LLM02:2026 Sensitive Information Disclosure** | Yes | **T-35.** A photograph of the inside of a home, and a nickname the person typed, are sent to a third party outside the EU on every assessment | 5 | 3 | **15** | **Critical** | Every photo ever assessed: up to 1,800, about 180 in six months. Likelihood 5 because it is not an attack — **it is what the feature does**. The `assess` function sends it, and all three allowed models (ADR-0017) are Anthropic's, so it is always the same third party |
 | **LLM03:2026 Excessive Agency** | Partly | **T-36.** The model chooses `followUpDays`, and that number becomes a dated care task in the person's schedule. That is the model taking an action inside the product | 3 | 2 | **6** | Medium | 1 care task on a wrong date. Bounded to 1 to 30 by a check in our own code, and refused entirely on `cannot-tell` and on `nothing-wrong` |
 | **LLM04:2026 Supply Chain** | Yes | **T-37.** A dependency on the money path is compromised or has a known hole. `sharp` and libvips are the live case (T-19). `multer` and `@codegenie/serverless-express` are on the same path | 3 | 4 | **12** | **High** | Everything in T-19's blast radius |
 | **LLM05:2026 Data and Model Poisoning** | **No** | Nothing is trained, fine-tuned or stored for the model to learn from. Anthropic states images are not used to train models (`00-context-brief.md` §5.3, quoted in ADR-0007) | — | — | — | — | — |
-| **LLM06:2026 Unbounded Consumption** | Yes | **T-38.** Denial of wallet. Calling the paid endpoint faster than a person could, until the balance is empty | 2 | 3 | **6** | Medium | The **$5** balance is about **1,250** assessments. The daily limit caps one account at 10 a day, so one account needs **125 days** to empty it. The feature goes dark until a person pays |
+| **LLM06:2026 Unbounded Consumption** | Yes | **T-38.** Denial of wallet. Calling the paid endpoint faster than a person could, until the balance is empty | 2 | 3 | **6** | Medium | The **$5** balance is about **1,250** assessments at one call each on Haiku 4.5. The daily limit caps one account at 10 a day, so one account needs **125 days** to empty it when every assessment makes one call, and about **42 days** in the worst case of three calls each. The feature goes dark until a person pays |
 | **LLM07:2026 Misinformation** | Yes | **T-39.** A wrong verdict, said with a `likely` band, kills a plant. **Nobody has measured how often the model is right** | 4 | 3 | **12** | **High** | 1 person's plant, per wrong answer. NFR-20 asks for agreement 8 times in 10 and ADR-0006 says plainly there is **no evidence** for any model yet |
 | **LLM08:2026 Hidden Context Exposure** (was System Prompt Leakage) | Yes, and it does not matter | **T-40.** The system prompt is extracted | 3 | 1 | **3** | Low | None. It is a constant with no secret in it, in a **public** repository. It is already published |
 | **LLM09:2026 Vector and Embedding Weaknesses** | **No** | There is no vector store, no embedding and no retrieval step anywhere in the design | — | — | — | — | — |
@@ -321,29 +341,3 @@ pass again.** `factory/feature.md` already says which roles run on a later featu
 **must** do is read this file and check that its own change does not raise a score here. The clearest
 example is written in ADR-0004: **run 3 adds a secondary index that crosses accounts, and T-13 is
 where that shows up.**
-
----
-
-## 7. What the 2026-09-17 architecture change added and corrected
-
-The owner moved the assessment into a Step Functions workflow (ADR-0014), the result onto a stream
-from a Lambda Function URL (ADR-0015), and allowed a refund when no call was made (ADR-0016). That
-added four boundaries, TB-16 to TB-19 in `00-assets.md`, and this section scores them.
-
-**Corrected.** T-10 fell from 6 to 2: the paid call no longer holds an `api` copy. T-16 fell from
-12 to 3: the id is on the `IDEM#` row before the `202`, so the lock-out cannot happen. T-19 fell
-from 10 to 8: the function that decodes the photo cannot read the model key any more.
-
-**Added.**
-
-| # | S | Threat | L | I | **Score** | Band | Blast radius | Why this score |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| T-42 | D | **The `watch` function's URL is reachable without CloudFront.** A Function URL with `authType: NONE` is a public address. Anybody could hold a 55-second stream open, over and over, against the Lambda allowance, and try assessment ids under a stolen session | 2 | 4 | **8** | Medium | The Lambda free allowance, so the AWS credit (A-11); and A-03 for one account if a session is also held | `01-iac-plan.md` §4.4b sets `AWS_IAM` and origin access control, so only the distribution can call it. Likelihood 2 is one wrong CDK property, which `infra-assert` checks (EV-34) |
-| T-43 | D | **A retry cap is raised or a hidden retry is left on.** `MaxAttempts` above 2, `retryOnServiceExceptions` left at its default of six attempts, or `maxRetries` above 0 on the client | 3 | 4 | **12** | **High** | Up to 10 photos a day × up to 6 × 3 calls, against the **$5** balance. A worst day is about **$0.70** instead of $0.12 | Three settings in three files that all have to be right, and two of them have a default that is wrong. Likelihood 3 because a default is the easiest thing to leave alone. `infra-assert` and the NFR-04 stub test are the controls (EV-33) |
-| T-44 | D | **A row is left `running` for ever.** A machine-level timeout skips every `Catch`; an `assess` crash outside its own handler; a `mark-failed` invocation that fails twice | 2 | 2 | **4** | Low | 1 person, one attempt spent with no answer and no failure screen. The waiting screen ends at 60 seconds on its own | Three nets: per-task `Catch`, the EventBridge rule, and alarm 12 on the dead-letter queue. Impact 2 because the phone gives up by itself |
-| T-45 | T | **The `Refund` step is reached after a call was made**, so a person gets attempts back for calls that were paid | 2 | 3 | **6** | Medium | The daily ceiling stops being a ceiling: a person could spend more than 10 calls a day on the **$5** balance | `Refund` is reachable only from the two refusal branches, and NFR-38 plus `infra-assert` check that. Likelihood 2 because it takes a change to the state machine, which is code review's job |
-
-**Not raised.** T-13, one account reading another's rows: the `watch` function reads the row under
-the partition key of the session, exactly as the API does, so the stream adds no new path across
-accounts. T-35, personal data to a third party: the same photo goes to the same provider, from a
-different function.

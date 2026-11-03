@@ -402,6 +402,13 @@ script, push it, update the catalog — nothing changes until `/reload-plugins`.
 in `plugin.json` on every release: the same number means "the same plugin", and it is never downloaded
 again.
 
+**One update has three steps, and a fourth when the plugin is installed twice.** First
+`claude plugin marketplace update poszet-plugins`, because your machine keeps its own copy of the
+catalog. Without it, the update says "already up to date". Then `claude plugin update
+ai-factory@poszet-plugins`. Then `/reload-plugins`. The update changes **one scope**, and the default
+is user. This plugin is installed in the user scope and in the project scope, so the project copy
+needs `--scope project` too. `claude plugin list` shows the version in each scope.
+
 **One thing to hold on to before the run starts:** the eight roles write about thirty documents, but
 the documents are not the point. **The loop is** — run the line, find the seams and gates, change the
 factory, run again. That will only make sense after you have watched a run break.
@@ -1201,6 +1208,43 @@ Two things make such a change real. **It names the file it edits** — "improve 
 not something anyone can act on; "add a DON'T row to `factory/subagent-slots/900-security.md`
 forbidding a fix with no number" is. And **you do not know yet if it worked** — only the next run tells
 you, which is why `run-record.md` has a column called "Did the next run fix it?".
+
+### The reading cost — a file nobody can check is not finished
+
+With AI, writing a document is cheap and reading it is not. Run 1's QA role wrote 1,272 lines. They
+were correct, and the owner could not check them. A spec nobody checks is still trusted, so its
+mistakes reach the code. In 2025 Stanford and BetterUp gave this a name: **workslop** — AI text that
+looks finished but moves the real work to the reader.
+
+What research says about reading:
+
+- People read about **20% of the words** on a web page (Nielsen Norman Group). So the main point
+  must be on the first screen, or it is missed.
+- Plain-language guides aim at **15–20 words per sentence** on average.
+- The often-quoted **"47 seconds"** (Gloria Mark) is how long people stay on one screen before they
+  switch. It is not a limit of the brain. The lesson is still the same: put the point first.
+
+What the line does about it. All three parts are in the shared "How to write" block in
+`scripts/derive-agents.mjs` in the plugin, so every role gets them:
+
+1. **A rule.** B1 English. The first screen of each file says what is decided, what is open and
+   what to do next. A lookup table says it is a lookup table, so nobody reads it top to bottom.
+2. **Three examples, before and after.** Anthropic's prompting guide says examples are one of the
+   most reliable ways to control tone, and that good examples work better than "do not" rules. Each
+   example shows a different fix: long sentences split, fragments made whole again, a metaphor
+   replaced by the plain fact.
+3. **A length instruction, not a length budget.** The roles run on Opus 5, which writes longer files
+   than older models. The effort setting does not change that, so the length has to be asked for in
+   the prompt.
+
+**The option that lost: a hard word budget, checked by a script.** It is easy to measure. But it
+pushes the model to shrink text until the structure breaks. That happened once on this project: a
+pass turned readable prose into dense fragments, and every file was restored from git. So length is
+kept down by the examples, and a well-built sentence wins over a short one.
+
+**The trap: simpler sentences do not fix volume.** After the rewrite, the QA files are still about
+14,000 words — an hour of reading. Most of that is the case table, which is lookup and is meant to be
+searched, not read.
 
 ### When is a run finished
 

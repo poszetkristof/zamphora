@@ -1,6 +1,6 @@
 # Web spec — `apps/web`
 
-**Written by** 500 Engineering, run 1 (`001-photo-assessment`). **Date:** 2026-08-26.
+**Written by** 500 Engineering, run 1 (`001-photo-assessment`).
 **Read next by** 600 QA, and anybody building a screen.
 
 `docs/300-design/001-photo-assessment/02-SPEC.md` says what is on each screen and every state it can
@@ -127,7 +127,7 @@ signed-out → empty → ready → photo-chosen → sending → (SC-2) resizing 
                     timed-out · provider-error · not-retryable · offline → failure view
 ```
 
-**`confirmed` and `waiting` were added on 2026-09-17** (ADR-0014, ADR-0015). On the `202` the screen
+**`confirmed` and `waiting` follow the background run** (ADR-0014, ADR-0015). On the `202` the screen
 moves to `confirmed`, then opens `new EventSource('/api/assessments/<id>/events')`. One `done` or
 `failed` event carries the assessment, parsed with `AssessmentEvent`. `EventSource` reconnects on
 its own; a reconnect after the run finished is answered at once. If the stream cannot open at all,
@@ -135,20 +135,27 @@ the screen falls back to `GET /api/assessments/:id` every 2 seconds — that is 
 never the first choice. A `failed` event shows `FailureNote` from the row's `failureCode`, with the
 same mapping as §8.
 
-**The `requestId` is made at `photo-chosen`, not at `sending`.** **Added 2026-08-31.** One UUID per
-photo the person picks. It goes in the form body of `POST /api/assessments` and the API uses it to
-make sure one tap is one charge (`03-api-spec.md` §4a). **A resend of the same photo must carry the
-same id** — that is the whole point — so it is stored with the chosen photo in the state, and a new
-one is only made when a new photo is picked. If the API answers `409 request-in-flight`, the screen
-stays in `asking` and keeps waiting; it does not send again.
+**The `requestId` is made at `photo-chosen`, not at `sending`.** It is a UUID, a random id that is
+unique. It goes in the form body of `POST /api/assessments`, and the API uses it to make sure one tap
+is one charge (`03-api-spec.md` §4a). The id is stored with the chosen photo in the state. The API
+answers a repeat of the same id with the same run, and that includes a run that failed (gate 76 in
+`factory/feature.md`). So the screen decides the id for the next send by what happened to the last
+one:
+
+| What happened to the last send | The next send carries | Why |
+| --- | --- | --- |
+| A new photo was picked | A new id | It is a new assessment |
+| **The API answered with a failure.** This is a `Problem` response, or a `failed` event for the run | **A new id.** The screen makes it when it shows the failure, and keeps the same photo | The same id would only return the same failure. A new id is a new request, so it spends one of the person's ten a day. The failed run itself counts whenever the model was called, and is given back only when no call was made (gate 82, ADR-0018) |
+| **The request got no answer.** The network dropped before the `202` arrived, or `CLIENT_DEADLINE_MS` fired (§4.3) | **The same id** | The screen cannot know whether the first send started a run. A new id would start a second run and charge the person twice. If the first send reached the API, the same id returns that run. If it did not, the send is new |
+
+If the API answers `409 request-in-flight`, the screen stays in `uploading` and keeps waiting; it
+does not send again.
 
 Refusals that never reach `sending`: `wrong-format`, `photo-too-small`, `daily-limit-reached`,
 `feature-off`, `no-credit`, `offline`, and `empty` with no pot picked.
 
-**Corrected 2026-08-31.** Two of these were written with short names — `too-small` and
-`limit-reached` — that do not exist. The real codes are `photo-too-small` and `daily-limit-reached`
-(`01-contracts.md` §8). A code is a value from a closed list, so a near-miss is a bug, not a
-shorthand.
+These are the exact codes from `01-contracts.md` §8. A code is a value from a closed list, so a
+near-miss such as `too-small` for `photo-too-small` is a bug, not a shorthand.
 
 **Four rules the state machine carries, and each is a negative criterion in `02-SPEC.md` §7.**
 
@@ -291,10 +298,10 @@ at all, because US-08 AC-4 forbids a message about the limit when the person is 
 
 ## 9. SC-8 — Add a pot
 
-US-15 is in scope (`factory/feature.md`, added 2026-08-25, gate 21). **`02-SPEC.md` §4, SC-8 now draws
-it** (written 2026-08-31). This section is the engineering half — the route, the fields and the
-validation. Where this file and `02-SPEC.md` disagree about a state, the layout or the copy,
-**`02-SPEC.md` wins**, as it does for every other screen.
+US-15 is in scope (`factory/feature.md`, gate 21). **`02-SPEC.md` §4, SC-8 draws it.** This section is
+the engineering half — the route, the fields and the validation. Where this file and `02-SPEC.md`
+disagree about a state, the layout or the copy, **`02-SPEC.md` wins**, as it does for every other
+screen.
 
 - **Route:** `/[locale]/pots/new`.
 - **Two fields, and nothing else on the screen** (AC-2): a name, and where the plant is.
@@ -354,14 +361,14 @@ a later tidy-up.
 | US-07 Sign in once, see only my own | `AppFrame` `signed-out`, SC-1 state 1 | The sign-in pages are Cognito's |
 | US-08 Stopped at my own limit | SC-1 state 10, SC-5 state 4, `LimitNote` | |
 | US-09 A message that says if trying again helps | `FailureNote`, every screen | §8 |
-| US-10 How long photos are kept, and delete | `/[locale]/photo` — SC-7, `RetentionNote` | AC-7, deleting every photo at once, moved out of run 1 with its route on 2026-08-31 |
+| US-10 How long photos are kept, and delete | `/[locale]/photo` — SC-7, `RetentionNote` | AC-7, deleting every photo at once, is out of run 1 with its route (owner, 2026-08-31) |
 | US-11 Hungarian or English | Every route, in both languages | §7 |
 | US-12 An admin reads the figures | **No screen.** Moved out of run 1 by the owner, gate 30 | |
 | US-13 The feature can be turned off | **No screen.** The switch is flipped in the AWS website. Its effect on a person is SC-1 state 11 | |
 | US-14 A normal account is refused | **No screen, on purpose.** A refused admin action never renders a screen and never says whether the action exists | |
-| US-15 Add a pot | `/[locale]/pots/new` — SC-8 | §9. Design spec written 2026-08-31, `02-SPEC.md` §4, SC-8 |
+| US-15 Add a pot | `/[locale]/pots/new` — SC-8 | §9, and `02-SPEC.md` §4, SC-8 |
 
 ## 13. What this file does not decide
 
 The exact words of any sentence · which of the two answers builds the `/` redirect, which is 800
-Infra's to place · the unit test runner.
+Infra's to place.

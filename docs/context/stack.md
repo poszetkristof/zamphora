@@ -1,6 +1,6 @@
 # The stack
 
-**Written by** 500 Engineering, run 1 (`001-photo-assessment`). **Date:** 2026-08-26.
+**Written by** 500 Engineering, run 1 (`001-photo-assessment`).
 
 This is the warm layer. It is loaded when you write code and it stays short on purpose. It holds
 facts about **this repository only**. A rule that would be true in any repository does not belong
@@ -22,7 +22,7 @@ on **2026-08-27**.
 | Task runner | **Turborepo** | latest | ADR-0012 |
 | Web framework | **Next.js**, built with `output: 'export'` | **`16.3.3`** | ADR-0010 |
 | UI library | **React** | **`19.2.8`** | with Next.js |
-| API framework | **Nest.js**, Express adapter. One codebase, three Lambda functions since 2026-09-17 | **`11.2.3`** | ADR-0002, ADR-0014 |
+| API framework | **Nest.js**, Express adapter. One codebase, three Lambda functions | **`11.2.3`** | ADR-0002, ADR-0014 |
 | Lambda bridge for the API | **`@codegenie/serverless-express`**. Turns the gateway event into an Express request — Nest.js alone cannot do this | latest | `03-api-spec.md` §1 |
 | The background run | **AWS Step Functions**, Standard type, defined in CDK. Runs the `assess` function and writes the rows | — | ADR-0014 |
 | The result stream | **Native Lambda response streaming** behind a Function URL, in the `watch` function. No bridge library | — | ADR-0015 |
@@ -66,9 +66,11 @@ function; everything else reaches the static files of `apps/web` in a private bu
   Functions workflow and answers `202`. The workflow runs the `assess` function, which holds the
   model key and nothing else, retries the call at most twice, and writes the result. The `watch`
   function pushes the result to the phone over server-sent events (ADR-0015).
-- Data is **one DynamoDB table per environment**, in **provisioned** capacity: `prod` at 20/20 and
-  `preview` at 5/5. The **total** across every table in the Region must never pass 25/25 (ADR-0002,
-  gate 43). The key design is `docs/400-architecture/05-patterns.md` §1.
+- **There are two AWS environments, and both are permanent: `prod` and `dev`** (gate 87 in
+  `factory/feature.md`). `dev` always exists and uses the stub model provider. Data is **one
+  DynamoDB table per environment**, in **provisioned** capacity: `prod` at 20/20 and `dev` at 5/5.
+  The **total** across every table in the Region must never pass 25/25 (ADR-0002, gate 43). The key
+  design is `docs/400-architecture/05-patterns.md` §1.
 - **Photos are one object each in one private S3 bucket**, deleted at 180 days by a lifecycle rule
   (ADR-0007).
 - **Sign-in is OpenID Connect through Cognito**, with `apps/api` as the backend for the frontend.
@@ -76,21 +78,23 @@ function; everything else reaches the static files of `apps/web` in a private bu
   (ADR-0003).
 - **One model call per assessment in the normal case, at most three**, through `LlmProvider`
   (ADR-0005, ADR-0014). The only retry is the workflow's; the adapter has `maxRetries: 0`. Default
-  model id `claude-haiku-4-5-20251001`, held in the table, not in code (ADR-0006).
+  model id `claude-haiku-4-5-20251001`, held in the table, not in code (ADR-0006). The table may
+  hold only one of three ids: `claude-haiku-4-5-20251001`, `claude-haiku-5-5` or
+  `claude-sonnet-5-5` (ADR-0017, `03-api-spec.md` §6).
 
 ## 4. The gotchas, all of them real
 
 | Gotcha | What to do |
 | --- | --- |
-| API Gateway cuts a request off at **30 seconds** and cannot be raised. Its 504 has a body nobody here wrote | The model call is not behind the gateway any more (ADR-0014). The `api` function still fails at **20,000 ms** and answers for itself, and it answers in about a second in practice |
-| The Anthropic SDK retries on its own by default | Set `maxRetries: 0` on the client. The only retry is the workflow's `Retry` with `MaxAttempts: 2` (ADR-0014, NFR-05). Two hidden retries would turn three calls into nine |
-| CDK's `LambdaInvoke` task adds a hidden retry of six attempts on Lambda service errors | Set `retryOnServiceExceptions: false` and write one explicit `Retry` list. One of those errors can arrive after the call was made |
+| API Gateway cuts a request off at **30 seconds** and cannot be raised. Its 504 has a body nobody here wrote | The model call is not behind the gateway (ADR-0014). The `api` function still fails at **20,000 ms** and answers for itself, and it answers in about a second in practice |
+| The Anthropic SDK retries on its own by default | Set `maxRetries: 0` on the client. The only retry of a model call is the workflow's `RetryOrStop`, which runs `Assess` again while `callsMade` is under 3 (ADR-0018, NFR-05). Two hidden retries would turn three calls into nine |
+| CDK's `LambdaInvoke` task adds a hidden retry of six attempts on Lambda service errors | Set `retryOnServiceExceptions: false`. The only `Retry` is on `Lambda.TooManyRequestsException`, `MaxAttempts: 2`, because then the function never ran. A hidden retry on another error can run after the call was made (ADR-0018) |
 | A timeout on the whole state machine skips every `Catch`, so the row stays `running` for ever | No machine-level timeout. `TimeoutSeconds` and a `Catch` on every task |
 | Step Functions Express has no free amount and runs a step at least once | Standard only. Express could call the model twice for one photo with no rule saying so |
 | API Gateway's HTTP API cannot stream, and the REST API that can corrupts uploads | The stream is a Lambda Function URL. The upload stays on the HTTP API |
 | CloudFront's signed access to a Function URL needs a browser-computed body hash on every `POST` | Only the one `GET` stream route goes to the Function URL |
 | A cached `GET /api/assessments/:id` would show `queued` for ever | `Cache-Control: no-store`, and caching is off on `/api/*` |
-| The Base UI package was renamed | Install **`@base-ui/react`**. `@base-ui-components/react` is deprecated and its latest is the old `1.0.0-rc.0` this project used to pin (ADR-0011) |
+| The Base UI package was renamed | Install **`@base-ui/react`**. `@base-ui-components/react` is deprecated, and its latest version is the old `1.0.0-rc.0` (ADR-0011) |
 | The Anthropic SDK's `timeout` is in **milliseconds** in TypeScript | Some other SDKs take seconds. `18_000` is right here; `18` would be an 18 ms timeout that fails every call |
 | `max_tokens` on the model call is **1024**, and lowering it saves nothing | You are billed for tokens generated, not for the ceiling. A tight ceiling only causes `answer-truncated`, which is a dead end for the person (`03-api-spec.md` §4) |
 | An assessment id and a care task id **contain a `#`** — they are the sort key without its prefix | URL-encode both, always. An unencoded `#` cuts the value in half (`01-contracts.md` §2.1) |
@@ -104,14 +108,15 @@ function; everything else reaches the static files of `apps/web` in a private bu
 | S3 lifecycle expiry is also late by up to a day | The audit checks at 182 days, not 180 (NFR-41) |
 | Money in the day rollup is **millionths of a dollar, as a whole number** | `ADD` on a decimal loses precision. One assessment is about 3,500 (`05-patterns.md` §1) |
 | Structured output pays a one-off grammar compile, cached 24 hours | At one user it is paid on nearly every visit. Budgeted at 1,500 ms (ADR-0005) |
-| The 25 capacity units are shared by every table in the Region, and are billed per unit-**hour** | The allowance is about 18,250 unit-hours a month. `prod` 20/20 plus `preview` 5/5 fits inside it. Adding a table means taking units from an existing one (ADR-0002) |
+| The 25 capacity units are shared by every table in the Region, and are billed per unit-**hour** | The allowance is about 18,250 unit-hours a month. `prod` 20/20 plus `dev` 5/5 fits inside it. Adding a table means taking units from an existing one (ADR-0002) |
 | shadcn's copied components miss 44 px targets, use a 50%-opacity focus ring and `rounded-md` | Do the edit pass in the same task that copies the file (ADR-0011) |
+| A wrong value typed into a `CONFIG` row is refused | Look for the `warn` line `config-value-refused` in the logs. `DAILY_LIMIT` and `MODEL_ID` then use their defaults |
+| **The feature is on only when `AI_ENABLED` holds the boolean `true`** | A deleted row, the string `"false"` and the string `"true"` all turn the feature off. A new table, in `dev` or in a `prod` rebuilt from CDK, starts with the feature off until the row exists. The owner writes the `CONFIG` rows of both environments by hand, and no pipeline writes them (gate 87). Check the row before you look for a bug (ADR-0019, `03-api-spec.md` §6) |
 
-## 5. What is not settled yet
+## 5. Two settled points that are easy to get wrong
 
-- **Settled 2026-08-26: the test runner is Vitest** (gate 33, ADR-0013). Every `test` job in
-  `06-nfrs.md` now has a runner. `apps/api` needs four lines in its config or Nest.js dependency
-  injection fails at run time:
+- **The test runner is Vitest** (gate 33, ADR-0013). Every `test` job in `06-nfrs.md` has a runner.
+  `apps/api` needs four lines in its config or Nest.js dependency injection fails at run time:
   ```ts
   oxc: { decorators: { legacy: true, emitDecoratorMetadata: true } }
   ```

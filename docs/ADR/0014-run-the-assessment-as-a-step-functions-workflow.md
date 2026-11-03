@@ -1,9 +1,13 @@
 # ADR-0014 — Run the assessment as a Step Functions workflow
 
-- **Status:** Accepted 2026-09-17, by the owner (gate 72)
+- **Status:** Accepted 2026-09-17, by the owner (gate 72). **Superseded in part by
+  [ADR-0018](0018-refund-only-when-the-run-made-no-model-call.md) (gate 84):** the `Retry` on the three provider errors and the arrows into `Refund`. As drawn here, a
+  throttled run that made no call loses its attempt, and a refused run that did make a call gets it
+  back. Both break ADR-0016.
 - **Date:** 2026-09-17
-- **Supersedes in part:** ADR-0002 (one function for everything) and ADR-0005 (no retry).
-  Everything else in both records still stands.
+- **Supersedes in part:** ADR-0002 (one function for everything), ADR-0005 (no retry) and ADR-0007
+  decision 1 (the API calls the model with the bytes it holds). Everything else in those records
+  still stands.
 
 ## Context
 
@@ -36,12 +40,17 @@ stateDiagram-v2
     Rollup --> [*]
 ```
 
+> **The retry arrow and the `Refund` arrow above are replaced by ADR-0018**, which draws the
+> current workflow. The three provider errors go to a `Catch` that counts the call, and `Refund` is
+> reached only when the run made no call at all. The second and the last bullet of "The rules that
+> make it safe" below change the same way.
+
 The pieces:
 
 | Piece | What it does | Its permissions |
 | --- | --- | --- |
 | `api` function | Everything up to the model call: session, kill-switch, breaker, daily limit, photo checks, the `queued` row. Then `StartExecution` and a `202` | The table, the bucket, Cognito, Parameter Store. **Not the model key** |
-| `assess` function | The one model call. Reserved concurrency **1** | The model key, read the two `CONFIG` rows, write the breaker row. **Nothing else** |
+| `assess` function | The one model call. Reserved concurrency **1** | The model key, read the two `CONFIG` rows, write the breaker row, read the photo object. **Nothing else** |
 | The state machine | Runs `assess`, writes the result and the rollup with DynamoDB integrations, no Lambda in between | Invoke `assess`, update assessment and usage rows |
 | One EventBridge rule | On `FAILED`, `TIMED_OUT` or `ABORTED`, invokes `mark-failed`, which writes `failed` on the row | Update one row |
 
@@ -92,6 +101,9 @@ The rules that make it safe:
 
 ## Agent-Readable Summary
 
+> **Read ADR-0018's summary with this one.** It replaces the retry list and the
+> `MaxAttempts: 2` cap on the three provider errors below. Everything else here stands.
+
 > The model call runs inside a **Step Functions Standard** workflow, in the `assess` function, and
 > nowhere else. Do not call `LlmProvider` from the `api` function. Do not use Express workflows. Do
 > not put a timeout on the state machine; put `TimeoutSeconds` and a `Catch` on every task. Set
@@ -99,4 +111,4 @@ The rules that make it safe:
 > `ProviderUnavailable` and `Lambda.TooManyRequestsException`, with `MaxAttempts: 2`. Keep
 > `maxRetries: 0` in the adapter. Name every execution with the assessment id. Keep `assess` at
 > reserved concurrency 1 until a second user exists. Do not give `assess` any permission beyond the
-> model key, the two `CONFIG` rows and the breaker row.
+> model key, the two `CONFIG` rows, the breaker row and a read of the photo object.

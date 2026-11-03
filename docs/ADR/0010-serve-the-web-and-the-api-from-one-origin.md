@@ -1,6 +1,6 @@
 # ADR-0010 — Serve the web app and the API from one origin
 
-- **Status:** Accepted. One sentence added by ADR-0015 (2026-09-17): one more CloudFront behaviour
+- **Status:** Accepted. **Amended in part by ADR-0015 (2026-09-17):** one more CloudFront behaviour
   sends the single stream path to a Lambda Function URL, under the same host name.
 - **Date:** 2026-08-25
 
@@ -33,7 +33,7 @@ A CloudFront distribution sits in front. **`/api/*` goes to the API. Everything 
 web.** The two are still separate deployable units with separate CDK stacks; only the front door is
 shared.
 
-**Added by ADR-0015 on 2026-09-17:** one path, `GET /api/assessments/:id/events`, goes to a third
+**The stream path (ADR-0015).** One path, `GET /api/assessments/:id/events`, goes to a third
 place — the `watch` function's Lambda Function URL, which streams the assessment result to the
 phone. It is still the same host name, reached only through CloudFront, and it is a `GET` with no
 body, so every cookie rule below is untouched. That is the only path that does not go to the API
@@ -49,7 +49,7 @@ and no permission on the bucket.
 folder of plain files, put in a private S3 bucket, and served through the same CloudFront
 distribution. **There is no Node server for the web and no second Lambda.**
 
-This is not a new decision so much as the consequence of an old one. A web app that holds no
+This follows from the sentence above rather than adding a new decision. A web app that holds no
 credentials, never reads the session and always paints a skeleton first is a static site already.
 Running a server to deliver it would be paying for a capability the design forbids itself from
 using.
@@ -65,9 +65,9 @@ using.
 **What it costs, and both are real.**
 
 - **`next/image` with the default loader stops working.** For a photo app that matters. The answer
-  is that plant photos are served from the product's own bucket through CloudFront and signed by the
-  API, so they never went through Next.js image optimisation anyway. A custom loader remains
-  available for anything else.
+  is that plant photos are read from the private bucket through a five-minute URL that the API signs
+  (ADR-0007), never through CloudFront, so they never go through Next.js image optimisation anyway.
+  A custom loader remains available for anything else.
 - **Choosing Hungarian or English on the first visit needs somewhere to decide.** A static export
   cannot read `Accept-Language` on the server. Both languages are prerendered as separate routes;
   what is left is the redirect from `/`, which is either a small CloudFront function or a line of
@@ -126,7 +126,7 @@ server only to justify this choice, the choice was wrong and Vite is the answer.
 
 **What it costs.** CloudFront becomes a part that can break, and a change to the path routing is a
 change to a shared piece rather than to one service. That is a real coupling and it is small: the
-routing rule is one line — `/api/*` and everything else.
+routing rule is three lines — the stream path, `/api/*`, and everything else.
 
 **A second cost.** The web app cannot render a signed-in screen on the server, because it does not
 read the session. Every screen loads its data from the browser after the shell paints. That matches

@@ -1,8 +1,7 @@
 # Non-functional requirements — the numbers, and what checks them
 
-**Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
-**Updated 2026-09-17** for ADR-0014 to ADR-0016: NFR-01, 04, 05 and 10 changed, NFR-07, 08 and 38
-are new.
+**Written by** 400 Architecture, run 1 (`001-photo-assessment`). The numbers fit Option E, where the
+assessment runs in the background (ADR-0014 to ADR-0016, ADR-0018).
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA.
 
 Every row below has four things: a number, the window it is measured over, how it is tested, and
@@ -27,10 +26,16 @@ design, not a detail.
 | `lint` · `type-check` · `test` | Every push | Fast, free, and catches most of it |
 | `infra-assert` | Every push that touches `infra/` | CDK assertions. No AWS call, so no cost and no credential |
 | `bundle-budget` | Every pull request | One measurement, on the built output |
-| `e2e` | Every pull request to `main` | Playwright against a preview deploy |
+| `e2e` | Every pull request to `main` | Playwright against the `dev` environment |
 | `perf-flow` | Every pull request to `main` | The 30-second budget, on a throttled connection |
 | `ai-eval` | **On demand only. Never on a push** | It costs real money. See NFR-11 |
 | `retention-audit` | Scheduled, monthly | Reads the real bucket. Cannot run without AWS credentials |
+
+**`e2e` and `perf-flow` run against `dev`.** There are two AWS environments, and both are
+permanent: `prod` and `dev` (gate 87, `factory/feature.md`). `dev` uses the stub model provider, so
+these two jobs spend no Anthropic credit. All pull requests share the one `dev`. Their test runs
+wait in a queue, so two runs never use `dev` at the same time. Data from earlier runs stays in `dev`
+between runs. So no job may assume that the table is empty.
 
 **`ai-eval` is deliberately not automatic, and the arithmetic is the reason.** The golden set is 40
 photos. At $0.0040 an assessment on Haiku 4.5 that is $0.16 a run. Nightly would be about $4.80 a
@@ -41,30 +46,28 @@ it is testing is not a test.
 
 | # | The requirement | Number | Window | How it is tested | Job | Metric |
 | --- | --- | --- | --- | --- | --- | --- |
-| NFR-01 | Tap to the waiting screen confirming the run started (the `202`) | **≤ 30,000 ms**, p95 | Every assessment, measured over a rolling 20 | Playwright against a preview deploy, network throttled to 400 kbps up, a fixed 200 KB photo. **Changed 2026-09-17:** the thing on screen is the confirmation, not the answer (ADR-0014) | `perf-flow` | **M-12** |
+| NFR-01 | Tap to the waiting screen confirming the run started (the `202`) | **≤ 30,000 ms**, p95 | Every assessment, measured over a rolling 20 | Playwright against the `dev` environment, network throttled to 400 kbps up, a fixed 200 KB photo. The thing on screen is the confirmation, not the answer (ADR-0014) | `perf-flow` | **M-12** |
 | NFR-02 | The `api` function's own share of one request | **≤ 20,000 ms**, hard | Every request | A unit test that the deadline constant is 20,000 and is below the 22,000 ms function timeout. An integration test with a slow step, asserting the app answers `deadline-passed` and not a 504. In practice the `api` answers in about a second; this is a net | `test` | — |
 | NFR-03 | The model call's own abort | **≤ 18,000 ms** per attempt | Every call | A unit test on the constant, plus an integration test with a stub that never answers | `test` | — |
 | NFR-04 | Model calls per assessment | **1 in the normal case, never more than 3** | Every assessment | A stub provider counts calls. Every non-retried failure gives 1 — refusal, truncation, bad request, empty balance, rejected photo. A stub that throws three timeouts gives exactly 3 (ADR-0014) | `test` | M-22 |
-| NFR-05 | Retries **of the model call** | **Only the workflow's `Retry`, `MaxAttempts: 2`, and `maxRetries: 0` in the adapter** | Always | A test that no code path calls the provider twice and no wait-and-try-again code wraps `LlmProvider`. `infra-assert` reads the retry list off the synthesised state machine: exactly `ProviderTimeout`, `ProviderThrottled`, `ProviderUnavailable`, `Lambda.TooManyRequestsException`, and `retryOnServiceExceptions` off. **AWS SDK retries stay at their defaults** | `test`, `infra-assert` | — |
+| NFR-05 | Retries **of the model call** | **Only the workflow's `RetryOrStop`, which allows another call while `callsMade` is under 3, and `maxRetries: 0` in the adapter** | Always | A test that no code path calls the provider twice and no wait-and-try-again code wraps `LlmProvider`. `infra-assert` reads the synthesised state machine: the `Assess` task's `Retry` list is exactly `Lambda.TooManyRequestsException` with `MaxAttempts: 2`; `ProviderTimeout`, `ProviderThrottled` and `ProviderUnavailable` are in its `Catch`, not its `Retry`; `RetryOrStop` compares `callsMade` with 3; and `retryOnServiceExceptions` is off (ADR-0018). **AWS SDK retries stay at their defaults** | `test`, `infra-assert` | — |
 | NFR-06 | Cold start of the `api` function | **≤ 2,000 ms**, p95 | Rolling 7 days | **Not tested in CI.** There is no `InitDuration` CloudWatch metric — read it with the Logs Insights query in `03-observability.md` §4 after a deploy. Read `assess` and `watch` the same way | none — runtime only | — |
-| NFR-07 | Tap to the result on screen | **≤ 60,000 ms**, p95 | Every assessment | Playwright, over the stream, with the stub sleeping 8,000 ms and again 18,000 ms. Both must pass. **New 2026-09-17** (ADR-0015) | `perf-flow` | M-12 |
-| NFR-08 | The stream delivers after the row is written | **≤ 1,000 ms**, p95 | Every assessment | Playwright timestamps the write and the event. `watch` reads the row every 500 ms. **New 2026-09-17** | `e2e` | — |
+| NFR-07 | Tap to the result on screen | **≤ 60,000 ms**, p95 | Every assessment | Playwright, over the stream, with the stub sleeping 8,000 ms and again 18,000 ms. Both must pass (ADR-0015) | `perf-flow` | M-12 |
+| NFR-08 | The stream delivers after the row is written | **≤ 1,000 ms**, p95 | Every assessment | Playwright timestamps the write and the event. `watch` reads the row every 500 ms | `e2e` | — |
 
 **NFR-06 is the honest one.** No job can enforce it, because a cold start is a property of the
 platform on the day. It is written down so that a run that regularly passes the number is recognised
 as a change rather than as bad luck.
 
-**The number was 800 ms and was raised to 2,000 ms on 2026-08-31.** The 200–800 ms range came from
-articles measuring a **plain Node.js handler**. This is not a plain handler: it is Nest.js plus
-Express plus multer plus Zod plus the AWS SDK clients plus the Anthropic SDK, all loaded before the
-handler runs. A published `InitDuration` for a bundled Nest mono-Lambda is about **905 ms for a
-near-empty application**. With this dependency list at 1024 MB on ARM64, a realistic p95 is 1,200 to
-2,500 ms.
+**Why the number is 2,000 ms and not the 200–800 ms that articles report.** Those articles measure
+a **plain Node.js handler**. This is not a plain handler: it is Nest.js plus Express plus multer plus
+Zod plus the AWS SDK clients plus the Anthropic SDK, all loaded before the handler runs. A published
+`InitDuration` for a bundled Nest mono-Lambda is about **905 ms for a near-empty application**. With
+this dependency list at 1024 MB on ARM64, a realistic p95 is 1,200 to 2,500 ms.
 
 **Replace it with the first real reading**, as section 8 says. This is still an estimate, only an
-honest one about the right kind of application. Since 2026-09-17 the cold start sits in front of
-the `202`, not in front of the answer, so NFR-01 has more than 20 seconds of headroom
-(`03-flow.md` §2).
+honest one about the right kind of application. The cold start sits in front of the `202`, not in
+front of the answer, so NFR-01 has more than 20 seconds of headroom (`03-flow.md` §2).
 
 ## 3. Money
 
@@ -90,7 +93,7 @@ a number to watch, not a number that is enforced. When the balance empties, the 
 ## 4. How often the answer is right
 
 These four are 600 QA's to run. They are here because the architecture has to make them possible,
-and two of them changed shape because of a decision in `05-patterns.md`.
+and two of them take their shape from a decision in `05-patterns.md`.
 
 | # | The requirement | Number | Window | How it is tested | Job | Metric |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -121,7 +124,8 @@ checked, and a model upgrade that quietly breaks the schema would look like ordi
 | NFR-35 | A session older than 30 days is accepted | **0** | Always | A test that a session item with an expiry in the past is refused, **even though the row is still in the table**, because DynamoDB TTL does not delete on time | `test` | — |
 | NFR-36 | Model calls made with no signed-in user | **0** | Always | A test that the assessment route with no cookie refuses before the provider is reached | `test` | M-06, US-07 AC-5 |
 | NFR-37 | Result screens with no AI notice | **0** | Every pull request | A Playwright assertion on SC-3, SC-4 and SC-5, in both languages, that both notice lines are present and not inside a collapsed section | `e2e` | M-11 |
-| NFR-38 | Attempts refunded on a path where a model call was made | **0** | Always | A stub that fails after the call; the counter does not move back. `infra-assert` checks that `Refund` is reachable only from the two refusal branches. **New 2026-09-17** (ADR-0016) | `test`, `infra-assert` | — |
+| NFR-38 | Attempts refunded on a run where a model call was made | **0** | Always | `infra-assert` walks every path of the synthesised state machine into `Refund`: the only one passes `AnyCallMade` with `callsMade` at 0, and every `Catch` of a provider error adds 1 to `callsMade`. That covers each row of the table in ADR-0018, including a throttle after a call and a refusal after a call. A handler test with a stub that fails after the call checks that the counter does not move back (ADR-0016, ADR-0018) | `test`, `infra-assert` | — |
+| NFR-39 | Model calls made while the `AI_ENABLED` row is missing, or its `enabled` field is not a boolean | **0** | Always | Unit tests on the code that reads the row: a missing row, a missing field, the string `"false"`, the string `"true"` and the number `1` each give off and a `config-value-refused` log line, and only the boolean `true` gives on. An integration test that caches `true`, replaces the row with the string `"false"`, waits past the cache lifetime, and asserts the provider is not called (ADR-0019) | `test` | — |
 
 ## 6. Keeping and deleting
 
@@ -166,9 +170,9 @@ what it actually was.
 | Number | Row | Why it is a guess | What replaces it |
 | --- | --- | --- | --- |
 | 8,000 ms for the model call | NFR-01, NFR-03 | No source at all | The first real call |
-| 18,000 ms model timeout | NFR-03 | A ceiling per attempt, kept from run 1. It no longer has to fit under a request deadline, because the call runs in the background | Re-derived once the real latency is known |
+| 18,000 ms model timeout | NFR-03 | A ceiling per attempt. It does not have to fit under a request deadline, because the call runs in the background | Re-derived once the real latency is known |
 | 60,000 ms to the result, 1,000 ms for the stream | NFR-07, NFR-08 | Two retries at 2 and 4 seconds plus three 18-second calls is about 60 seconds; the stream reads every 500 ms | The first month's execution times, and the first e2e run |
-| **2,000 ms cold start** | NFR-06 | Estimated for a bundled Nest+Express Lambda. Was 800 ms, from sources measuring a plain Node handler | The Logs Insights query in `03-observability.md` §4 — there is no `InitDuration` metric |
+| **2,000 ms cold start** | NFR-06 | Estimated for a bundled Nest+Express Lambda. The 200–800 ms in articles is for a plain Node handler | The Logs Insights query in `03-observability.md` §4 — there is no `InitDuration` metric |
 | 1 in 100 unreadable answers | NFR-23 | Nobody has run one call yet | The first 100 attempts |
 | 170 KB for SC-1 | NFR-50 | No screen has been built | The measurement of the real screen |
 | 10 minutes of CI | NFR-51 | No pipeline exists | The first ten pull requests |

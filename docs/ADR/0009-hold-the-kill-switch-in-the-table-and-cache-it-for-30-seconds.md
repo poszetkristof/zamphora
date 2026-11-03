@@ -2,14 +2,17 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-25
-- **Changed 2026-08-26 by the owner (gate 30):** **no admin route ships in run 1.** The switch is
-  still one row in the table, and it is now flipped by hand in the AWS website instead of through
-  `POST /api/admin/ai-enabled`. The `changedBy` and `changedAt` fields are gone with it. Everything
-  about *where the value lives* and *how it is cached* is unchanged. This record is corrected in
-  place rather than superseded, because no code was written against the route.
-- **One sentence added by ADR-0016 (2026-09-17):** the `assess` function reads the same row, on the
+- **Gate 30, decided by the owner on 2026-08-26:** **no admin route ships in run 1.** The switch is
+  one row in the table, flipped by hand in the AWS website. The row holds one field, `enabled`.
+  Where the value lives and how it is cached are as this record first decided.
+- **Amended in part by ADR-0016 (2026-09-17):** the `assess` function reads the same row, on the
   same 30-second cache, just before the model call. So a flip also stops a run that was already
   queued in the background, and that run's attempt is refunded.
+- **Superseded in part by [ADR-0019](0019-treat-a-kill-switch-row-that-cannot-be-used-as-off.md)
+  (2026-10-29, gate 86):** the fallback in the fourth cost, for the `AI_ENABLED` row only. When the
+  read succeeds and the row is missing, or `enabled` is not a boolean, the feature is off. It no
+  longer falls back to the compiled-in `true`. `DAILY_LIMIT` and `MODEL_ID` keep their fallback.
+  The rest of this record stands.
 
 ## Context
 
@@ -30,9 +33,9 @@ The stories:
   kill-switch."*
 - **US-13 AC-4.** A call already in flight is allowed to finish, because the money is already spent.
 - **US-13 AC-5.** Turning it back on is the same action in reverse.
-- **There used to be a criterion asking the log to record which account flipped it.** The owner
-  removed it on 2026-08-26 along with the admin route. It shaped the original decision, so it is
-  named here rather than deleted quietly.
+- **On 2026-08-26 the owner removed a criterion that asked the log to record which account flipped
+  the switch**, together with the admin route. That criterion explains the rejected alternatives
+  below, so it is named here.
 - **US-09 AC-4.** A user sending a photo while it is off gets a message saying trying again will not
   work now.
 
@@ -66,13 +69,13 @@ has exactly one person who could ever flip it, and that person already holds the
 created the table.
 
 **Nothing records who flipped it, because nothing in the application runs when it happens.** AWS
-keeps its own record of who signed in to its website and what they changed. US-13's old AC-5, which
-asked for the zamphora account id, was removed on the same day for the same reason.
+keeps its own record of who signed in to its website and what they changed. No story criterion asks
+for the zamphora account id in run 1.
 
-**When the admin route ships in a later run**, it goes back to the shape this ADR first described —
-`POST /api/admin/ai-enabled` behind `@Roles('ADMIN')`, writing `changedBy` from the session — and
-AC-5 comes back with it. The guard it needs already ships in run 1 (ADR-0004, US-14), so that later
-run adds a route, not a permission model.
+**When the admin route ships in a later run**, its shape is `POST /api/admin/ai-enabled` behind
+`@Roles('ADMIN')`, writing `changedBy` from the session, and a criterion that the log records who
+flipped the switch comes back with it. The guard it needs already ships in run 1 (ADR-0004, US-14),
+so that later run adds a route, not a permission model.
 
 **The model id (ADR-0006) and the daily limit value (ADR-0008) live in the same partition** and are
 read on the same cache, because they are the same kind of thing: values a person may need to change
@@ -80,11 +83,11 @@ in minutes.
 
 ## Consequences
 
-**What this buys.** No new service, no new deploy pipeline, no new credential, and now no route
-either. The row is in a table the API already reads on every assessment. A flip takes effect in at
-most 30 seconds against a 60-second promise. Turning it back on is the same edit with `true`, which
-is US-13 AC-5. And US-13 AC-4 comes for free: the check runs once, before the call, and nothing
-re-checks it, so a call in flight finishes.
+**What this buys.** No new service, no new deploy pipeline, no new credential, and no route. The row
+is in a table the API already reads on every assessment. A flip takes effect in at most 30 seconds
+against a 60-second promise. Turning it back on is the same edit with `true`, which is US-13 AC-5.
+And US-13 AC-4 comes for free: the check runs once, before the call, and nothing re-checks it, so a
+call in flight finishes.
 
 **What it costs.** Up to 30 seconds of calls can still go out after the flip. That is exactly what
 the owner accepted, and the reason is in gate G-8: the alternative needs somebody to decide what
@@ -125,19 +128,17 @@ the API is simple. It lost because it is a second service to give the function p
 the value would sit apart from the daily limit and the model id, which are the same kind of thing.
 The gain would have been zero.
 
-**Editing the DynamoDB row from the AWS console.** **This was rejected on 2026-08-25 and chosen by
-the owner on 2026-08-26.** The rejection was correct at the time and rested entirely on one
-criterion: the criterion US-13 then numbered AC-5 asked the log to record **which account** flipped
-the switch — it no longer exists, and AC-5 now means something else — and a console
-edit records an AWS identity instead. The owner removed that criterion from run 1, and with it gone
-the objection disappears — there is one person, and the answer to "who" is never in question. **This
-is the whole reason the change was cheap:** the alternative lost on a requirement, not on a
-weakness, so removing the requirement was enough.
+**Editing the DynamoDB row from the AWS console.** **This is the decision, chosen by the owner on
+2026-08-26.** Its only weakness is that a console edit records an AWS identity, not a zamphora
+account. That mattered only while a story criterion asked the log to record which zamphora account
+flipped the switch. The owner removed that criterion from run 1. With one person, the answer to "who"
+is never in question. **This is the whole reason the choice was cheap:** the option lost on a
+requirement, not on a weakness, so removing the requirement was enough.
 
-**An admin route flipped with `curl`.** This was the 2026-08-25 decision and it is now the *later*
-plan, not the current one. It works, and it costs a route, a permission check on that route, and
-copying a session cookie out of a browser every time. The owner judged that too much machinery for
-one boolean that one person changes.
+**An admin route flipped with `curl`.** This is the plan for the later run that ships admin routes.
+It works, and it costs a route, a permission check on that route, and copying a session cookie out
+of a browser every time. For run 1 the owner judged that too much machinery for one boolean that one
+person changes.
 
 **A separate admin key or shared secret for the switch.** Rejected. It would be a second way into
 the system that ADR-0004's guard does not cover, which is the shape most likely to be forgotten in a

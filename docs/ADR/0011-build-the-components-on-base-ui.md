@@ -7,8 +7,9 @@
 ## Context
 
 `factory/feature.md` is explicit about who decides: *"Which component library the web app builds on
-— 400 Architecture proposes, **the owner accepts** — a library is a new dependency."* So this record
-is a proposal with the work already done, not a decision.
+— 400 Architecture proposes, **the owner accepts** — a library is a new dependency."* So 400
+Architecture wrote this record as a proposal with the work already done, and the owner accepted it
+on 2026-08-26.
 
 **The shape is not in question.** Headless primitives, Tailwind `@theme` tokens, and component code
 owned in this repository. That is what `.claude/skills/` already assumes and it holds up. Only which
@@ -74,18 +75,16 @@ work than writing components.
 **What that costs, stated plainly.** shadcn's files arrive in shadcn's own look, which is a long way
 from Botanical. The edit pass below is therefore not optional, and it is bigger than it sounds.
 
-> **Corrected 2026-08-27, and this one was a live trap.** This section said *"Base UI is at
-> `1.0.0-rc.0` — a release candidate, so its API can still move before a final 1.0."* **Both halves
-> are now wrong, and the package name is wrong too.**
+> **The package name, checked on the npm registry on 2026-08-27. This is a trap, so read it before
+> installing anything.**
 >
-> - **`@base-ui-components/react` is deprecated.** npm returns:
->   *"Package was renamed to `@base-ui/react`."* Its latest is frozen at `1.0.0-rc.0` — **the exact
->   version this project pinned.** We were pinned to the final release of a dead package name.
-> - **The package is `@base-ui/react`, and it is at `1.7.0`.** 1.0 shipped on 2025-12-11 and seven
->   minor versions have followed. The API-instability caveat is void.
+> - **The package is `@base-ui/react`.** It was at `1.7.0` on that date. 1.0 shipped on 2025-12-11
+>   and seven minor versions followed, so the API is not a release candidate any more.
+> - **`@base-ui-components/react` is the old name and is deprecated.** npm returns: *"Package was
+>   renamed to `@base-ui/react`."* Its latest version is frozen at `1.0.0-rc.0`, so a project pinned
+>   to it is pinned to the final release of a dead package name.
 > - **`CSPProvider` arrived in 1.1.0.** A static export behind CloudFront should be sending a
->   Content Security Policy, and nothing in this repository mentions one yet. Worth raising with
->   800 Infra rather than discovering during a deploy.
+>   Content Security Policy. Raise it with 800 Infra rather than discovering it during a deploy.
 >
 > **Install `@base-ui/react`. Do not install `@base-ui-components/react`.**
 
@@ -126,7 +125,7 @@ above says one component. It lost on the trigger, not on run 1: run 2 needs a da
 needs a menu, and a hand-written focus trap that is nearly right is the kind of thing that is wrong
 in a way nobody notices for a year.
 
-### The condition this proposal carries
+### The condition this decision carries
 
 **The edit pass belongs in the first web task, not "later".** Reading shadcn's live registry rather
 than its documentation shows its button ships `h-9` for default, `h-8` for small and `size-9` for
@@ -138,7 +137,7 @@ exists to be edited. It means the edit is task one, or the accessibility rules a
 **And the size figures are not a measurement.** They are the projects' own published numbers.
 `factory/feature.md` asks for one real screen to be built and measured before committing, and NFR-50
 holds a placeholder of 170 KB that is explicitly a guess. **Build SC-1, measure it, and write the
-real number into NFR-50 before this record is accepted.**
+real number into NFR-50 in the first web task.**
 
 ## Consequences
 

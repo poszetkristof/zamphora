@@ -1,12 +1,14 @@
 # Pre-mortem — why this feature failed
 
-> **Historical record, 2026-08-26.** Written against Option A. On 2026-09-17 the owner chose
-> Option E (ADR-0014 to ADR-0016), which removes the four stacked clocks and the "no retry" rule
-> that several findings below are about. Read it for what a fresh session can find. Do not read it
-> as the current design.
-
-**Written by** a fresh reviewer with no history on this project. **Date:** 2026-08-25.
+**Written by** a fresh reviewer with no history on this project, on 2026-08-25, against Option A.
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA, and the owner.
+
+**What this file holds.** §0 is the current state of each finding, and 400 Architecture keeps it
+current. §1 to §5 are the reviewer's findings as the reviewer wrote them. They quote the numbers of
+Option A, where the phone waited for the model — for example a 9,000 ms model timeout and a
+24,000 ms server deadline. The current design is Option E (ADR-0014 to ADR-0016, ADR-0018), where
+the model call runs in the background. Read §1 to §5 for what a fresh session can find, and §0 for
+where each finding stands.
 
 This document does one job. It stands in August 2027 and assumes the photo-assessment feature
 failed. It works backwards and says why. Every failure below is tied to a number, a step, a box or
@@ -26,28 +28,29 @@ useless. So this document is only about what breaks.
 
 ---
 
-## 0. What happened to these findings
+## 0. Where each finding stands
 
-**Added 2026-08-26. This file is a record of what a fresh session found, and it is not edited to
-match the fixes.** Read it as history. This table says where each one ended up.
+This table is a lookup table, one row per finding. Paths are relative to this file's folder.
 
-| Finding | What happened |
+| Finding | Current state |
 | --- | --- |
-| F-1 model slower than 8,000 ms | **Fixed.** With no retry the model has room to about 18,000 ms. `03-flow.md` §6 |
-| F-2 every constant obeyed, promise still broken | **Fixed.** The deadline is 20,000 ms and the cold start is budgeted outside it. `03-flow.md` §4 |
-| F-3 no cap on the photo in bytes | **Open.** For 500 Engineering to put in the contract |
-| F-4 CloudFront answers 504 first | **Open.** For 800 Infra, which sets the distribution timeouts |
-| F-5 Q-9 cannot be one `BatchGetItem` | **Fixed.** Two reads in order. `05-patterns.md` §1 |
+| F-1 model slower than 8,000 ms | **Fixed.** Each model call may take up to 18,000 ms, and it runs in the background. A slow model makes a slow result, not a failure. `03-flow.md` §2 and §6 |
+| F-2 every constant obeyed, promise still broken | **Fixed.** The 30-second promise covers only the steps up to the `202`, about 7,200 ms on the bad run. The model call is not inside it. `03-flow.md` §2 |
+| F-3 no cap on the photo in bytes | **Partly fixed.** ADR-0007 caps the body at 2 MB and checks it on the server, and the API re-encodes every photo (`03-flow.md` step 6). A 2 MB upload on a 400 kbps signal still takes about 40 seconds, so the size the browser sends is open, for 500 Engineering |
+| F-4 CloudFront answers 504 first | **Fixed.** `03-flow.md` §4 names CloudFront's 25 seconds. The `api` function answers in about a second, so no platform clock is reached. The stream sends a heartbeat every 5 seconds to keep CloudFront's timeout open (ADR-0015) |
+| F-5 Q-9 cannot be one `BatchGetItem` | **Fixed.** Two reads in order, and the cookie still carries nothing. `../05-patterns.md` §1 |
 | F-6 account closes with nothing running | **Open.** A schedule question, and the owner's |
-| F-7 the retry breaks the cost ceiling | **Fixed.** The retry is gone, decided 2026-08-26 |
-| F-8 quality bars cost the whole budget | **Open.** For 600 QA, which owns the eval plan |
-| F-9 photos outlive their accounts | **Open.** Gate 29 — nothing sends the warning mail |
-| F-10 kill-switch cache moves the question | **Open.** Recorded, accepted for run 1 |
-| F-11 nothing stops AWS money | **Open.** For 800 Infra, and the reason cost is a correctness property |
-| F-12 photos rejected, sideways, or with a home address | **Open.** For 900 Security and 500 Engineering |
-| F-13 the same photo assessed twice | **Open.** For 500 Engineering |
+| F-7 the retry breaks the cost ceiling | **Fixed.** NFR-10 has the two numbers the finding asked for: $0.0040 per call and $0.012 per photo, because a photo may take three calls. `../06-nfrs.md` §3. NFR-10 does not split the cost by language |
+| F-8 quality bars cost the whole budget | **Partly answered.** The owner decided where the 40 photos and their labels come from (gates 77 and 78 in `factory/feature.md`). The first golden-set run compares two models for about $0.18, under NFR-11's $0.20 (gate 85, ADR-0017). The sample size behind NFR-20 is for 600 QA |
+| F-9 photos outlive their accounts | **Open, and moved to run 3.** Nothing is deleted automatically in run 1 (gate 66 in `factory/feature.md`). The monthly sweep in run 3 sends the warning and deletes the account together |
+| F-10 kill-switch cache moves the question | **Partly fixed.** ADR-0009 answers the failed refresh: keep the last known value, and refuse the call when there is none. The wrong-decorator half does not apply in run 1, because no admin route exists (`../05-patterns.md` §12). It returns with the first admin route |
+| F-11 nothing stops AWS money | **Owned by 800 Infra**, in `../../800-infra/02-cost-guardrails.md` |
+| F-12 photos rejected, sideways, or with a home address | **Partly fixed.** The API decodes and re-encodes every photo and strips EXIF, which removes the location (`03-flow.md` step 6). GIF is not accepted (gate 68). HEIC, rotation and the pixel floor are for 500 Engineering and 900 Security |
+| F-13 the same photo assessed twice | **Fixed.** The `IDEM#<requestId>` row makes one tap one charge, and the workflow's execution is named with the assessment id. `../05-patterns.md` §1 and §13 |
 
-**Its one recommended first change — drop the retry — was taken.**
+**Its one recommended first change was to drop the retry (§4).** The owner dropped it on
+2026-08-26. On 2026-09-17 the owner moved the model call into the background (ADR-0014) and allowed
+a capped retry again, because the reasons in §4 hold only while the phone waits.
 
 ---
 
@@ -63,8 +66,6 @@ work), `bad` (it ships and disappoints), or `costly` (it works but eats money or
 ---
 
 ### F-1 — The model was slower than 8,000 ms, so every assessment failed instead of being slow
-
-> **FIXED 2026-08-26.** With no retry the model has room to about 18,000 ms. `03-flow.md` §6.
 
 `03-flow.md` step 10 budgets **8,000 ms** for the model call and labels it *"Guessed. No source at
 all. The weakest number here."* `06-nfrs.md` NFR-03 then sets the per-attempt timeout at
@@ -98,9 +99,6 @@ the wrong failure.
 ---
 
 ### F-2 — Every server constant was obeyed and the 30-second promise still broke
-
-> **FIXED 2026-08-26.** The deadline is 20,000 ms and the cold start is budgeted outside it,
-> because the app cannot start its clock until the function has started. `03-flow.md` §4.
 
 This is an arithmetic problem inside `03-flow.md`, and it survives because the file checks the
 friendly worst case instead of the permitted one.
@@ -232,8 +230,6 @@ certainly not a sentence ending in one of the two required by US-09 AC-1. That i
 
 ### F-5 — Q-9 cannot be one `BatchGetItem`, and the pattern says it is
 
-> **FIXED 2026-08-26.** Two reads in order, and the cookie still carries nothing. `05-patterns.md` §1.
-
 `05-patterns.md` §1 gives the key design:
 
 | Item | PK | SK |
@@ -306,8 +302,6 @@ Whatever the right answer is, the design is standing on a question it says must 
 ---
 
 ### F-7 — The cost ceiling was broken by the retry, on a path the design calls normal
-
-> **FIXED 2026-08-26.** The owner dropped the retry. One model call per assessment. `03-flow.md` §3.
 
 Two requirements in `06-nfrs.md` contradict each other:
 

@@ -895,3 +895,242 @@ trusted anyway. They were rewritten in plain English by hand, keeping every case
 slot contract limits length or asks for plain English, so the next run will produce the same.
 
 **Label: `thin`** — on the slot contract, not on the files.
+
+## Repair passes — 500, 400 and 900, 2026-10-29
+
+Three roles repaired what 600-qa found (findings 41, 42 and gates 75, 76). Each one changed only the
+named passages; the diffs were checked by hand. While doing it, they found the problems below. The
+first two were fixed in the same pass. The rest are open, and each names who should pick it up.
+
+### Finding 53 — a refused request could leave a `409` for ten minutes — fixed
+
+The API claims the `IDEM#` row at step 6c. If it then refused the request at step 7, 8 or 9, the row
+held nothing. When that answer was lost on the network, the browser sent the same id again (gate
+76) and got `409 request-in-flight` until the row expired. **Fixed by 500:** the refusal is written
+on the row, so the same id gets the same answer. A row that holds nothing answers `409` only until
+`IDEM_STALE_MS` (22 seconds). **The option that lost:** delete the row on refusal. A resend would then
+run the daily limit again and spend a second attempt for one tap. `03-api-spec.md` §4a.
+
+### Finding 54 — a failed workflow start left the run `queued` for good — fixed
+
+When `StartExecution` failed at step 10, the attempt was refunded, but the assessment row stayed
+`queued`. The stream never sent a final event. **Fixed by 500:** the row is marked `failed`, but only
+while it is still `queued`, so a late start cannot make a call after the refund. One rare case is
+named and left open: the start fails, the write fails, and the start had in fact gone through.
+`03-api-spec.md` §4f.
+
+### Finding 55 — gate 76 does not name the `deadline-passed` case
+
+The `202` arrived, then the phone's own deadline ended the wait. That is neither "the API answered
+with a failure" nor "no answer". 500 chose **the same id**: no second charge, and the person gets the
+same run back. **Label: `ambiguous`, settled by the role.** Re-open only if 600-qa disagrees.
+
+### Finding 56 — the closed list of allowed `MODEL_ID` values is named nowhere
+
+`03-api-spec.md` §6 and `00-conventions.md` §6 say a `CONFIG` value is checked against "a closed
+list", and no file lists the allowed model ids. **Label: `thin`.** Which models are allowed is the
+owner's choice (ADR-0006). Read next by 500-engineering, once the owner names the list.
+
+### Finding 57 — a refused `CONFIG` value is not logged
+
+Nothing says whether a refused value, for example `DAILY_LIMIT = 200`, writes a log line or raises an
+alarm. A typing mistake would then be fixed in silence and never noticed. **Label: `thin`.** Read next
+by 500-engineering and 800-infra (`03-observability.md`).
+
+### Finding 58 — a throttled `assess` call made no model call, and no path refunds it
+
+When `assess` is throttled (`Lambda.TooManyRequestsException`) after its retries, no model call was
+made. ADR-0016 says an attempt is refunded when no call was made. But the `Refund` state is reachable
+only from the refusal branch. Either the ADR's rule has a gap or the state machine does. **Label:
+`under-supply`.** In `preview` (stub waits 8 s, `assess` concurrency 1) this can happen during EV-23.
+Read next by 800-infra (`01-iac-plan.md`, the state machine) and 500-engineering.
+
+### Finding 59 — no input says how the `preview` stub is told to fail
+
+EV-24 part two needs a failure from a deployed stub, and EV-18 counts `modelCalls` in `preview`.
+No input says how the stub is switched to fail, or whether stub calls are counted. **Label: `thin`.**
+Read next by whoever writes the stub `LlmProvider` task.
+
+### Finding 60 — two cost figures for the top of the `DAILY_LIMIT` range
+
+`factory/feature.md` and `03-api-spec.md` §6 say about $0.08 a day at 20: one call each.
+`01-threats.md` T-14 says $0.24: three calls each, the worst case with retries. Both are right, and
+neither says which case it counts. `00-assets.md` A-15 still gives only the default of 10.
+**Label: `thin`.** Read next by 900-security on its next pass.
+
+### Finding 61 — edit-history lines in role files
+
+The new writing rule says "no edit history inside a document". Older role files still carry lines
+such as "Updated 2026-09-17, twice" and "Added 2026-08-31", for example in `05-patterns.md`,
+`02-web-spec.md` and the header of `02-mitigations.md`. They were written before the rule existed.
+**Label: `stale`.** Each role removes them on its next pass. A sweep by hand would edit files the
+roles own.
+
+## 400-architecture repair pass, 2026-10-29
+
+The pass had two jobs: bring ADR-0006 in line with the owner's model list (gate 83), and fix finding
+58. It wrote ADR-0017 (accepted, the owner's list) and ADR-0018 (proposed, gate 84).
+
+- **Finding 56 is answered by ADR-0017**, and closed: 500-engineering wrote the list into
+  `03-api-spec.md` §6 and `00-conventions.md` §6 in its next repair pass.
+- **Finding 58 is fixed in the design by ADR-0018, which waits for the owner at gate 84.** The pass
+  also found a second fault of the same kind: a run whose first call timed out and whose next try met
+  an open breaker was refunded, although a call was made.
+
+### Finding 62 — files outside 400's write list still describe the old retry and refund
+
+`docs/400-architecture/08-async-options.md`, `08-async-options-short.md` and `README.md` sit in 400's
+folder but are not on its write list. They still describe the `Retry` on the three provider errors.
+So may every 500, 800 and 600 file that names `MaxAttempts: 2` on those errors, or draws `Refund` only
+from the refusal branch: likely `01-iac-plan.md`, `03-api-spec.md`, the NFR-38 test cases and EV-23.
+**Label: `stale`.** Read next by 500-engineering, 800-infra, 600-qa and 900-security, once gate 84 is
+answered. The two `08-*` files need only a pointer to ADR-0018.
+
+### Finding 63 — NFR-11 was set for a run on Haiku prices
+
+NFR-11 allows $0.20 for one `ai-eval` run. A golden-set run on Sonnet breaks it. That was already true
+for Sonnet 5 in ADR-0006, and nobody noticed. **Label: `thin`.** It is gate 85.
+
+## 500 and 800 repair passes for ADR-0017 and ADR-0018, 2026-10-29
+
+Both ADRs were accepted by the owner (gates 83 and 84) before these passes ran.
+
+- **Finding 58 is closed.** ADR-0018 is accepted. 500 brought `03-api-spec.md`,
+  `00-conventions.md` and `docs/context/stack.md` in line with it, and 800 brought all five of its
+  files in line.
+- **Finding 62 is partly done.** The 400, 500 and 800 parts are done. Still open: 600-qa (the NFR-05
+  and NFR-38 test cases), 900-security (EV-23 and any evidence that names the old retry), and the
+  two `08-async-options*` files in `docs/400-architecture/`, which no role owns.
+
+### Finding 64 — nobody checked whether Step Functions Local supports workflow variables
+
+ADR-0018 gives the state machine a workflow variable, `callsMade`, set with `Assign`.
+`00-environments.md` §2 says the local run uses the same state machine definition. Nobody checked
+whether Step Functions Local can run a definition with variables. 800 did not check it on the web,
+because its contract allows web checks only for prices and free allowances. **Label: `thin`.**
+`00-environments.md` §2 now says how to check it on the first local run, and what to do if it fails.
+Read next by whoever writes the first `infra/` task.
+
+### Finding 65 — three small mismatches 800 saw outside its task
+
+800 left these alone, because the pass was limited to ADR-0018 and ADR-0017. **Label: `stale`.**
+Read next by 800-infra on its next pass.
+
+- `01-iac-plan.md` §4.3: the code block says `featurePlan LITE <- gate 52`, but the text and gate 52
+  say Essentials.
+- `01-iac-plan.md` §4.7 and the CloudWatch row in `02-cost-guardrails.md` §2 say eleven alarms.
+  `03-observability.md` §5 and `02-cost-guardrails.md` §4 say twelve.
+- `00-environments.md` says "the thirteen ADRs". There are eighteen.
+
+A note for the same pass: the free throttle retry costs no model call, but each retry is still a
+Step Functions transition. The 4,000-transition figure in `02-cost-guardrails.md` §2 counts only the
+paid retries. Above the free allowance, the price is $0.025 per 1,000 transitions.
+
+## 900-security repair pass for findings 60, 61 and 62, 2026-10-29
+
+- **Finding 60 is closed.** Every cost figure in the 900 files now says which case it counts: one
+  call per assessment, or three. `00-assets.md` A-15 gives both cases for limits 10 and 20. The
+  $0.08 in `factory/feature.md` and `03-api-spec.md` §6 is the one-call figure.
+- **Finding 61 is done for the 900 files.** The "Updated" and "Added" lines are gone. Dates that are
+  facts stay: owner decisions and the dates a source was checked.
+- **Finding 62 is done for the 900 files.** A-14, A-19, T-14, T-43, T-45, R-08, R-14, R-18, R-20,
+  the §8 "do not" list, EV-24 and EV-33 follow ADR-0017 and ADR-0018. New threat T-46, Low: the case
+  ADR-0018 keeps on purpose. The two `08-async-options*` files were rewritten by hand to match
+  ADR-0018, diagrams included, because no role owns them.
+
+### Finding 66 — EV-29 names a function that is no longer one
+
+`03-evidence.md` EV-29 says the backup switch is "setting the function's reserved concurrency to 0".
+There are four functions now. `02-mitigations.md` §4 names `assess` or `api`. **Label: `stale`.**
+Read next by 900-security on its next pass.
+
+## 600-qa repair pass for findings 61 and 62, 2026-10-29
+
+- **Finding 62 is closed.** Every role file now follows ADR-0017 and ADR-0018. 600 updated the
+  NFR-05 and NFR-38 rows, TC-09-5, TC-13-7, TC-NF-05b, TC-NF-38 and the golden-set cost (gate 85).
+  It added six cases: TC-08-8 to TC-08-12 (the four runs in ADR-0018's table, and T-46) and
+  TC-13-8 (the three allowed model ids). 125 cases: 50 positive, 75 negative.
+- **Finding 61 is done for the 600 and 900 files.** Still open in the 400, 500 and 800 files, for
+  each role's next pass.
+
+## 400 and 500 repair passes for findings 57 and 61, 2026-10-29
+
+- **Finding 61 is done for the 400 and 500 files.** The two unowned files in
+  `docs/400-architecture/`, `README.md` and `08-async-options.md`, were cleaned by hand. The README's
+  two "What changed on" sections are now one section of current decisions.
+- **Finding 57 is answered in the API spec.** `03-api-spec.md` §6 "When a value is refused": one
+  `warn` line, `event = config-value-refused`, with `configKey`, `reason`, `refusedValue` and
+  `usedValue`, once per cache refresh. A read that succeeds and finds no row is the reason
+  `row-missing`. The alarm is 800-infra's. The owner answered the kill-switch case as gate 86.
+
+### Finding 67 — eleven wrong facts in the 400 files, found while removing the dates
+
+400 fixed all eleven in its own files. The ones that matter outside 400:
+
+- ADR-0014's permission table left out the `assess` read of the photo object, which
+  `01-iac-plan.md` and `05-patterns.md` §13 already grant. The table now matches.
+- ADR-0007 decision 1 said the API calls the model. Under Option E `assess` does, so ADR-0007 is now
+  superseded in part by ADR-0014.
+- ADR-0010 said photos are served through CloudFront. ADR-0007 forbids that; a photo is a signed URL
+  straight from S3.
+- `05-patterns.md` §13 put the daily count before the `IDEM#` claim. `03-api-spec.md` §4 has the claim
+  first (step 6c), and §13 now matches.
+- The rest: an `InitDuration` metric that does not exist, an old cold-start budget in ADR-0002 and
+  `00-options.md`, `MaxAttempts: 2` as the cap in ADR-0005, a changed quote in ADR-0008, an
+  `answer-unreadable` screen described as open although 300 closed it, and four wrong statuses in
+  `07-adversarial.md` §0.
+
+**Label: `stale`.** Closed by the same pass.
+
+### Finding 68 — four mistakes in the 500 files, found while removing the dates
+
+500 fixed all four: the "On the row" paragraph cut the `01-contracts.md` §8.1 table in two; the §8
+`title`/`detail` table said `detail` was for the person, in their language; `00-conventions.md` §11
+pointed NFR-52 to the wrong section; and `03-api-spec.md` §6 did not say what happens when a read
+succeeds and the row is missing. **Label: `stale` and `thin`.** Closed by the same pass.
+
+## 800-infra repair pass for findings 57, 61 and 65, 2026-10-29
+
+- **Finding 57 is closed.** `03-observability.md` §4 and §5: a metric filter turns each
+  `config-value-refused` line into the metric `zamphora/ConfigValueRefused`, and alarm 1 fires on one
+  in 5 minutes.
+- **Finding 65 is closed.** All three mismatches are fixed, and the Step Functions figure counts the
+  free throttle retries as transitions.
+- **Finding 61 is done for the 800 files.** With this pass, every role's files are clean.
+
+## Repair passes for gates 86 and 87, 2026-11-03
+
+Gate 86 became ADR-0019: a kill-switch row that is missing or not a boolean means off. Gate 87
+replaced the per-pull-request `preview` environment with a permanent `dev`. 400, 500, 800, 900 and
+600 brought their files in line with both. The two learning notes were updated by hand.
+
+- **Finding 66 is closed.** EV-29 names the `assess` function's reserved concurrency as the backup
+  switch.
+- **900 also fixed three stale claims in its own files:** "two" CI roles where there are three; "no
+  test date" for the kill-switch; and a score rule in `01-threats.md` that kept old scores in notes.
+
+### Finding 69 — the custom metrics had no environment separation
+
+The metrics written from log lines (`ModelCalls`, `CostMicroUsd` and others) carried no environment.
+Stub calls in `dev` would have been counted in `prod`'s metrics and could fire alarms 6 and 7. This
+was already true for `preview`, and a permanent `dev` made it matter more. **Label: `thin`.** Closed:
+`03-api-spec.md` §11 adds the embedded metric block only when `ENV_NAME` is `prod`, and
+`03-observability.md` §4 says the same.
+
+### Finding 70 — three small mismatches found by 600
+
+`dev` had one test account where two tests need two; the `test` job row in `04-ci-cd.md` §9 did not
+list NFR-39; and `06-nfrs.md` and `factory/feature.md` said two pull requests test in `dev` at the
+same time, while `04-ci-cd.md` §7 queues them. **Label: `stale`.** Closed by 800, 400 and a hand fix
+in `factory/feature.md`.
+
+### Still open from these passes
+
+- **Gate 88** (the test account's daily counter in `dev`): the owner chose not to decide it now. 600
+  keeps one full `dev.yml` run at 10 tries, and moved EV-23 and EV-24 part three to by-hand release
+  checks, because each needs a counter that starts at 0 or at the limit.
+- **The change-log sections are gone.** 900 removed them from its three files and 800 removed the
+  table of finished changes from `04-ci-cd.md` §6.2, after moving every current fact into its row.
+  The breaker list now agrees in `02-cost-guardrails.md` and `03-api-spec.md`, and TB-17 has a
+  threat, T-47.
+

@@ -1,10 +1,6 @@
 # The infrastructure plan — every AWS resource, as code
 
-**Written by** 800 Infra, run 1 (`001-photo-assessment`). **Date:** 2026-08-27.
-**Updated** 2026-08-28 with the owner's answers to gates 43 to 63.
-**Updated 2026-09-17** for ADR-0014 to ADR-0016: the assessment runs in the background, so there is
-an eighth stack, `ZamphoraWorkflowStack` (§4.4b), and the edge has one more behaviour (§4.6).
-**Read next by** 900 Security, 600 QA.
+**Written by** 800 Infra, run 1 (`001-photo-assessment`). **Read next by** 900 Security, 600 QA.
 
 This file lists every AWS resource the product needs, which CDK stack holds it, and which settings
 must not be left at their default. It solves one problem. This AWS account closes instead of sending
@@ -13,7 +9,8 @@ does not come back.
 
 **Nothing here is deployed by this document.** Deploying is a person's decision, always.
 
-**Everything deploys to `eu-central-1`** (gate 44, `00-environments.md` §7).
+**Everything deploys to `eu-central-1`** (gate 44, `00-environments.md` §7). **There are two AWS
+environments, `prod` and `dev`, and both are permanent** (gate 87, `00-environments.md` §2).
 
 ---
 
@@ -52,7 +49,7 @@ deployed. There is no CDK construct for either, and there should not be one.
 Everything is AWS CDK v2 in TypeScript, in `infra/`. **One stack per deployable unit** is
 split-readiness rule 5 in ADR-0001, adopted as written.
 
-Stack names carry the environment: `Zamphora-Prod-Data`, `Zamphora-Preview-Pr142-Data`.
+Stack names carry the environment: `Zamphora-Prod-Data`, `Zamphora-Dev-Data`.
 
 | Stack | Container in `02-containers.mmd` | Main CDK construct |
 | --- | --- | --- |
@@ -63,7 +60,7 @@ Stack names carry the environment: `Zamphora-Prod-Data`, `Zamphora-Preview-Pr142
 | `ZamphoraWorkflowStack` | `workflow`, `assess` with `llm adapter` inside it, `watch`, `mark-failed` | `stepfunctions.StateMachine`, three `lambdaNodejs.NodejsFunction`, `lambda.FunctionUrl`, `events.Rule`, `sqs.Queue` for the dead letters |
 | `ZamphoraWebStack` | `web` | `s3.Bucket`, `s3deploy.BucketDeployment` |
 | `ZamphoraEdgeStack` | `edge` | `cloudfront.Distribution`, `cloudfront.Function` |
-| `ZamphoraOpsStack` | none — this is the watching, not the product | `sns.Topic`, `cloudwatch.Alarm`, `cloudwatch.Dashboard` |
+| `ZamphoraOpsStack` | none — this is the watching, not the product | `sns.Topic`, `cloudwatch.Alarm`, `cloudwatch.Dashboard`, `logs.MetricFilter` |
 | `ZamphoraCloudFrontAlarmsStack` | none — the two CloudFront alarms, and **this one is in `us-east-1`** | `cloudwatch.Alarm` |
 
 **Nine stacks. Eight are in `eu-central-1` and one is not, and there is no certificate stack.**
@@ -71,6 +68,10 @@ Gate 45 chose the free CloudFront hostname, so there is no domain and no ACM cer
 Certificate Manager, the service that issues the HTTPS certificate. The one stack outside the Region
 is `ZamphoraCloudFrontAlarmsStack`, because **CloudFront publishes its metrics only to `us-east-1`**
 and an alarm has to live where its metric lives. See §7.
+
+**`prod` deploys all nine. `dev` deploys the first seven, and never `ZamphoraOpsStack` or
+`ZamphoraCloudFrontAlarmsStack`.** Nobody watches `dev`, and its CI runs would fire alarms that mean
+nothing (`03-observability.md` §5).
 
 **Every container in the diagram is above, or is named in §2 as code that ships inside another
 unit.** The two external systems that are not ours — the Anthropic Messages API and email delivery —
@@ -108,19 +109,19 @@ dynamodb.Table
   partitionKey         PK (string)
   sortKey              SK (string)
   billingMode          PROVISIONED          <- not the default
-  readCapacity         20 in prod, 5 in preview
-  writeCapacity        20 in prod, 5 in preview
+  readCapacity         20 in prod, 5 in dev
+  writeCapacity        20 in prod, 5 in dev
   timeToLiveAttribute  ttl
   pointInTimeRecovery  false                <- gate 46, see §8
-  removalPolicy        RETAIN
+  removalPolicy        RETAIN               <- in both environments
   encryption           AWS owned key (the default, and it is free)
 ```
 
 - **20/20 and 5/5, and the two add up to 25.** A capacity unit is a fixed amount of reading or
   writing per second that a table is allowed to do. The DynamoDB free allowance is 25 read and 25
   write units per Region, per payer account, shared by every table in that Region. Gate 43 split it
-  so a preview environment can exist without spending credit. `00-environments.md` §5 has the
-  reasoning and the two rejected options.
+  so a `dev` environment can exist without spending credit. `00-environments.md` §5 has the
+  reasoning and the rejected options.
 - **The rule that replaces "one table only": the total across every table in `eu-central-1` must
   never pass 25.** A third table is not forbidden by arithmetic. It is forbidden by that total.
 - **Provisioned, not on demand.** ADR-0002 verified first-party — that is, against AWS's own page —
@@ -128,26 +129,26 @@ dynamodb.Table
   first read.
 - **No auto scaling.** Do not call `autoScaleReadCapacity` or `autoScaleWriteCapacity`. Auto scaling
   would raise the numbers past the free line without asking (ADR-0002).
-- **Use `dynamodb.Table`, never `dynamodb.TableV2`. Checked 2026-09-01, and the answer is settled.**
-  `TableV2` is the global-table construct. It can only state provisioned write capacity as an
-  **auto-scaled range**, never a fixed number — which is exactly what ADR-0002 forbids. This is an
-  open gap in CDK, tracked in
-  [aws-cdk#27378](https://github.com/aws/aws-cdk/issues/27378) and
-  [aws-cdk#27443](https://github.com/aws/aws-cdk/issues/27443). *An earlier version of this line
-  left the question open and said "if fixed write capacity turns out to be possible on `TableV2`,
-  either construct is fine". It is not possible, so there is no choice to make here.*
+- **Use `dynamodb.Table`, never `dynamodb.TableV2`.** Checked 2026-09-01. `TableV2` is the
+  global-table construct. It can only state provisioned write capacity as an **auto-scaled range**,
+  never a fixed number — which is exactly what ADR-0002 forbids. This is an open gap in CDK, tracked
+  in [aws-cdk#27378](https://github.com/aws/aws-cdk/issues/27378) and
+  [aws-cdk#27443](https://github.com/aws/aws-cdk/issues/27443). So there is no choice to make here.
 - **No secondary index** (ADR-0002). The first one arrives in run 3.
-- **`RETAIN`.** `RETAIN` means CDK leaves the resource in place when the stack is deleted.
-  `cdk destroy` must never be able to delete a person's plant history. The `preview` table is the
-  one exception: a workflow creates and destroys it, so it is `DESTROY`.
+- **`RETAIN`, in `prod` and in `dev`.** `RETAIN` means CDK leaves the resource in place when the
+  stack is deleted. In `prod`, `cdk destroy` must never be able to delete a person's plant history.
+  In `dev`, the table holds the three `CONFIG` rows the owner wrote by hand, and a deleted table
+  would take them with it.
 - **One table for every item type.** Profiles, sessions, pots, assessments, tasks, the daily
   counter, the day rollups, the `CONFIG` rows and **the circuit breaker row** all live here.
+- **CDK writes no row into this table.** A new table therefore starts with no `CONFIG` rows, and so
+  with the feature off (ADR-0019). `00-environments.md` §4 says who writes the rows in each
+  environment.
 
-**The breaker row needs a shape written into two files this role may not write.** They are in the
-list in `04-ci-cd.md` §6.2, with every other change owed outside `docs/800-infra/`. One rule belongs
-here: **the breaker row must never be `PK = CONFIG, SK = AI_ENABLED`**. That row is the owner's
-kill-switch, and nothing in the application writes it (ADR-0009). `02-cost-guardrails.md` §5
-describes the behaviour in full.
+**The breaker row's shape is in `docs/400-architecture/05-patterns.md` §1 and
+`docs/500-engineering/03-api-spec.md` §8.1.** One rule belongs here: **the breaker row must never
+be `PK = CONFIG, SK = AI_ENABLED`**. That row is the owner's kill-switch, and nothing in the
+application writes it (ADR-0009). `02-cost-guardrails.md` §5 describes the behaviour in full.
 
 ### 4.2 `ZamphoraPhotosStack` — the photo bucket
 
@@ -185,7 +186,7 @@ s3.Bucket
 cognito.UserPool
   signInAliases        { email: true }
   selfSignUpEnabled    false                <- gate 49
-  featurePlan          LITE                 <- gate 52
+  featurePlan          ESSENTIALS           <- gate 52
   passwordPolicy       Cognito's own
   removalPolicy        RETAIN
   groups               USER, ADMIN
@@ -194,6 +195,8 @@ cognito.UserPoolClient
   oAuth.flows          authorizationCodeGrant only
   oAuth.scopes         openid, email
   oAuth.callbackUrls   https://<the CloudFront hostname>/api/auth/callback
+                       in dev also: the local api's callback address, because
+                       local signs in through dev's pool. Never in prod
 cognito.UserPoolDomain
   cognitoDomain        zamphora-<env>
 ```
@@ -217,15 +220,16 @@ cognito.UserPoolDomain
 - **Groups, not custom attributes.** `02-containers.mmd` says the pool holds "group membership for
   USER and ADMIN". The account type the guard reads still comes from the profile item on every
   request (ADR-0004) — the group is where a new account's type comes from, not where it is checked.
-- **One test account in the `preview` pool**, created by hand, with its password in a GitHub secret.
-  The `e2e` job has to sign in and self sign-up is off (`04-ci-cd.md` §7).
+- **Two test accounts, A and B, in the `dev` pool**, created by hand, each with its password in a
+  GitHub secret and its `sub` in a repository variable. The `sub` is the account's id; it is not
+  secret. Two, because the tests check that one account cannot see the other's data. The `e2e` job
+  has to sign in and self sign-up is off. Account A's `sub` names the daily counter row that gate
+  88's reset would delete (`04-ci-cd.md` §7).
 
-**The tier is Essentials** (gate 52, reopened and closed again 2026-08-31). **A checked fact
-settled it, and the first check was wrong.**
+**The tier is Essentials** (gate 52, owner, 2026-08-31). A checked fact settled it.
 
-**The correction.** This section used to say that both Lite and Essentials include managed login and
-that Essentials only adds a visual editor. Both halves were wrong. AWS states it plainly: *"Where the
-Lite plan has the hosted UI, the Essentials plan opens up this advanced version of sign-up and
+**Lite does not include managed login, and it cannot be branded.** AWS states it plainly: *"Where
+the Lite plan has the hosted UI, the Essentials plan opens up this advanced version of sign-up and
 sign-in pages"*, and *"The Essentials plan is the lowest plan level that unlocks access to managed
 login"*
 ([Cognito Essentials plan features](https://docs.aws.amazon.com/cognito/latest/developerguide/feature-plans-features-essentials.html),
@@ -236,16 +240,13 @@ which is what gate 32 asked for.
 **Essentials costs the same as Lite here: nothing.** Both tiers give **10,000 free monthly active
 users**. Past that, Lite is **$0.0055 per user** and Essentials is **$0.015**
 ([Cognito pricing](https://aws.amazon.com/cognito/pricing/), checked 2026-08-28). At one user the
-difference is $0.00, so Lite was buying a saving that does not exist and giving up a feature the
-design assumed it had.
+difference is $0.00, so Lite would buy a saving that does not exist and give up a feature the
+design needs.
 
 **Set `featurePlan: ESSENTIALS` when the pool is created.** The feature plan is chosen at creation
-time, so this has to be right before the first deploy.
-
-**The tier is set when the pool is created, and changing it afterwards is hard.** That is why it was
-worth two minutes of checking before the first deploy rather than a surprise after it. *Nobody
-checked the exact CDK property name for the feature plan in this run. Check it when the stack is
-written — the requirement is the tier, not the spelling.*
+time, and changing it afterwards is hard, so this has to be right before the first deploy. *Nobody
+checked the exact CDK property name for the feature plan. Check it when the stack is written — the
+requirement is the tier, not the spelling.*
 
 ### 4.4 `ZamphoraApiStack` — the function and the gateway
 
@@ -255,8 +256,9 @@ lambdaNodejs.NodejsFunction
   architecture          ARM_64
   memorySize            1024
   timeout               Duration.seconds(22) <- NFR-02 names 22,000 ms
-  reservedConcurrentExecutions  10 in prod, 2 in preview
-  logGroup              a log group created in this stack, retention 30 days
+  reservedConcurrentExecutions  10 in prod, 2 in dev
+  logGroup              a log group created in this stack, retention 30 days in prod,
+                        7 days in dev
   entry                 apps/api/dist/main.js   <- COMPILED JS, never the .ts source
   bundling              { minify: true, sourceMap: true, format: ESM,
                           externalModules: ['@aws-sdk/*', 'sharp'],
@@ -264,7 +266,7 @@ lambdaNodejs.NodejsFunction
                                         see "How `sharp` reaches the function" below }
   environment           TABLE_NAME, PHOTOS_BUCKET, COGNITO_*, APP_ORIGIN,
                         STATE_MACHINE_ARN, PARAM_PREFIX, ENV_NAME
-                        <- no model key path. Since 2026-09-17 only `assess` reads it
+                        <- no model key path. Only `assess` reads it
 
 lambda.Alias  name 'live'  ->  the current version
 
@@ -272,7 +274,7 @@ apigatewayv2.HttpApi
   defaultIntegration    HttpLambdaIntegration(the alias)
   createDefaultStage    true, autoDeploy true
   defaultRouteSettings  { throttlingRateLimit: 100,   <- REQUIRED. See below
-                          throttlingBurstLimit: 50 }
+                          throttlingBurstLimit: 50 }  <- prod. dev: 20 and 10
   no CORS configuration                        <- ADR-0010
 ```
 
@@ -292,13 +294,17 @@ requests.** 100 a second is five hundred times below the default and far above a
 needs — ten assessments a day is 0.0001 a second — while leaving room to demonstrate the app to a
 room of people. A flood at 100 a second costs about $0.36 an hour instead of $36.
 
+**`dev` is throttled lower, at 20 a second with a burst of 10.** Only CI uses it, and `dev` has no
+alarms (`03-observability.md` §5). So a flood there would be found late, and the lower number keeps
+it to about $0.07 an hour.
+
 **What this does not defend.** A flood that stops at the CloudFront edge is still billed for
 CloudFront requests once the 10 million free ones are used. There is no automatic answer to that on
 this account. The accepted answer is the manual one: the alarm in `03-observability.md` §5 fires on
 CloudFront request count, and the response is to disable the distribution by hand.
 
-**Node 24, and the date is part of the reason** (gate 60, owner, 2026-08-27). ADR-0012 said Node 22.
-It is now 24, in the function **and** in CI, and the deciding fact is support length:
+**Node 24, and the date is part of the reason** (gate 60, owner, 2026-08-27). The function **and**
+CI run Node 24, and the deciding fact is support length:
 
 | Runtime identifier | Deprecates |
 | --- | --- |
@@ -307,8 +313,8 @@ It is now 24, in the function **and** in CI, and the deciding fact is support le
 
 Checked first-hand on the
 [AWS Lambda runtimes page](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html) on
-**2026-08-27**. A full year longer, so the decision does not come back in early 2027. **ADR-0012 has
-to be corrected in place** — it is in the list in `04-ci-cd.md` §6.2.
+**2026-08-27**. A full year longer, so the decision does not come back in early 2027. ADR-0012
+carries the same two dates.
 
 **The runtime here and `node-version` in CI must always be the same number.** Two runtimes for one
 product is a kind of bug that only appears at deploy.
@@ -320,9 +326,9 @@ product is a kind of bug that only appears at deploy.
 - **22 seconds, and the order of the numbers is the design.** The gateway cuts at 30,000 ms and
   cannot be raised. The application gives up at 20,000 ms and writes its own message. The function
   times out at 22,000 ms, which is above the application deadline and below the gateway's. A unit
-  test asserts 20,000 sits below 22,000 (`03-api-spec.md` §7, NFR-02). **Since 2026-09-17 the model
-  call is not inside this request** (ADR-0014), so the assessment route answers in about a second
-  and these clocks are a net, not a budget.
+  test asserts 20,000 sits below 22,000 (`03-api-spec.md` §7, NFR-02). **The model call is not
+  inside this request** (ADR-0014), so the assessment route answers in about a second and these
+  clocks are a net, not a budget.
 - **Reserved concurrency 10 is a cost guardrail, not a performance setting.** Reserved concurrency
   is the largest number of copies of the function that may run at the same time. Ten is chosen
   because NFR-12 already tests "ten parallel requests give exactly ten successes", so ten is the
@@ -335,7 +341,7 @@ product is a kind of bug that only appears at deploy.
 - **How `sharp` reaches the function** (gate 73, owner, 2026-09-17). **esbuild cannot bundle a
   native module.** `sharp` loads a `.node` binary at run time, so if it is left in the bundle list
   the function deploys without complaint and throws `Cannot find module 'sharp'` on the first photo
-  — the same silent-until-run-time shape as the `emitDecoratorMetadata` trap below. **The answer is
+  — the same silent-until-run-time shape as the `emitDecoratorMetadata` trap above. **The answer is
   to mark it external and copy it in after the bundle:**
 
   ```ts
@@ -362,15 +368,14 @@ product is a kind of bug that only appears at deploy.
   a build on the wrong runner fails in CI instead of at the first upload.
 
 - **`ARM_64` costs less per GB-second and there is one condition on it.** The bundle must contain no
-  native module, **or the build must run on an arm64 runner**. **Amended 2026-08-31 (owner):** this
-  used to say "use a pure-JavaScript image-header reader, not `sharp`". That is now wrong, because
-  step 5b of `03-api-spec.md` §4 does not only read a header — it **decodes and re-encodes the
-  photo**, which is what strips EXIF, proves the bytes are really an image and fixes rotation. Pure
-  JavaScript decoding of a 2 MB photo costs real CPU inside the 20,000 ms request deadline. **So
-  `sharp` is accepted, and the build moves to an arm64 runner** (`ubuntu-24.04-arm`, free on public
-  repositories). Do not set `X86_64`; fix the runner instead. If any other native module is ever
-  added, the same condition applies. This is written here because the failure is silent until
-  deploy.
+  native module, **or the build must run on an arm64 runner**. **`sharp` is accepted (owner,
+  2026-08-31), so the build runs on an arm64 runner** (`ubuntu-24.04-arm`, free on public
+  repositories). The reason is step 5b of `03-api-spec.md` §4. It does not only read a header — it
+  **decodes and re-encodes the photo**, which is what strips EXIF, proves the bytes are really an
+  image and fixes rotation. Pure JavaScript decoding of a 2 MB photo costs real CPU inside the
+  20,000 ms request deadline. Do not set `X86_64`; fix the runner instead. If any other native
+  module is ever added, the same condition applies. This is written here because the failure is
+  silent until deploy.
 - **The gateway is an HTTP API, never a REST API.** ADR-0007 calls this the sharpest trap on the
   upload path. On a REST API with `binaryMediaTypes` unset, API Gateway runs the photo through UTF-8
   and corrupts it before the application ever sees it, and nothing reports an error. **Do not set
@@ -388,16 +393,21 @@ product is a kind of bug that only appears at deploy.
   instead, retention is "never expire", and the logs grow against the free allowance forever. See
   `02-cost-guardrails.md` §3.
 - **The execution role: the table, the photo bucket, the Cognito client secret parameter, and
-  `states:StartExecution` on the one state machine.** Since 2026-09-17 it does **not** read the
-  model key parameter and does **not** write the breaker row. Both moved to `assess` (§4.4b). This
-  is what closes RR-03 in `docs/900-security/02-mitigations.md`.
+  `states:StartExecution` on the one state machine.** It does **not** read the model key parameter
+  and does **not** write the breaker row. Both belong to `assess` (§4.4b). This is what closes RR-03
+  in `docs/900-security/02-mitigations.md`.
 
 ### 4.4b `ZamphoraWorkflowStack` — the background run
 
-**Added 2026-09-17 (ADR-0014 to ADR-0016).** The assessment runs here, after the `api` function
-has answered `202`. Step Functions is the AWS service that runs a list of steps with retries and
-error handling written as configuration, not code. The **Standard** type has an Always Free
-allowance of 4,000 state transitions a month; the Express type has none.
+The assessment runs here, after the `api` function has answered `202` (ADR-0014 to ADR-0016). Step
+Functions is the AWS service that runs a list of steps with retries and error handling written as
+configuration, not code. The **Standard** type has an Always Free allowance of 4,000 state
+transitions a month, and every retry counts as one transition (`02-cost-guardrails.md` §2); the
+Express type has no free amount.
+
+The retry and refund paths below follow ADR-0018. A workflow variable is a named value the run keeps
+from start to end. Step Functions sets one with `Assign`. This machine keeps one, `callsMade`, the
+number of model calls this run has made.
 
 ```
 stepfunctions.StateMachine
@@ -407,17 +417,29 @@ stepfunctions.StateMachine
   logs                  ERROR level only, to a log group with 30-day retention
   definition
     ClaimRun            DynamoDB UpdateItem, state queued -> running, with a condition.
-                        A failed condition ends the run: a duplicate start
+                        A failed condition ends the run: a duplicate start.
+                        Assign callsMade = 0, with no new state     <- ADR-0018
     Assess              LambdaInvoke(assess)
                           timeout            Duration.seconds(25)   <- per attempt
                           retryOnServiceExceptions  false           <- REQUIRED, see below
-                          Retry  errors  ProviderTimeout, ProviderThrottled,
-                                         ProviderUnavailable, Lambda.TooManyRequestsException
+                          Retry  errors  Lambda.TooManyRequestsException only
                                  maxAttempts 2, interval 2 s, backoffRate 2
-                          Catch  all -> RecordFailure
-    Choice              a refusal value (feature-off, provider-unavailable from a
-                        closed breaker) -> Refund; otherwise -> Persist
-    Refund              DynamoDB UpdateItem, ADD attempts -1 on the day counter (ADR-0016)
+                                 <- no model call: the function never ran.
+                                    Each retry is still one state transition
+                          Catch  ProviderTimeout, ProviderThrottled, ProviderUnavailable
+                                   -> RetryOrStop, Assign callsMade = callsMade + 1
+                          Catch  Lambda.TooManyRequestsException, the retries ran out
+                                   -> AnyCallMade, failureCode provider-unavailable
+                          Catch  all others -> RecordFailure
+    Choice              a refusal value (feature-off, or provider-unavailable from an
+                        open breaker) -> AnyCallMade; a named failure -> RecordFailure;
+                        an answer -> Persist
+    RetryOrStop         Choice. callsMade under 3 -> Backoff; callsMade = 3 -> RecordFailure
+    Backoff             Wait. 2 s after the first failed call, 4 s after the second.
+                        Then -> Assess
+    AnyCallMade         Choice. callsMade = 0 -> Refund; above 0 -> RecordFailure
+    Refund              DynamoDB UpdateItem, ADD attempts -1 on the day counter (ADR-0016).
+                        Then -> RecordFailure
     Persist             DynamoDB UpdateItem, the answer onto the row, state done.
                         Retry on DynamoDB errors, maxAttempts 3
     Rollup              DynamoDB UpdateItem on the day rollup. Retry the same way
@@ -456,8 +478,17 @@ sqs.Queue               the dead-letter queue. Nothing reads it. Retention 4 day
 - **`retryOnServiceExceptions: false` is the setting most likely to be left alone, and it must not
   be.** The CDK `LambdaInvoke` task adds a hidden retry of six attempts on Lambda service errors.
   One of those errors, `Lambda.Unknown`, can arrive **after** the model call was made, and a hidden
-  retry would make the call again. The explicit list above is the whole retry policy
-  (`02-cost-guardrails.md` §5, guardrail 3).
+  retry would make the call again. The one explicit `Retry` and the `RetryOrStop` cap above are the
+  whole retry policy (`02-cost-guardrails.md` §5, guardrail 3).
+- **`callsMade` is how the run knows whether it called the model** (ADR-0018). A `Retry` keeps no
+  record of what an earlier try did. When its retries run out, the `Catch` sees only the last error.
+  So the three provider errors go to a `Catch` that adds 1 to `callsMade`, and `RetryOrStop` holds
+  the cap of three calls. Only `Lambda.TooManyRequestsException` keeps a `Retry`, because the
+  function never ran and the retry makes no model call. **Do not move the three provider errors back
+  into a `Retry`. Do not draw any other arrow into `Refund`.** Do not give `assess` write access to
+  the assessment row to record calls; the fact lives in the run. *The exact CDK property for
+  `Assign` was not checked. Check it when the stack is written — the requirement is the variable,
+  not the spelling.*
 - **No timeout on the machine.** A machine-level timeout ends the run without running any `Catch`,
   so the row would stay `running` for ever and the phone would wait out its 60 seconds for nothing.
   Every task has its own timeout and its own `Catch`. The EventBridge rule is the net under that:
@@ -477,9 +508,14 @@ sqs.Queue               the dead-letter queue. Nothing reads it. Retention 4 day
   idle queue that a Lambda function reads still costs receive requests, so no function reads one.
   The owner looks at this queue after an alarm (`03-observability.md` §5).
 - **Every function here creates its own log group with retention**, as §4.4 says for `api`.
-- **`infra-assert` checks four things on the synthesised template:** the type is `STANDARD`, the
-  machine has no `TimeoutSeconds`, the `Assess` retry list is exactly the four names above with
-  `MaxAttempts: 2`, and `Refund` is reachable only from the refusal choice (NFR-05, NFR-38).
+- **`infra-assert` checks five things on the synthesised template** (NFR-05, NFR-38, ADR-0018):
+  1. The type is `STANDARD`.
+  2. The machine has no `TimeoutSeconds`.
+  3. The `Assess` `Retry` list is exactly `Lambda.TooManyRequestsException` with `MaxAttempts: 2`,
+     and `retryOnServiceExceptions` is off.
+  4. `ProviderTimeout`, `ProviderThrottled` and `ProviderUnavailable` are in the `Catch` that adds 1
+     to `callsMade`, never in a `Retry`, and `RetryOrStop` compares `callsMade` with 3.
+  5. Every path into `Refund` passes `AnyCallMade` with `callsMade` at 0.
 
 ### 4.5 `ZamphoraWebStack` — the static files
 
@@ -512,7 +548,7 @@ cloudfront.Distribution
                        functionAssociations: [ viewer-request: the rewrite function ]
                        responseHeadersPolicy: the security headers policy below
   additionalBehaviors
-    '/api/assessments/*/events'              <- listed BEFORE '/api/*'. Added 2026-09-17
+    '/api/assessments/*/events'              <- listed BEFORE '/api/*'
                        origin: FunctionUrlOrigin(the watch function, with origin
                                  access control, readTimeout: Duration.seconds(25))
                        cachePolicy: CACHING_DISABLED
@@ -539,20 +575,20 @@ cloudfront.Distribution
   reaches the API.
 - **`CACHING_DISABLED` on `/api/*`.** An API answer must never be cached. A cached `GET /api/me`
   would hand one person another person's answer.
-- **`readTimeout: 25 seconds` on the `/api/*` origin, and this is the fourth deadline.**
-  **Added 2026-08-31.** A CloudFront custom origin has its own response timeout: **30 seconds by
-  default, 60 seconds at most** without a quota increase. It was never set here, so CloudFront —
-  not API Gateway — was the outermost clock, and a request that reached it would produce a 504 whose
-  body nothing in this product wrote. That is the exact failure `03-flow.md` §4 exists to prevent,
-  and F-4 in the pre-mortem named it. 25 seconds sits between the app's 20,000 ms deadline and the
-  gateway's 30,000 ms cut-off, so the app is still the first thing to answer. **The full stack is
-  now four numbers and they are listed once, in `03-flow.md` §4.**
-  **The ceiling itself is not certain, and that is AWS's fault, not this document's.** Checked
-  2026-09-01: AWS's own pages disagree with each other on the maximum origin read timeout — some CDK
-  reference pages say 60 seconds, others say 120, and a support article says the console allows 180.
-  **Nothing here depends on which is right**, because 25 seconds sits far below all three. But
-  before anyone plans on "escape the 30-second limit later", read the real number off the live
-  account with `aws cloudfront get-distribution-config` rather than trusting a page.
+- **`readTimeout: 25 seconds` on the `/api/*` origin, and this is the fourth deadline.** A
+  CloudFront custom origin has its own response timeout: **30 seconds by default, 60 seconds at
+  most** without a quota increase. Without this setting, CloudFront — not API Gateway — would be the
+  outermost clock, and a request that reached it would produce a 504 whose body nothing in this
+  product wrote. That is the exact failure `03-flow.md` §4 exists to prevent, and F-4 in the
+  pre-mortem named it. 25 seconds sits between the app's 20,000 ms deadline and the gateway's
+  30,000 ms cut-off, so the app is still the first thing to answer. **The full stack is four numbers
+  and they are listed once, in `03-flow.md` §4.**
+  **The ceiling itself is not certain.** Checked 2026-09-01: AWS's own pages disagree with each
+  other on the maximum origin read timeout — some CDK reference pages say 60 seconds, others say
+  120, and a support article says the console allows 180. **Nothing here depends on which is
+  right**, because 25 seconds sits far below all three. But before anyone plans on "escape the
+  30-second limit later", read the real number off the live account with
+  `aws cloudfront get-distribution-config` rather than trusting a page.
 - **The stream behaviour comes first, and it is `GET` only.** CloudFront matches behaviours in
   order, so the events path must sit above `/api/*` or it never matches. The origin is the `watch`
   function's URL with origin access control, which signs each request so the `AWS_IAM` URL accepts
@@ -572,9 +608,9 @@ cloudfront.Distribution
   ([CloudFront FAQ](https://aws.amazon.com/cloudfront/faqs/)). This product uses a few hundred a
   month, so it was never a risk.
 - **A response headers policy carrying a Content Security Policy.** A Content Security Policy tells
-  the browser which sources it may load code and images from. ADR-0011 raised this on 2026-08-27 and
-  sent it here. A static export behind CloudFront should send one, and nothing in the repository
-  mentioned one. A starting policy is in §5. **900 Security owns the final wording.**
+  the browser which sources it may load code and images from. ADR-0011 raised this and sent it here.
+  A static export behind CloudFront should send one, and nothing in the repository mentioned one. A
+  starting policy is in §5. **900 Security owns the final wording.**
 - **`PRICE_CLASS_100` covers North America, Europe and Israel.** The users are in Hungary. The free
   1 TB applies either way, so this is about which edge locations answer, not about the bill.
 - **No AWS WAF.** AWS WAF is the web application firewall. It costs money on an account with a
@@ -582,10 +618,13 @@ cloudfront.Distribution
 
 ### 4.7 `ZamphoraOpsStack` — the watching
 
-An SNS topic, the alarms and one dashboard. SNS is the AWS service that sends the alarm emails.
-**There are eleven alarms against a free allowance of ten** — `03-observability.md` §5.
-Everything in this stack is listed in `03-observability.md`. It is a separate stack so that a change
-to an alarm cannot fail a deploy of the product.
+An SNS topic, the alarms, one dashboard and two metric filters. SNS is the AWS service that sends
+the alarm emails. **There are twelve alarms against a free allowance of ten** — `03-observability.md`
+§5. A metric filter is a rule that turns matching log lines into a CloudWatch metric. The two here
+count the `config-value-refused` line in the `api` and `assess` log groups, for alarm 1
+(`03-observability.md` §4). Everything in this stack is listed in `03-observability.md`. It is a
+separate stack so that a change to an alarm cannot fail a deploy of the product. **Only `prod`
+deploys it** (§3).
 
 **CDK creates the topic with no subscriber** (gate 58, owner, 2026-08-27). The owner adds the alarm
 email address by hand in the SNS console, once, and confirms it there. **The address never appears
@@ -622,10 +661,10 @@ reviews and may change every line.**
 
 | Path | Type | Written by |
 | --- | --- | --- |
-| `/zamphora/<env>/cognito/client-secret` | `SecureString` | The owner, by hand, once |
-| `/zamphora/<env>/anthropic/api-key` | `SecureString` | The owner, by hand, once |
+| `/zamphora/<env>/cognito/client-secret` | `SecureString` | The owner, by hand, once per environment |
+| `/zamphora/prod/anthropic/api-key` | `SecureString` | The owner, by hand, once. **There is no `dev` key** |
 
-Four rules:
+Five rules:
 
 1. **Standard tier only.** Standard parameters have no charge. Advanced parameters do.
 2. **The AWS-managed key encrypts them.** Not a key this project creates and owns. That kind of key
@@ -637,6 +676,9 @@ Four rules:
 4. **The value is cached in the function's memory for the life of the function.** That is the same
    free cache ADR-0002 points at. A key is not a session and not a daily count, so neither of
    ADR-0002's two "do not cache" rules applies.
+5. **`dev` has no model key, and that is a guard.** `dev` always uses the stub provider. If a wrong
+   setting ever chose the Anthropic adapter in `dev`, the adapter would find no key and make no
+   paid call (`00-environments.md` §8).
 
 **Parameter Store is not where the kill-switch lives, and that is not a contradiction.** ADR-0009
 says *"Do not put the switch in an environment variable, in AppConfig, in Parameter Store, or
@@ -656,12 +698,10 @@ only.** Gate 45 chose the free CloudFront hostname, so there is no ACM certifica
 `ZamphoraCertStack`. **Do not add a certificate stack unless a domain is bought, which would re-open
 gate 45.**
 
-**Amended 2026-08-31.** This section used to say "no cross-Region piece at all". That could not
-hold, because **CloudFront publishes its metrics only to `us-east-1`**
+**The `us-east-1` stack exists because CloudFront publishes its metrics only to `us-east-1`**
 ([CloudFront metrics](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html),
-checked 2026-08-31). Alarm 10 in `03-observability.md` §5 was written against `eu-central-1`, where
-those metrics do not exist. It would have deployed without an error and **never fired**, and
-dashboard row 5 would have drawn an empty graph.
+checked 2026-08-31). An alarm on a CloudFront metric in `eu-central-1` deploys without an error and
+**never fires**, and a dashboard row on one draws an empty graph.
 
 **`ZamphoraCloudFrontAlarmsStack`, in `us-east-1`.** It holds CloudFront alarms and nothing else —
 no function, no table, no bucket. It needs `crossRegionReferences: true` on the CDK app so it can
@@ -686,6 +726,10 @@ was acceptable.
 destroyed account comes back with one deploy. **What does not come back** is the DynamoDB table, the
 photo bucket and the Cognito user list.
 
+**A rebuilt account comes back with the feature off.** The new table has no `CONFIG` rows, and a
+missing `AI_ENABLED` row means off (ADR-0019). Nothing spends Anthropic credit until the owner
+writes the rows again. That is step 6 of the checklist in `00-environments.md` §10.
+
 **The replacement is a calendar entry, not a service.** Before **2026-12-31**, when the free account
 plan ends, export the table and the bucket to the owner's own machine. `02-cost-guardrails.md` §8
 carries the same line.
@@ -702,10 +746,16 @@ re-opened.
 
 Not a rollback. It is a mitigation, and it is the fastest thing in this system.
 
-> In the AWS console, open the table, find `PK = CONFIG, SK = AI_ENABLED`, set `enabled` to `false`.
+> In the AWS console, open the table, find `PK = CONFIG, SK = AI_ENABLED`, set `enabled` to the
+> boolean `false`.
 
 No new model call is made within 30 seconds, against a 60-second promise (ADR-0009, NFR-34). Calls
 that are already running finish, because the money is already spent (US-13 AC-4).
+
+**A mistake here still stops the money.** If the row is deleted, or `enabled` is typed as a string
+such as `"false"`, the feature is off too (ADR-0019). The refused value writes a
+`config-value-refused` line, and alarm 1 in `03-observability.md` §5 reports it. Fix the row to the
+boolean `false` afterwards, so the alarm goes quiet.
 
 **This is the owner's switch and nobody else's.** Owning the kill-switch is on the list of decisions
 that are never a model's. **The automatic circuit breaker in `02-cost-guardrails.md` §5 never
@@ -759,9 +809,9 @@ Five things, each with its reason. Anything else in the console is a mistake.
 
 | Not in CDK | Why |
 | --- | --- |
-| The two `SecureString` values | A secret in CDK ends up in the template and in the deploy difference. The repository is public (§6) |
-| The three `CONFIG` rows | They are data, and ADR-0009 says nothing in the application writes them. The kill-switch has to be changeable with no deploy |
-| The one real user account | Self sign-up is off, so the owner creates it in the Cognito console (§4.3) |
+| The `SecureString` values | A secret in CDK ends up in the template and in the deploy difference. The repository is public (§6) |
+| The three `CONFIG` rows, in `prod` and in `dev` | They are data, and ADR-0009 says nothing in the application writes them. The kill-switch has to be changeable with no deploy. A new table has none, so the feature starts off until the owner writes `AI_ENABLED` (ADR-0019). The owner writes them by hand in both environments, and no pipeline writes them (gate 87, `00-environments.md` §4) |
+| The one real user account, and the two `dev` test accounts, A and B | Self sign-up is off, so the owner creates them in the Cognito console (§4.3) |
 | **The alarm email subscription** | Gate 58. CDK creates the topic with no subscriber. The owner adds the address in the SNS console and confirms the link AWS sends. The address must not reach a public repository, and CDK would print it in the deploy difference (§4.7) |
 | The GitHub OpenID Connect roles | CI cannot create the role it needs in order to sign in (`04-ci-cd.md` §4) |
 
@@ -771,11 +821,11 @@ Five things, each with its reason. Anything else in the console is a mistake.
   in §2 as code that ships inside another unit. Check the diagram box by box.
 - **Every service named here appears in `02-cost-guardrails.md` §2** with its free allowance and
   what happens when it is passed.
-- **The DynamoDB capacity of every table in `eu-central-1` adds up to 25 or less.** Two tables
-  today: 20 and 5.
+- **The DynamoDB capacity of every table in `eu-central-1` adds up to 25 or less.** Two tables,
+  both permanent: `prod` at 20 and `dev` at 5.
 - **The Lambda runtime and CI's `node-version` name the same number.** Both are 24 (§4.4), for all
   four functions.
-- **The four `infra-assert` checks on the state machine pass** (§4.4b), and the `api` role has no
+- **The five `infra-assert` checks on the state machine pass** (§4.4b), and the `api` role has no
   read on the model key parameter.
 - **`infra-assert` runs on every push that touches `infra/`.** It makes no AWS call, so it needs no
   credential and costs nothing (`06-nfrs.md` §1). NFR-40 is the first assertion it carries.
@@ -787,4 +837,5 @@ Five things, each with its reason. Anything else in the console is a mistake.
 
 Whether anything is deployed · whether SSE-S3 is enough, which ADR-0007 hands to 900 Security · the
 final Content Security Policy · when open sign-up joins the product, which gate 49 records as a
-run-2 story.
+run-2 story · whether the `dev` pipeline may delete the test account's daily counter row, which is
+gate 88 (`00-environments.md` §4).

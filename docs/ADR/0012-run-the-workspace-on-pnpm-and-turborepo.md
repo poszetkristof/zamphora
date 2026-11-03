@@ -80,11 +80,11 @@ runs too early to put it back
 `03-flow.md` budgets 2,000 ms for a cold start, and a bundled function starts faster than one that
 unpacks a large `node_modules`.
 
-**One module cannot be bundled, and it has its own answer** (added 2026-09-17, gate 73). `sharp`
-loads a `.node` binary at run time, so esbuild cannot inline it. It is marked **external** and
-copied into the asset by a `bundling.commandHooks.afterBundling` step, together with the `@img/*`
-package that holds the arm64 binary. That keeps the ban above intact — the hook is not
-`nodeModules`, and it does not make CDK write a `pnpm-workspace.yaml`. The full block is in
+**One module cannot be bundled, and it has its own answer** (gate 73, decided by the owner on
+2026-09-17). `sharp` loads a `.node` binary at run time, so esbuild cannot inline it. It is marked
+**external** and copied into the asset by a `bundling.commandHooks.afterBundling` step, together
+with the `@img/*` package that holds the arm64 binary. That keeps the ban above intact — the hook is
+not `nodeModules`, and it does not make CDK write a `pnpm-workspace.yaml`. The full block is in
 `../800-infra/01-iac-plan.md` §4.4. **Any future native module takes the same route.**
 
 **Second cost: pnpm 11 needs Node 22 or newer.** The Lambda runtime and the CI image must both be on

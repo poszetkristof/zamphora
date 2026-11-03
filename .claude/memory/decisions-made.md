@@ -91,15 +91,19 @@ See [[factory-as-plugin]].
 - Three security gates: 64 (how much web reach a research role gets), 69 (a named contact for every
   residual risk), 71 (multi-factor sign-in on the AWS account). 69 and 71 are hard stops before the
   first deploy.
-- Five QA gates: 74 (must the golden-set run pass before the first deploy), 79 (how US-15 counts
-  screens), 80 and 81 (two bars QA proposed), 82 (does a failed assessment count against the 10 a
-  day). None blocks code.
+- Four QA gates: 74 (must the golden-set run pass before the first deploy), 79 (how US-15 counts
+  screens), 80 and 81 (two bars QA proposed). None blocks code.
 - Whether notifications use Web Push (the current assumption) or something else.
 
 **Answered for QA on 2026-09-17 (gates 75 to 78), in `factory/feature.md`:** `DAILY_LIMIT` is 1 to
 20. A retry gets a new `requestId` only after the API answered with a failure; with no answer, the
 same id is sent again. Golden-set photos: licensed for groups A and B, the owner's own for C to E,
 none of a real home in the public repository. Every group A label comes from a named reference.
+
+**Answered by the owner on 2026-10-29:** a try counts whenever the model was called, even when the
+call failed (gate 82). The allowed `MODEL_ID` values are `claude-haiku-4-5-20251001`,
+`claude-haiku-5-5` and `claude-sonnet-5-5`, with Haiku 4.5 as the default until the golden-set run
+(gate 83). Both are in `factory/feature.md`.
 
 *(The photo retention period is decided: 180 days, 2026-08-24.)*
 

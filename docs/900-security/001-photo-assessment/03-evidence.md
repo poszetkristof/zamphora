@@ -1,9 +1,7 @@
 # Evidence — what was checked, and what will be checked
 
 **Written by** 900 Security, run 1 (`001-photo-assessment`). **Date:** 2026-09-01.
-**Updated 2026-09-17, twice.** First for ADR-0014 to ADR-0016: EV-15 rewritten, EV-33 to EV-36 added
-in §7. Then an audit recorded that **half of EV-04 is now fixed** — gate 68 removed `image/gif` — and
-that the three `sharp` guards in EV-10 are still owed by the first code task.
+§7 holds the checks for the background run (ADR-0014 to ADR-0018).
 **Read next by** 600 QA, and by whoever writes the first task.
 
 An evidence pack normally holds pasted output: the command, the real input, the real answer, the
@@ -144,10 +142,10 @@ nothing is installed yet, and 0.35.4 is above the fix. It failed because **`imag
 names. The design accepted a file format whose decoder had a High-rated hole two months earlier, and
 no input mentioned `sharp.block()` or `limitInputPixels`.
 
-**Half of that is fixed as of 2026-09-17.** The owner answered gate 68 and `image/gif` is out of
-`ACCEPTED_PHOTO_TYPES`, so the GIF loader is no longer reachable through an accepted type. **The
-other half is still owed and belongs to the first code task:** the version pin at 0.35.3 or higher,
-the `sharp.block()` call at module load, and `limitInputPixels`. EV-10 is the check for all three.
+**What is true of the design now.** `image/gif` is not in `ACCEPTED_PHOTO_TYPES` (gate 68, the
+owner, 2026-09-17), so the GIF loader cannot be reached through an accepted type. **Three fixes are
+still owed and belong to the first code task:** the version pin at 0.35.3 or higher, the
+`sharp.block()` call at module load, and `limitInputPixels`. EV-10 is the check for all three.
 
 ### EV-05 — Does the sign-in decision still match current guidance? (§3.2 of `02-mitigations.md`)
 
@@ -395,7 +393,7 @@ and `VersioningConfiguration` absent.
 ### EV-15 — The clocks are stacked in the right order (NFR-02, NFR-03, ADR-0014)
 
 **Proves:** the model always fails first and by name, and the `api` function answers before the
-platform does. **Rewritten 2026-09-17**: the model call is no longer inside the request.
+platform does. The model call is not inside the request (ADR-0014).
 
 ```bash
 pnpm --filter @zamphora/api test -- deadlines
@@ -448,9 +446,10 @@ gh api repos/poszetkristof/zamphora \
 
 ---
 
-## 4. Checks that need a running `preview` environment
+## 4. Checks that need the `dev` environment
 
-`<host>` below is that environment's own CloudFront hostname.
+`<host>` below is the `dev` environment's own CloudFront hostname, unless a check names `prod`.
+`dev` is permanent, uses the stub provider and holds no model key (`00-environments.md` §2, §8).
 
 ### EV-18 — No session, no model call (US-07 AC-5, T-05)
 
@@ -546,42 +545,145 @@ Serve this page from any other origin, open it in a browser that is signed in, a
 
 ### EV-23 — The daily limit holds under ten at once (NFR-12, US-08, T-38)
 
+**Proves:** the conditional increment in `03-api-spec.md` §5 lets exactly ten requests through in one
+UTC day, and refuses the eleventh.
+
+**The number to read is `attempts` on the person's own row**: `PK = USER#<sub>`,
+`SK = QUOTA#<yyyy-mm-dd>` (`03-api-spec.md` §5). That is the counter the daily limit limits. The two
+day-rollup counters in `03-api-spec.md` §8 are the wrong numbers for this check:
+
+- `modelCalls` counts calls to the provider. One assessment can make up to 3 of them, so it does not
+  match the number of `202`s.
+- `assessmentsStarted` is written by the workflow's `Rollup` step, at the end of each run. So it
+  moves after the `202`, not at the same time, and it counts every account in the environment.
+
+**Run it on an account with no assessment today**, so `attempts` starts empty. Do not run it in the
+last minute before midnight UTC, because the day is part of the key.
+
+**One limit of `dev`, said plainly.** The `api` function's reserved concurrency there is 2
+(`00-environments.md` §4). So at most two of the ten requests run at the same moment, and Lambda
+turns the rest away before any code runs. A request that was turned away never reached the
+`requestId` claim at step 6c, so the script sends it again with the **same** `requestId` until the
+API itself answers. Two at once is still enough to catch a read-then-write: two requests that read
+the same value write the same value, and the counter ends below the number of `202`s.
+
 ```bash
-seq 1 10 | xargs -P 10 -I{} curl -s -o /dev/null -w '%{http_code}\n' \
-  -X POST "https://<host>/api/assessments" -b "__Host-session=<session>" \
-  -F potId=<pot> -F locale=hu -F requestId=$(uuidgen) -F photo=@plant.jpg
-# then one more
-curl -s -o - -w '\n%{http_code}\n' -X POST "https://<host>/api/assessments" \
-  -b "__Host-session=<session>" -F potId=<pot> -F locale=hu \
-  -F requestId=$(uuidgen) -F photo=@plant.jpg
+DAY=$(date -u +%F)
+send() {   # one new requestId, sent again only while Lambda turns it away
+  rid=$(uuidgen)
+  while true; do
+    out=$(curl -s -w '\n%{http_code}' -X POST "https://<host>/api/assessments" \
+      -b "__Host-session=<session>" -F potId=<pot> -F locale=hu \
+      -F requestId="$rid" -F photo=@plant.jpg)
+    status=$(tail -n 1 <<<"$out"); body=$(head -n -1 <<<"$out")
+    if [ "$status" = 202 ] || grep -q '"code"' <<<"$body"; then echo "$status $body"; return; fi
+    sleep 1
+  done
+}
+export -f send
+seq 1 10 | xargs -P 10 -I{} bash -c send
+# then one more, with its own new requestId
+send
+# then the counter
+aws dynamodb get-item --table-name <the dev table> \
+  --key "{\"PK\":{\"S\":\"USER#<sub>\"},\"SK\":{\"S\":\"QUOTA#$DAY\"}}" \
+  --query 'Item.attempts.N' --output text
 ```
 
-**Pass:** exactly ten `201`s, then one `429` with `"code":"daily-limit-reached"` and a
-`quotaResetsAt` in `details`. `modelCalls` in the day rollup is exactly 10, never 11.
-**Fail:** eleven successes, or fewer than ten, or `modelCalls` at 11. **Note this spends ten stub
-calls, never real ones — `preview` uses the stub provider** (`00-environments.md` §3).
+**`uuidgen` runs inside `send`, once per request.** Written straight into an `xargs` line, the shell
+runs it once, before `xargs` starts, and all ten requests carry the same id. Then §4a answers nine of
+them from the first one, and the check measures the request-id row instead of the limit.
+
+**Pass:** ten lines start with `202`, and the ten `assessmentId` values are all different. The
+eleventh line is `429` with `"code":"daily-limit-reached"` and a `quotaResetsAt` in `details`.
+`attempts` reads `10`.
+**Fail:** an eleventh `202`; fewer than ten `202`s; two `202`s with the same `assessmentId`; or
+`attempts` at any value other than 10.
+
+**One answer is not a failure of the limit.** A `503 workflow-not-started` refunds its attempt
+(`03-api-spec.md` §4f), so `attempts` ends one lower. If that happens, run the check again on a fresh
+account or on the next UTC day.
+
+**Note this spends stub calls, never real ones — `dev` uses the stub provider and holds no model
+key** (`00-environments.md` §3, §8).
 
 | Output | Date run | Result |
 | --- | --- | --- |
 | | | |
 
-### EV-24 — One tap is one charge, and a failure does not lock the person out (R-08, T-16)
+### EV-24 — One tap is one charge, and a failure does not lock the person out (R-08, T-16, gate 76)
+
+**Proves:** the rule in `03-api-spec.md` §4a. A resend of the same `requestId` gets the same answer
+as the first send, and it never spends a second attempt. A second try after an answered failure
+carries a new `requestId`, and the API treats it as a new request. When the browser makes a new id
+and when it sends the same one is gate 76 in `factory/feature.md`.
+
+**The number to read is `attempts`, as in EV-23**, and for the same reasons — not `modelCalls`.
+
+**Parts one and two need an account with at least 3 attempts left today.** Part three needs an
+account whose `attempts` is already at the limit, for example straight after EV-23.
 
 ```bash
-# same requestId twice, back to back
-RID=$(uuidgen)
-for i in 1 2; do
+DAY=$(date -u +%F)
+attempts() {
+  aws dynamodb get-item --table-name <the dev table> \
+    --key "{\"PK\":{\"S\":\"USER#<sub>\"},\"SK\":{\"S\":\"QUOTA#$DAY\"}}" \
+    --query 'Item.attempts.N' --output text
+}
+post() {     # $1 is the requestId
   curl -s -o - -w '\n%{http_code}\n' -X POST "https://<host>/api/assessments" \
     -b "__Host-session=<session>" -F potId=<pot> -F locale=hu \
-    -F requestId=$RID -F photo=@plant.jpg
-done
-# then force a provider failure in the stub, and send the SAME requestId again
+    -F requestId="$1" -F photo=@plant.jpg
+}
+stream() {   # $1 is the assessmentId, URL-encoded as in EV-19
+  curl -sS -N --max-time 60 -b "__Host-session=<session>" \
+    "https://<host>/api/assessments/$1/events"
+}
+
+# Part one: the same requestId twice, back to back
+attempts                            # write it down as A
+RID=$(uuidgen); post "$RID"; post "$RID"
+attempts                            # expect A + 1
+
+# Part two: a run that failed
+# force a provider failure in the stub, so every call fails
+FAILED=$(uuidgen); post "$FAILED"   # 202. Write down the assessmentId
+stream <that id>                    # wait for the state event
+attempts                            # write it down as B
+post "$FAILED"                      # the SAME requestId again
+stream <that id>
+attempts                            # expect B
+# turn the forced failure off
+post "$(uuidgen)"                   # a NEW requestId: the person's second try
+attempts                            # expect B + 1
+
+# Part three: a refusal that is written on the IDEM# row
+LIMITED=$(uuidgen); post "$LIMITED"; post "$LIMITED"
+attempts                            # expect the limit, unchanged
 ```
 
-**Pass, part one:** the second call returns the same assessment, and `modelCalls` moved by 1, not 2.
-**Pass, part two:** after a forced failure, sending the same `requestId` again is **allowed to run**.
-**Fail:** part two answers `409 request-in-flight` for ten minutes. That is R-08, and it means the
-recovery path the owner chose on 2026-08-26 does not work.
+The stream closes at 55 seconds (`03-api-spec.md` §4e). If it closes before a `state` event
+arrives, open it again. The row already holds whatever happened.
+
+**Pass, part one:** both answers are `202` with the same `assessmentId`, and `attempts` moved by 1,
+not 2.
+**Pass, part two:** the first stream sends one `state` event with `failed`. **B is A + 2:** the
+failed run called the model, so its try counts and is not given back (gate 82, ADR-0018). The same
+`requestId` sent again gets `202` with the **same** `assessmentId`, its stream sends that same
+`failed` event, and `attempts` does not move. So there is no second run and no second charge. The
+new `requestId` gets `202` with a **different** `assessmentId`, and `attempts` moves by 1. That move
+is expected: a new id is a new request, and a try counts whenever the model was called.
+**Pass, part three:** both answers are `429` with `"code":"daily-limit-reached"` and a
+`quotaResetsAt`, and `attempts` does not move. The second answer comes from the `failureCode` on the
+`IDEM#` row.
+**Fail, part one:** two different `assessmentId` values, or `attempts` moved by 2. One tap was
+charged twice.
+**Fail, part two:** the same `requestId` starts a second run — a different `assessmentId`, or
+`attempts` moves. That is the option gate 76 rejected, and it charges again for a resend. Or the new
+`requestId` is refused with `409 request-in-flight`. That is the lock-out in R-08. Or B is A + 1:
+the failed run was refunded although the model was called, which is T-45.
+**Fail, part three:** the second answer is `409 request-in-flight`. That means the refusal was not
+written on the `IDEM#` row, and the person waits up to `IDEM_STALE_MS` for a clear answer.
 
 | Output | Date run | Result |
 | --- | --- | --- |
@@ -681,7 +783,8 @@ And a signed URL stops working after 5 minutes — test it by waiting.
 
 ### EV-29 — The kill-switch works, and how long it takes (US-13, §4 of `02-mitigations.md`)
 
-**There is no test date for the kill-switch anywhere in the plan. This is it.**
+**This is the command for item 9 of the pre-deploy checklist in `00-environments.md` §10.** The day
+it runs is the kill-switch's test date.
 
 ```bash
 date -u +%H:%M:%S    # write this down
@@ -700,13 +803,14 @@ done
 ```
 
 **Pass:** the answer becomes `503 feature-off` within **60 seconds** of the edit, and the cache means
-it should be nearer 30. Write the real number down. Then set it back to `true` and check it comes
-back (US-13 AC-5).
+it should be nearer 30. Write the real number down. Then set it back to the boolean `true`
+(`{"BOOL":true}`) and check it comes back (US-13 AC-5). Never write the string `"true"`: ADR-0019
+reads any value that is not a boolean as off, so the feature would stay off.
 **Fail:** longer than 60 seconds, or it never takes effect.
 
-**Also test the two backup switches**, because neither is written down anywhere and both are
-independent of DynamoDB: setting the function's reserved concurrency to 0, and disabling the
-CloudFront distribution.
+**Also test the two backup switches**, because both are independent of DynamoDB: setting the
+`assess` function's reserved concurrency to 0, which stops every model call and leaves the rest of
+the product working (`02-mitigations.md` §4, switch 1), and disabling the CloudFront distribution.
 
 | Output | Date run | Result |
 | --- | --- | --- |
@@ -745,16 +849,19 @@ behind it.
 | --- | --- | --- |
 | | | |
 
-### EV-32 — The model comparison, which is also the accuracy evidence (R-14, ADR-0006)
+### EV-32 — The model comparison, which is also the accuracy evidence (R-14, ADR-0006, ADR-0017)
 
 Not a security command, and it belongs here because RR-07 is a residual risk that only a measurement
 can close.
 
 **Input:** 600 QA's 40-photo golden set, each with a verdict a person wrote down first.
-**Command:** the golden-set run on all three models, once. ADR-0006 prices it at **$1.28**.
-**Pass:** the cheapest model that reaches 8 in 10 agreement on `likely` and 8 in 10 on `cannot-tell`.
-**Fail:** none of the three reaches it. **That is a finding for the owner, not a reason to pick the
-most expensive one and hope** (ADR-0006).
+**Command:** the golden-set run on the two Haiku models, `claude-haiku-4-5-20251001` and
+`claude-haiku-5-5`, once. ADR-0017 prices it at about **$0.18**, under the $0.20 NFR-11 allows for
+one run (gate 85).
+**Pass:** the cheaper model that reaches 8 in 10 agreement on `likely` and 8 in 10 on `cannot-tell`.
+**Fail:** neither model reaches it. **That is a finding for the owner, not a reason to pick the most
+expensive model and hope** (ADR-0006). Measuring `claude-sonnet-5-5` needs a new decision by the
+owner (ADR-0017).
 
 | Output | Date run | Result |
 | --- | --- | --- |
@@ -768,33 +875,49 @@ most expensive one and hope** (ADR-0006).
 the warning email. There is no command for a thing that does not exist. Gate G-901-3 has to be
 answered before a check can be written, and that check then belongs in a later run's evidence pack.
 
-**Nothing here tests R-05**, the CI deploy path, because `docs/800-infra/04-ci-cd.md` was not
-readable by this role (seam S-901-1). The checks for it are one file read away and they are not
-guessed here.
+**Nothing here tests R-05**, the CI deploy path. Two of its three properties were verified by
+reading `04-ci-cd.md` §4 on 2026-09-17 (`02-mitigations.md` R-05). The third, the
+`zamphora-github-dev` role's IAM policy, does not exist until the owner creates the role.
+`00-environments.md` §10 item 11 is the hand check for it.
 
 ---
 
-## 7. Checks added on 2026-09-17 for the background run
+## 7. Checks for the background run
 
-Four checks for the risks R-18 to R-20 in `02-mitigations.md` §10. The first three run at build
-time with no AWS call; the fourth needs a `preview` environment.
+Four checks for the risks R-18 to R-20 in `02-mitigations.md` §2. The first three run at build
+time with no AWS call; the fourth needs the `dev` environment.
 
 ### EV-33 — The state machine's retry and refund are exactly as written (R-18, R-20, NFR-05, NFR-38)
 
-**Proves:** the only retry in the product is the one in CDK, capped at two, and a refund cannot
-follow a paid call.
+**Proves:** the model is called at most 3 times per photo, the only `Retry` is the free one on a
+throttled start, and a refund cannot follow a paid call (ADR-0018).
 
 ```bash
 pnpm --filter infra test -- infra-assert
 pnpm --filter @zamphora/api test -- call-count
 ```
 
-**Pass:** the synthesised state machine is `STANDARD`; has no `TimeoutSeconds`; the `Assess` task's
-`Retry` names exactly `ProviderTimeout`, `ProviderThrottled`, `ProviderUnavailable` and
-`Lambda.TooManyRequestsException` with `MaxAttempts: 2`; `retryOnServiceExceptions` is off; and
-`Refund` is reachable only from the refusal choice. The stub test: three thrown timeouts give
-exactly 3 calls, and every returned failure gives exactly 1.
-**Fail:** any other name in the list, any other cap, a machine timeout, or a fourth call.
+**Pass, `infra-assert`:** the synthesised state machine is `STANDARD`; has no `TimeoutSeconds`; the
+`Assess` task's `Retry` names exactly `Lambda.TooManyRequestsException` with `MaxAttempts: 2`;
+`retryOnServiceExceptions` is off; `ProviderTimeout`, `ProviderThrottled` and `ProviderUnavailable`
+are in the `Catch` that adds 1 to `callsMade` and in no `Retry`; `RetryOrStop` compares `callsMade`
+with 3; and every path into `Refund` passes `AnyCallMade` with `callsMade` at 0.
+**Pass, the stub test:** three thrown timeouts give exactly 3 calls, and every returned failure
+gives exactly 1.
+
+**Input for the refund paths: the four runs in ADR-0018's table.** Each row is one run. How the run
+is driven — a walk of the synthesised definition, or the Step Functions test tooling in `dev` —
+is the choice of the task that writes the check. The pass column is not a choice.
+
+| Try 1 | Try 2 | Try 3 | Pass |
+| --- | --- | --- | --- |
+| throttled | throttled | throttled | refunded. 0 calls |
+| model timeout | throttled | throttled | not refunded. 1 call |
+| model timeout | breaker open | — | not refunded. 1 call |
+| throttled | kill-switch off | — | refunded. 0 calls |
+
+**Fail:** any other name in a `Retry`, a provider error in a `Retry`, a cap other than 3 calls, a
+machine timeout, a fourth call, or any row of the table above with the other answer.
 
 | Output | Date run | Result |
 | --- | --- | --- |
@@ -836,14 +959,14 @@ no write on the breaker row's key; the `assess` role has both and nothing on the
 
 ### EV-36 — A stream without a session answers nothing (R-19, T-13)
 
-**Proves:** the `watch` handler guards the route exactly as the API does. Needs a `preview`
+**Proves:** the `watch` handler guards the route exactly as the API does. Needs the `dev`
 environment.
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' \
-  "https://<preview host>/api/assessments/<a real id>/events"
+  "https://<dev host>/api/assessments/<a real id>/events"
 curl -sS -N --max-time 8 -H "Cookie: __Host-session=<another account's cookie>" \
-  "https://<preview host>/api/assessments/<the first account's id>/events"
+  "https://<dev host>/api/assessments/<the first account's id>/events"
 ```
 
 **Pass:** the first answers `401` with no body. The second opens and sends only heartbeat comment

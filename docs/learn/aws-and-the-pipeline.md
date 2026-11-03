@@ -88,13 +88,11 @@ That difference matters because it changes what a mistake costs:
 | If you think it is a ceiling | What is actually true |
 | --- | --- |
 | A second table steals capacity from the first | A second table spends unit-hours. The first table keeps its own speed |
-| A preview table left running breaks production | It costs a small amount of money at the end of the month |
-| Two open pull requests cannot both have a preview | They can. A pull request that lives a few hours costs a fraction of a cent |
+| A second table that runs all month breaks production | It only spends unit-hours. If the total stays inside the free amount, it costs nothing |
 
-This project ran on the wrong model for four days. It split `prod` down to 20/20 to make room for a
-`preview` table at 5/5, and wrote a rule saying only one preview may exist at a time. The split is
-kept because it keeps the monthly total inside the free amount with no arithmetic to redo. The rule
-was withdrawn, because it was protecting against something that does not happen.
+So this project runs two tables all month, every month: `prod` at 20/20 and `dev` at 5/5. Together
+they use exactly the free 25/25. There is no room left for a third table, which is one reason there
+is no `staging`.
 
 ---
 
@@ -523,7 +521,7 @@ built from the same codebase, each with one job.
 | Architecture | `ARM_64` | same | same | Cheaper per second of compute |
 | Memory | 1024 MB | 1024 MB | 512 MB | Lambda gives CPU in proportion to memory. Starting values, to be measured |
 | Timeout | 22 seconds | 30 seconds | 60 seconds | Each is the net under its own smaller clock (section 4) |
-| Reserved concurrency | **10** in prod, 2 in preview | **1** | 5 | A cost guard, not a performance setting |
+| Reserved concurrency | **10** in prod, 2 in dev | **1** | 5 | A cost guard, not a performance setting |
 | Holds the model key | no | **yes** | no | The key is in the function with no route |
 
 **Reserved concurrency is the one worth understanding.** It is the largest number of copies of the
@@ -856,7 +854,7 @@ that does not exist.**
 
 - **Detailed API Gateway metrics** are charged as custom metrics. The basic ones are free.
 - **CloudWatch Logs ingestion** is a classic free-tier killer. Log retention is 30 days in `prod`
-  and 1 day in `preview`.
+  and 7 days in `dev`.
 
 There is also a small trap in how measurements are counted. Putting the failure code on a metric
 **dimension** — a label that splits a measurement into separate series — turns 6 custom metrics into
@@ -1052,10 +1050,10 @@ creates a branch. That single character is the difference between safe and not.
 ```mermaid
 flowchart LR
     M["Push to main"] --> RD["zamphora-github-deploy"]
-    P["A pull request"] --> RP["zamphora-github-preview"]
+    P["A pull request"] --> RP["zamphora-github-dev"]
     S["The monthly audit<br/>environment: audit"] --> RA["zamphora-github-audit"]
     RD --> PROD["Deploy prod"]
-    RP --> PRE["Deploy preview<br/>and nothing else"]
+    RP --> PRE["Deploy dev<br/>and nothing else"]
     RA --> RO["Read only"]
 
     style PROD fill:#fde8e8
@@ -1063,8 +1061,9 @@ flowchart LR
     style RO fill:#e8f4ea
 ```
 
-If the preview role were also the deploy role, then any pull request could change production. Two
-roles cost nothing and remove that entirely.
+If the `dev` role were also the deploy role, then any pull request could change production. Two
+roles cost nothing and remove that entirely. Neither role ever writes a `CONFIG` row: the owner
+writes those by hand in both environments.
 
 **The third role exists because of a subtle trap.** The monthly retention audit runs on a schedule.
 A scheduled workflow runs on the **default branch** — so its token says `ref:refs/heads/main`, which
@@ -1154,11 +1153,11 @@ flowchart TD
         B["build"] --> OK
         OK["ci-ok<br/>REQUIRED"]
     end
-    subgraph PR ["pr-preview.yml"]
+    subgraph PR ["dev.yml"]
         BB["bundle-budget"] --> POK
         E["e2e"] --> POK
         P["perf-flow"] --> POK
-        POK["preview-ok<br/>REQUIRED"]
+        POK["dev-ok<br/>REQUIRED"]
     end
     subgraph CQ ["codeql.yml"]
         C["codeql"] --> CR["code scanning rule<br/>REQUIRED"]
@@ -1191,10 +1190,10 @@ whether it still holds.
 
 **Two things to remember, because both cost something real:**
 
-- **A pull request from a fork can never satisfy `preview-ok`**, because GitHub will not sign an AWS
+- **A pull request from a fork can never satisfy `dev-ok`**, because GitHub will not sign an AWS
   token for a fork. So a stranger's pull request can never merge on its own. That was accepted: the
   owner merges their own branches.
-- **A required check that never reports blocks every merge, forever.** So `preview-ok` goes into
+- **A required check that never reports blocks every merge, forever.** So `dev-ok` goes into
   branch protection **in the same change that adds the workflow**, never before it.
 
 ---
@@ -1209,7 +1208,7 @@ Come back to this table. Do not try to remember it.
 | --- | --- | --- |
 | Compute | **One Lambda holding every route, plus two split by job: `assess` and `watch`** | One function per route: many cold starts, many small things to look at. A container: charged by the hour, so it spends credit every night nobody uses the app |
 | Database | **One DynamoDB table, provisioned, fixed** | On demand: AWS recommends it, and the free amount does not cover it. It also serves a runaway loop instead of refusing it |
-| Preview database | **Split the units**: prod 20/20, preview 5/5 | Two full tables at 25/25 — rejected on a price nobody had checked. No preview at all — three tests would have nothing to run against |
+| Test environment | **One permanent `dev`, next to `prod`.** The units are split: prod 20/20, dev 5/5 | A fresh `preview` copy for every pull request: a pipeline would have to write the `CONFIG` rows into every new table, and it is harder to follow. No test environment at all: three tests would have nothing to run against |
 | Photo upload | **Through the API** | Presigned PUT straight to S3: validates nothing, so size, type and contents all go unchecked |
 | Photo handling | **Decode and re-encode every photo** | Reading the header only: cannot strip EXIF, so the person's home GPS reaches storage and the model |
 | Photo deletion | **An S3 lifecycle rule** | Application code on a schedule: it stops working exactly when the application is broken |

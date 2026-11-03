@@ -1,10 +1,6 @@
 # Observability — what is recorded, what raises an alarm, and what is deliberately not watched
 
-**Written by** 800 Infra, run 1 (`001-photo-assessment`). **Date:** 2026-08-27.
-**Updated** 2026-08-27 with the owner's answers to gates 43 to 61.
-**Updated 2026-09-17** for ADR-0014 to ADR-0016: the workflow's own metrics in §4, alarm 3 and a
-new alarm 12 in §5, and X-Ray turned on in §8.
-**Read next by** 900 Security, 600 QA.
+**Written by** 800 Infra, run 1 (`001-photo-assessment`). **Read next by** 900 Security, 600 QA.
 
 This file says where the logs go and which numbers are measured. It lists the alarms. It says
 which questions can be answered afterwards. It solves one problem. Several requirements in
@@ -13,8 +9,11 @@ they are not requirements at all.
 
 **The free CloudWatch allowance shapes this whole design, and that is said up front.** Ten custom
 metrics and ten alarms is the budget (`02-cost-guardrails.md` §2). Everything below is chosen inside
-it, **with one exception found on 2026-09-01: there are eleven alarms, not ten.** §5 says what that
-costs and who decides.
+it, **with one exception: there are twelve alarms, not ten.** §5 says what that costs and who
+decides.
+
+**Everything in this file watches `prod`.** `dev` writes logs, and nothing else here applies to it:
+no alarms, no dashboard, no metric filters (§5).
 
 ---
 
@@ -68,6 +67,10 @@ log line with its own fixed `msg`, so the whole life of a breaker can be read ba
 | `breaker.rejected` | A request arrived while it was open | Nothing else. This is a count, not a story |
 | `breaker.test` | The one call let through after 10 minutes | Whether it worked, and so whether service returned |
 
+**One more event: a refused `CONFIG` value.** When a function reads the `CONFIG` partition and
+refuses a value, it writes one `warn` line, `config-value-refused` (`03-api-spec.md` §6). For
+`AI_ENABLED`, a refused row turns the feature off (ADR-0019). Alarm 1 in §5 reads this line.
+
 **Never logged:**
 
 - the photo bytes
@@ -96,7 +99,12 @@ Every line carries:
 | `route` | For example `POST /api/assessments` |
 | `userIdHash` | A hash of the owner id, **not the id itself** |
 | `durationMs` | For the whole request |
-| `env` | `prod` or `preview` |
+| `env` | `prod` or `dev` |
+
+**One line has its own shape: `config-value-refused`.** `03-api-spec.md` §6 fixes its fields
+exactly: `level`, `event`, `function`, `configKey`, `reason`, `refusedValue` and `usedValue`. It
+belongs to a cache read, not to a request, so it has no `requestId`, `route` or `userIdHash`. Its
+fixed string is in `event`, not in `msg`. The metric filter in §4 matches on `event`.
 
 **`userIdHash`, not `userId`, and this is a choice worth explaining.** With one user, grouping lines
 by person is useful, and naming the person adds nothing. A hash is a short string computed from the
@@ -122,25 +130,23 @@ Not everything needs a custom metric. Three sources cost nothing and cover most 
 | `ConsumedReadCapacityUnits`, `ConsumedWriteCapacityUnits` | DynamoDB | How much of the free allowance is used |
 | `Count`, `4xx`, `5xx`, `Latency` | API Gateway | Requests the function never saw |
 | `Requests`, `4xxErrorRate`, `5xxErrorRate` | CloudFront | The front door |
-| `ExecutionsStarted`, `ExecutionsSucceeded`, `ExecutionsFailed`, `ExecutionsTimedOut`, `ExecutionTime` | Step Functions | Did the background run finish, and how long it took. Added 2026-09-17 |
+| `ExecutionsStarted`, `ExecutionsSucceeded`, `ExecutionsFailed`, `ExecutionsTimedOut`, `ExecutionTime` | Step Functions | Did the background run finish, and how long it took |
 | `Invocations`, `Errors` on `assess` | Lambda | The paid function on its own. Its `Errors` count is the retried failures, by design |
 
 **API Gateway's *detailed* metrics are charged as custom metrics. Do not turn them on.** The basic
 ones above are free.
 
-**The DynamoDB throttle metrics matter more now than they did.** `prod` runs at 20 read and 20 write
-units rather than 25, because gate 43 gave 5 of each to the `preview` table
-(`00-environments.md` §5). The alarm threshold does not change — one throttled request is still one
-too many — but the ceiling it guards is a fifth lower.
+**The DynamoDB throttle metrics matter more with the split.** `prod` runs at 20 read and 20 write
+units rather than 25, because gate 43 gave 5 of each to the `dev` table (`00-environments.md` §5).
+The alarm threshold is the same — one throttled request is still one too many — but the ceiling it
+guards is a fifth lower.
 
-### The cold start, and a correction to how NFR-06 is written
+### The cold start, read from the logs
 
-**NFR-06 says to read the cold start "from the `InitDuration` CloudWatch metric after a deploy".
-There is no such CloudWatch metric.**
-
-AWS's list of Lambda metrics contains `Invocations`, `Errors`, `Throttles`, `Duration`,
-`PostRuntimeExtensionsDuration`, `ConcurrentExecutions` and others, and `InitDuration` is not among
-them. The same page says of `Duration`: *"`Duration` does not include cold start time."*
+**There is no `InitDuration` CloudWatch metric.** AWS's list of Lambda metrics contains
+`Invocations`, `Errors`, `Throttles`, `Duration`, `PostRuntimeExtensionsDuration`,
+`ConcurrentExecutions` and others, and `InitDuration` is not among them. The same page says of
+`Duration`: *"`Duration` does not include cold start time."*
 ([Types of metrics for Lambda functions](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html),
 checked 2026-08-27.)
 
@@ -156,25 +162,24 @@ filter @type = "REPORT"
         by bin(1d)
 ```
 
-**The method changed here, and the number changed on 2026-08-31.** NFR-06 is now 2,000 ms at p95 over a rolling
-7 days. It is still not tested in CI, because a cold start depends on the platform on the day.
-**`06-nfrs.md` belongs to 400 Architecture**, so the correction to its wording is named in the list
-in `04-ci-cd.md` §6.2 rather than made here.
+**NFR-06 is 2,000 ms at p95 over a rolling 7 days, read with this query.** It is not tested in CI,
+because a cold start depends on the platform on the day.
 
-**Expect a bigger number than ADR-0002 budgets, and know why before the first measurement lands.
-Added 2026-09-01.** ADR-0002 cites 200 to 800 ms for a Node.js cold start. That figure is for a
-plain Node.js function. This one is a Nest.js application, and a Nest.js cold start also has to
-build the dependency-injection container — work out the module graph and construct every provider —
-before it can answer anything. One published measurement of a Nest.js application in one Lambda
-function reports an init duration of about **1.0 to 1.1 seconds**. That is one app with its own
-module count, not a promise about this one, and NFR-06's 2,000 ms still leaves room. **The point is
-that a generic Node.js figure does not carry over.** When the query above returns a real number,
-write it into ADR-0002 and delete the 200-to-800 range.
+**Expect a bigger number than ADR-0002 budgets, and know why before the first measurement lands.**
+ADR-0002 cites 200 to 800 ms for a Node.js cold start. That figure is for a plain Node.js function.
+This one is a Nest.js application, and a Nest.js cold start also has to build the
+dependency-injection container — work out the module graph and construct every provider — before it
+can answer anything. One published measurement of a Nest.js application in one Lambda function
+reports an init duration of about **1.0 to 1.1 seconds**. That is one app with its own module count,
+not a promise about this one, and NFR-06's 2,000 ms still leaves room. **The point is that a generic
+Node.js figure does not carry over.** When the query above returns a real number, write it into
+ADR-0002 and delete the 200-to-800 range.
 
-### The six custom metrics
+### The seven custom metrics
 
-Written with the CloudWatch embedded metric format, which means they are produced by writing a
-specially shaped JSON log line. No extra API call, no extra permission, no extra latency.
+Six are written with the CloudWatch embedded metric format, which means they are produced by writing
+a specially shaped JSON log line. No extra API call, no extra permission, no extra latency. The
+seventh comes from a metric filter, for the reason below the table.
 
 | Metric | Unit | Answers |
 | --- | --- | --- |
@@ -184,9 +189,19 @@ specially shaped JSON log line. No extra API call, no extra permission, no extra
 | `zamphora/BreakerOpened` | Count | The circuit breaker protected the balance. Alarm 8 |
 | `zamphora/CannotTellAnswers` | Count | NFR-22, the ceiling of 3 in 10 |
 | `zamphora/UnreadableAnswers` | Count | NFR-23, the ceiling of 1 in 100 |
+| `zamphora/ConfigValueRefused` | Count | A `CONFIG` value was refused, NFR-39 at runtime. Alarm 1. **Made by a metric filter** |
 
-**Six, not ten, and four slots are left spare on purpose.** The free allowance is ten custom
+**Seven, not ten, and three slots are left spare on purpose.** The free allowance is ten custom
 metrics.
+
+**Only `prod` may write these metrics.** CloudWatch turns every embedded-format line into a metric,
+whatever log group it is in. So if `dev` wrote the same lines, `perf-flow`'s stub calls would be
+counted in `prod`'s `ModelCalls` and `CostMicroUsd`, and they could fire alarms 6 and 7. **The rule:
+outside `prod`, the app writes the same log line without the embedded metric block.** It reads
+`ENV_NAME` to decide. The `dev` line still carries every field, so a failed CI run can be read with
+the queries in §7. The code belongs to 500 Engineering, and `03-api-spec.md` carries the rule.
+The `ConfigValueRefused` filter is in `ZamphoraOpsStack`, which `dev` does not deploy, so that one
+needs no change.
 
 **The failure reason is not a dimension on `AssessmentFailures`, and this is the trap that would
 have used up the allowance.** In CloudWatch, each unique combination of name and dimension values is
@@ -195,79 +210,114 @@ name. The whole budget would be gone in one line of code. **The reasons live in 
 are counted with a Logs Insights query** (§7), which costs nothing beyond the 5 GB the logs already
 use.
 
-**The same trap applies to a CloudWatch Logs metric filter**, which also creates a custom metric. Use
-a query, not a filter.
+**A CloudWatch Logs metric filter has the same trap.** A metric filter is a rule that turns matching
+log lines into a metric. AWS: *"Metrics extracted from log events are charged as custom metrics."*
+([PutMetricFilter, AWS API reference](https://docs.aws.amazon.com/sdkfornet/v3/apidocs/items/CloudWatchLogs/TPutMetricFilterRequest.html),
+checked 2026-10-29.) Every dimension value is one more custom metric. So a filter is used only where
+an alarm needs a count and the line cannot carry the embedded format, and it never has a dimension.
+For every other count, use a query.
+
+**`ConfigValueRefused` is the one case.** `03-api-spec.md` §6 fixes the fields of the
+`config-value-refused` line exactly, and the embedded format would add a field to it. So a metric
+filter reads the line instead:
+
+```
+logs.MetricFilter   on the api log group, and a second one on the assess log group
+  filterPattern     { $.event = "config-value-refused" }
+  metricNamespace   zamphora
+  metricName        ConfigValueRefused
+  metricValue       1
+  dimensions        none
+```
+
+**Two filters, one metric.** Both functions read `CONFIG`, so each log group needs its own filter.
+Both write the same name with no dimension, and CloudWatch knows a metric by its namespace, name and
+dimensions. So the two filters make one custom metric, not two. Which key was refused, and why, is
+in the line itself, and the query in §7 reads it.
 
 ## 5. The alarms — twelve of them, and the free allowance is ten
 
-**Corrected 2026-09-01. This section said "exactly ten" and listed eleven.** Alarm 11 was added on
-2026-08-31 to close the CloudFront flood hole, and the heading, the opening sentence and two other
-files were never updated. So the true position is:
-
-- **The CloudWatch Always Free allowance is ten alarm metrics.** This list uses **twelve** since
-  alarm 12 was added on 2026-09-17 for the background run.
+- **The CloudWatch Always Free allowance is ten alarm metrics.** This list uses **twelve**.
 - **Two of them are therefore charged.** A standard-resolution alarm is a small fixed amount per
-  alarm metric per month — cents, not dollars. *The exact figure was not confirmed first-party in
-  this pass.* AWS is clear on the shape of the charge: *"Each CloudWatch alarm incurs charges for
-  the metric it monitors."*
+  alarm metric per month — cents, not dollars. *The exact figure was not confirmed first-party.* AWS
+  is clear on the shape of the charge: *"Each CloudWatch alarm incurs charges for the metric it
+  monitors."*
 - **This does not put the account at risk.** It is far below every other number in
-  `02-cost-guardrails.md` §4. It matters because the documents claimed $0 and claimed ten, and both
-  were wrong.
+  `02-cost-guardrails.md` §4. It is still written down, because $0 and ten are easy numbers to
+  assume.
 
 **This is the owner's decision, not this document's** (`02-cost-guardrails.md` §9). Two ways out,
 and doing nothing is a legitimate third:
 
 1. **Keep twelve and pay cents a month.** Alarm 11 is the only warning of a flood that stops at the
    edge and never reaches the throttled gateway. It is one of the four alarms this project actually
-   needs, and alarm 12 is the only sign that a run died with nothing to catch it.
-2. **Drop two of alarms 1 to 5**, the ordinary ones any system has, and stay at ten.
+   needs. Alarm 12 is the only sign that a run died with nothing to catch it. Alarm 1 is the only
+   sign that a hand edit of `CONFIG` went wrong.
+2. **Drop two of alarms 2, 4 and 5**, the ordinary ones any system has, and stay at ten.
 
 **Whatever is chosen, the rule from here is unchanged: an alarm is a decision, not an addition.**
-Whoever adds the twelfth has to say which one it replaces, or accept another charge.
+Whoever adds the thirteenth has to say which one it replaces, or accept another charge.
+
+This table is a lookup, one row per alarm.
 
 | # | Alarm | Fires when | Why it exists |
 | --- | --- | --- | --- |
-| 1 | API function errors | Lambda `Errors` ≥ 1 in 5 minutes | Something is broken and nobody is watching a screen |
+| 1 | **Refused `CONFIG` value** | `zamphora/ConfigValueRefused` sum ≥ 1 in 5 minutes | A value the owner typed into the `CONFIG` partition was refused (`03-api-spec.md` §6). For `AI_ENABLED` the feature is then off, and this is the only signal that names why. For the other two, the product runs on a default nobody chose |
 | 2 | API function throttles | Lambda `Throttles` ≥ 1 in 5 minutes | Reserved concurrency of 10 was hit. Either a loop, or ten real people |
-| 3 | **Failed runs** | Step Functions `ExecutionsFailed` + `ExecutionsTimedOut` ≥ 1 in 5 minutes | **Changed 2026-09-17.** It used to watch `api` duration against the 20-second deadline; that route now answers in about a second. A run that failed outside its own error handling is the thing nothing else reports |
+| 3 | **Failed runs** | Step Functions `ExecutionsFailed` + `ExecutionsTimedOut` ≥ 1 in 5 minutes | A run that failed outside its own error handling is the thing nothing else reports. The `api` duration has no alarm, because the assessment route answers in about a second (ADR-0014) |
 | 4 | DynamoDB read throttles | `ReadThrottleEvents` ≥ 1 in 5 minutes | The table's fixed read units were hit. This is the free tier working, and it means something is wrong |
 | 5 | DynamoDB write throttles | `WriteThrottleEvents` ≥ 1 in 5 minutes | The same, on writes |
 | 6 | **Runaway model calls** | `zamphora/ModelCalls` sum > 30 in 1 hour | Expected use is about 30 a **month**. Thirty in an hour is a loop or an attack |
 | 7 | **Runaway spend** | `zamphora/CostMicroUsd` sum > 100,000 in 1 hour | 100,000 millionths is $0.10. At $5 of balance, one dollar an hour empties it in an evening |
 | 8 | **The breaker opened** | `zamphora/BreakerOpened` ≥ 1 in 5 minutes | The product stopped calling the model on its own. Something is wrong with the provider, or with us |
-| 9 | Gateway 5xx | API Gateway `5xx` ≥ 1 in 5 minutes | A 504 from the gateway means a request passed 30 seconds. The app should have answered at 20 |
+| 9 | Gateway 5xx | API Gateway `5xx` ≥ 1 in 5 minutes | Every call to the `api` function passes the gateway, so this alarm also catches an `api` function error. A 504 means a request passed 30 seconds; the app should have answered at 20 |
 | 10 | Front door 5xx | CloudFront `5xxErrorRate` > 1% over 15 minutes | The distribution or an origin is broken. **Lives in `us-east-1`, see below** |
 | 11 | **Front door flood** | CloudFront `Requests` sum > 50,000 in 1 hour | Expected use is a few hundred a day. This is the only warning of a flood that stops at the edge and never reaches the throttled gateway. **Lives in `us-east-1`** |
-| 12 | **Dead letters** | The dead-letter queue's `ApproximateNumberOfMessagesVisible` ≥ 1 | **Added 2026-09-17.** A `mark-failed` invocation that failed twice. A row may be stuck at `running`. Nothing reads this queue, so the alarm is the only way anybody learns |
-
-**Twelve now, and the same rule: the twelfth is charged like the eleventh**, cents a month, and the
-owner decides whether to drop one of alarms 1 to 5 instead.
+| 12 | **Dead letters** | The dead-letter queue's `ApproximateNumberOfMessagesVisible` ≥ 1 | A `mark-failed` invocation that failed twice. A row may be stuck at `running`. Nothing reads this queue, so the alarm is the only way anybody learns |
 
 **Alarms 6, 7, 8 and 11 are the ones this project actually needs.** The others are the ordinary ones
 any system has. These four are about a balance that ends a feature and an account that ends a
 product.
 
-**Alarms 10 and 11 cannot live in `eu-central-1`, and this was wrong until 2026-08-31.**
-**CloudFront publishes its metrics only to `us-east-1`**
+**There is no separate alarm on the `api` function's Lambda `Errors`.** Every call to `api` passes
+the gateway, so a function error reaches alarm 9 as a 5xx. A second alarm would watch the same
+failure twice and cost one alarm metric. That slot holds alarm 1. The `Errors` metric is still on the
+dashboard (§6).
+
+**Alarm 1 watches the one set of values a person types by hand.** Nothing in the application writes
+the `CONFIG` rows (ADR-0009), so a typing mistake there has no other check. A refused `AI_ENABLED`
+turns the feature off (ADR-0019), and the person sees only the normal "turned off" message. Three
+facts about this alarm:
+
+- **It fires only when the app is used.** A function writes the line when it refreshes its cache,
+  and a cache refreshes only when a request arrives. A bad edit at night, with nobody using the app,
+  fires nothing until the next request. That is enough, because an unused app spends nothing.
+- **It sends one email, not a stream.** While a bad value stays in the table, each warm function
+  writes about two lines a minute and the alarm stays in `ALARM`. An alarm acts only when its state
+  changes, so the email comes once. It comes again only after the row is fixed and the alarm has
+  gone back to `OK`.
+- **It also fires when a row is missing.** A new table has no `CONFIG` rows, so the first assessment
+  after a rebuild fires it with `reason: row-missing`. That is the reminder for step 6 of the
+  checklist in `00-environments.md` §10, if the alarm email is confirmed (step 4).
+
+**Alarms 10 and 11 cannot live in `eu-central-1`.** **CloudFront publishes its metrics only to
+`us-east-1`**
 ([CloudFront metrics](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/viewing-cloudfront-metrics.html),
-checked 2026-08-31). Alarm 10 was written against the same Region as everything else. It would have
-deployed with no error and **never fired**, and dashboard row 5 would have drawn an empty graph. Both
-alarms now live in `ZamphoraCloudFrontAlarmsStack` in `us-east-1` (`01-iac-plan.md` §7), which holds
-alarms and nothing else.
+checked 2026-08-31). An alarm on a CloudFront metric in `eu-central-1` deploys with no error and
+**never fires**, and a dashboard row on one draws an empty graph. So both alarms live in
+`ZamphoraCloudFrontAlarmsStack` in `us-east-1` (`01-iac-plan.md` §7), which holds alarms and nothing
+else.
 
-**Alarm 11 is new, and it closes the last hole in the cost story.** `01-iac-plan.md` §4.4 throttles
-API Gateway at 100 requests a second, which caps what reaches the function. Nothing caps what
-reaches **CloudFront**, and CloudFront bills per request once the 10 million free ones are used.
-There is no automatic defence for that on this account. This alarm is the manual one: it fires, and
-the response is to disable the distribution by hand.
+**Alarm 11 closes the last hole in the cost story.** `01-iac-plan.md` §4.4 throttles API Gateway at
+100 requests a second, which caps what reaches the function. Nothing caps what reaches
+**CloudFront**, and CloudFront bills per request once the 10 million free ones are used. There is no
+automatic defence for that on this account. This alarm is the manual one: it fires, and the response
+is to disable the distribution by hand.
 
-**Alarm 8 changed shape when gate 50 was answered, and the change is worth understanding.** Before
-the answer, this alarm *was* the circuit breaker: it counted failures and asked a person to flip the
-kill-switch. Now the breaker is automatic and lives in the `assess` function
-(`02-cost-guardrails.md` §5), so the alarm no longer has a job to do in the moment. **Its job is to
-tell the owner that the product has already protected itself.** By the time the email arrives, the
-spending has stopped. That makes it a message rather than a request for help. It is the better
-shape, because the fix does not depend on anybody being awake.
+**Alarm 8 tells the owner that the product has already protected itself.** The circuit breaker is
+automatic and lives in the `assess` function (gate 50, `02-cost-guardrails.md` §5), so the alarm has
+no job to do in the moment. By the time the email arrives, the spending has stopped. That makes it a
+message rather than a request for help, and the fix does not depend on anybody being awake.
 
 **Alarm 8 watches `BreakerOpened`, not a failure count, on purpose.** A threshold that copied the
 breaker's own rule — five failures in a row — would be the same logic written twice, in two places
@@ -279,11 +329,29 @@ cannot be a person. **Re-check both after the first month of real use** and writ
 down here. A threshold like this is either never reached or reached all the time, and only real
 traffic shows which.
 
+### `dev` has no alarms, and what that leaves open
+
+**Only `prod` deploys `ZamphoraOpsStack` and `ZamphoraCloudFrontAlarmsStack`** (`01-iac-plan.md`
+§3). `dev` is used only by CI. Its test runs would fire alarms that mean nothing: `perf-flow` alone
+makes several assessments in a few minutes, and alarm 1 fires on purpose when a test reads a refused
+value. Twelve more alarms would also be twelve more charged alarm metrics.
+
+**What `dev` keeps instead.** It never calls the real provider and holds no model key, so it cannot
+spend Anthropic credit. Its gateway is throttled at 20 a second (`01-iac-plan.md` §4.4). Its table
+is throttled by its own 5 units.
+
+**One gap is left, and it is named so nobody assumes it is covered.** A flood against `dev`'s
+CloudFront hostname spends the same 10 million free CloudFront requests as `prod`, and alarm 11
+does not see it. The `dev` hostname is not secret: it can appear in the public CI logs. **Closing the
+gap is the owner's choice**, because it costs one more alarm metric: alarm 11 would add `dev`'s
+`Requests` to `prod`'s with metric math, and an alarm is billed for each metric it reads. It is
+listed in `02-cost-guardrails.md` §9 beside the other alarm-count decision.
+
 ### Where an alarm goes, and why the address is not in this repository
 
 **Decided by the owner on 2026-08-27, gate 58.**
 
-- **CDK creates one SNS topic, `zamphora-<env>-alarms`, with no subscriber at all.**
+- **CDK creates one SNS topic, `zamphora-prod-alarms`, with no subscriber at all.**
 - **The owner adds the email address by hand in the SNS console, once, and confirms it.** AWS sends
   a confirmation link that has to be clicked, so this step could never have been fully automatic
   anyway.
@@ -301,10 +369,10 @@ because the alarms and the circuit breaker both exist for the case where nobody 
 **Until the subscription is confirmed, every alarm fires into nothing.** It is step 4 of the
 before-first-deploy checklist in `00-environments.md` §10.
 
-**`treatMissingData: NOT_BREACHING` on all ten.** This product is idle most of the time. An alarm
+**`treatMissingData: NOT_BREACHING` on all twelve.** This product is idle most of the time. An alarm
 that goes red because nobody used the app last night is an alarm somebody learns to ignore.
 
-**Ten is a ceiling, not a comfortable number, and this list is already one past it** — see the top
+**Ten is a ceiling, not a comfortable number, and this list is already two past it** — see the top
 of this section. Adding an alarm is a decision, the same way adding a DynamoDB table is one in
 `01-iac-plan.md` §4.1: whoever adds one has to say which one it replaces, or accept the charge.
 **Composite alarms are not the way out.** A composite alarm combines several alarm states into one
@@ -316,8 +384,9 @@ the near-miss.** CloudFront publishes its own measurements **only to `us-east-1`
 setting that changes it. So: **any alarm or dashboard row whose metric is native to CloudFront lives
 in the `us-east-1` alarms stack. Everything else lives in `eu-central-1`.** A metric that comes from
 the origin behind CloudFront — the function, the gateway, the table — is not a CloudFront metric and
-stays in `eu-central-1`. This run found it the hard way with two alarms; the rule is written here so
-the eleventh metric does not find it again.
+stays in `eu-central-1`. The same is true of `ConfigValueRefused`, because its log groups are in
+`eu-central-1`. The rule is written here so that the next CloudFront metric goes into the right
+Region the first time.
 
 **An alarm firing is not an incident.** Declaring an incident is a person's decision, always. **No
 alarm in this list takes an action.** The one thing in this product that acts by itself is the
@@ -332,7 +401,8 @@ Five rows, in this order, because that is the order a question gets asked in:
 
 1. **Money.** `CostMicroUsd` per day, `ModelCalls` per day, and the running total for the NFR-14
    window.
-2. **Is it working.** `Invocations`, `Errors`, `Throttles`, and `BreakerOpened`.
+2. **Is it working.** `Invocations`, `Errors`, `Throttles`, `BreakerOpened` and
+   `ConfigValueRefused`.
 3. **Is it fast.** Step Functions `ExecutionTime` at p50 and p95, with a line drawn at 60,000 ms
    (NFR-07), and `api` `Duration` at p95 next to it, which should sit near one second.
 4. **Is the answer any good.** `CannotTellAnswers` and `UnreadableAnswers` as a share of
@@ -366,6 +436,21 @@ fields @timestamp, msg, failureCode
 | sort @timestamp asc
 ```
 
+**Which `CONFIG` value was refused, and why** — the detail behind alarm 1. Run it against the `api`
+and `assess` log groups at once:
+
+```
+fields @timestamp, function, configKey, reason, refusedValue, usedValue
+| filter event = "config-value-refused"
+| sort @timestamp desc
+| limit 20
+```
+
+`reason` is one of `row-missing`, `wrong-type`, `out-of-range` and `not-on-list`
+(`03-api-spec.md` §6). For `AI_ENABLED`, `usedValue` is always `false`. `refusedValue` is written
+with `JSON.stringify`, so a string keeps its quotes. A `refusedValue` of `"true"`, with the quotes,
+means the string was typed where the boolean belongs.
+
 **The cold start, for NFR-06** — the query in §4.
 
 **One assessment, end to end** — every step duration from `03-api-spec.md` §4, across the three
@@ -386,6 +471,12 @@ fields @timestamp, assessmentId, msg
 | filter attempts > 1
 ```
 
+**A throttled try is not in this count, and that is correct.** When Lambda refuses `assess` with
+`Lambda.TooManyRequestsException`, the function never starts, so it writes no line and makes no
+model call. The workflow retries it without a model call (ADR-0018), though each retry is still one
+state transition (`02-cost-guardrails.md` §2). The `Throttles` metric on `assess` counts those tries
+instead.
+
 **The cannot-tell share, for NFR-22:**
 
 ```
@@ -402,38 +493,43 @@ items straight from the DynamoDB table and compares them with Anthropic's own us
 admin key it needs does not go on the server, so it is a local script the owner runs
 (`03-api-spec.md` §8, NFR-13).
 
+**Every query here also works on `dev`'s log groups**, which keep 7 days. That is how a failed CI run
+is read.
+
 ## 8. What is deliberately not watched
 
-Three things nothing records, and one thing that is now recorded after all. Each is a decision that
-was already made, and each is written here so nobody spends an evening looking for a log that was
-never going to exist.
+Three things nothing records, and one thing that is recorded. Each is a decision that was already
+made, and each is written here so nobody spends an evening looking for a log that was never going to
+exist.
 
 **1. Who flipped the kill-switch.** ADR-0009: nothing in the application runs when it happens, so
 the app's own logs show the effect — model calls stopping — and never the cause. AWS's own record of
 console activity is the only place it appears, and it is a different place from every other log in
-this system. **Look there first when model calls stop for no reason** — and check `BreakerOpened`
-before you do, because the circuit breaker stops calls too and **that** one does leave a log line.
+this system. **Look there first when model calls stop for no reason** — and check two signals
+before you do, because both stop calls too and both **do** leave a log line: `BreakerOpened`, and
+alarm 1 with the `config-value-refused` query in §7. A row that was deleted or typed with the wrong
+type turns the feature off (ADR-0019).
 
-**That record has a name and a limit, and both were missing here until 2026-09-01.** It is
-**AWS CloudTrail**, the service that records who called which AWS API. It is on for every account
-with no setup, and it keeps **90 days** of management events at no charge — *"The first copy of
-management events is free"* ([CloudTrail pricing](https://aws.amazon.com/cloudtrail/pricing/),
-checked 2026-09-01). So the trail this document leans on twice reaches back **90 days and no
-further**. If a longer record is ever needed, a management-events-only trail is also free to create
-and only the S3 storage for the exported events costs anything — which would be tiny here. **Do not
-turn on Data events or Insights events.** Both bill from the first event.
+**That record has a name and a limit.** It is **AWS CloudTrail**, the service that records who
+called which AWS API. It is on for every account with no setup, and it keeps **90 days** of
+management events at no charge — *"The first copy of management events is free"*
+([CloudTrail pricing](https://aws.amazon.com/cloudtrail/pricing/), checked 2026-09-01). So the trail
+this document leans on twice reaches back **90 days and no further**. If a longer record is ever
+needed, a management-events-only trail is also free to create and only the S3 storage for the
+exported events costs anything — which would be tiny here. **Do not turn on Data events or Insights
+events.** Both bill from the first event.
 
 **2. The admin path.** `02-containers.mmd` draws the admin reaching the table directly through the
 AWS console, never through the API (gate 30). So no route, no guard and no application log sits on
 it. The same CloudTrail record is the trail, with the same 90-day limit.
 
-**3. Distributed tracing — turned on 2026-09-17.** AWS X-Ray draws where time went across several
-hops. Until 2026-09-17 it was off, and the reason written here was that a service map of one node is
-not worth drawing: one function, one outside call, and every step duration already in the log line.
-The trigger written next to that reason was "a second compute unit joins the flow". ADR-0014 added
-three: the state machine, `assess` and `watch`. So X-Ray is on, with `tracingEnabled: true` on the
-state machine and active tracing on the four functions (`01-iac-plan.md` §4.4b). It is free at this
-size: 100,000 traces recorded a month sit inside CloudWatch's always-free tier
+**3. Distributed tracing is on.** AWS X-Ray draws where time went across several hops. With one
+function and one outside call it would not be worth drawing, because every step duration is already
+in the log line. The trigger for turning it on was "a second compute unit joins the flow", and
+ADR-0014 added three: the state machine, `assess` and `watch`. So X-Ray is on, with
+`tracingEnabled: true` on the state machine and active tracing on the four functions
+(`01-iac-plan.md` §4.4b). It is free at this size: 100,000 traces recorded a month sit inside
+CloudWatch's always-free tier
 ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/), checked 2026-09-01), and this
 product sends a few hundred. Sampling stays at the default. **Do not turn on X-Ray Insights**, which
 bills on its own.
@@ -442,7 +538,8 @@ bills on its own.
 
 ## 9. Which requirement each of these serves
 
-A check that this file covers what `06-nfrs.md` says can only be measured at runtime.
+A check that this file covers what `06-nfrs.md` says can only be measured at runtime. This table is
+a lookup.
 
 | Requirement | Marked in `06-nfrs.md` as | Covered here by |
 | --- | --- | --- |
@@ -456,17 +553,20 @@ A check that this file covers what `06-nfrs.md` says can only be measured at run
 | NFR-22, cannot-tell ≤ 3 in 10 | `ai-eval`, plus real answers | `CannotTellAnswers`, §7 |
 | NFR-23, unreadable ≤ 1 in 100 | `test` for the parser, **runtime for the rate** | `UnreadableAnswers`, §7 |
 | NFR-34, kill-switch inside 60,000 ms | `test` | Not watched at runtime — §8 point 1 says why |
+| NFR-39, no model call while the `AI_ENABLED` row cannot be used | `test` | A refused row in `prod` shows as alarm 1, `ConfigValueRefused` and the `CONFIG` query in §7 |
 | NFR-41, no photo older than 182 days | `retention-audit`, monthly | `04-ci-cd.md` §8 |
 | The circuit breaker (gate 50) | **no NFR yet** | `BreakerOpened`, alarm 8, §7 |
 
 **Three rows in that table are the reason this file exists.** NFR-06 and NFR-14 have no job behind
 them at all in `06-nfrs.md`. Without a query and a graph, they are numbers nobody could ever check.
-The circuit breaker is newer than `06-nfrs.md` and has no requirement row of its own yet — **600 QA
-should be asked whether it needs one**, because a breaker nobody tests is a breaker that opens once,
-in the wrong direction, at the wrong moment.
+The circuit breaker has no requirement row of its own in `06-nfrs.md` — **600 QA should be asked
+whether it needs one**, because a breaker nobody tests is a breaker that opens once, in the wrong
+direction, at the wrong moment.
 
 ## 10. What this document does not decide
 
 Whether to declare an incident · who is on call, and whether anybody is · whether `userIdHash` is an
 acceptable thing to log, which is 900 Security's · whether any of these numbers is acceptable ·
-whether the circuit breaker needs a requirement row, which is 600 QA's.
+whether the circuit breaker needs a requirement row, which is 600 QA's · whether to pay for the two
+alarms over the free ten, and whether alarm 11 should also watch `dev`'s distribution, which are the
+owner's.

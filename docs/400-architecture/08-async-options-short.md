@@ -1,7 +1,7 @@
 # Two new shapes for zamphora — the short version
 
-**Written 2026-09-17. Decided the same day: the owner chose Option E** (gate 72, ADR-0014 to
-ADR-0016). §3 is now the current shape and §8 is the approved target for runs 2 to 6. Option F in
+**The owner chose Option E on 2026-09-17** (gate 72, ADR-0014 to ADR-0016). How the workflow
+retries and refunds is ADR-0018 (gate 84). §3 is now the current shape and §8 is the approved target for runs 2 to 6. Option F in
 §4 is the shape that was not taken. `08-async-options.md` has every fact, link and number.
 
 ---
@@ -77,7 +77,9 @@ flowchart TD
 3. The API starts the workflow and answers `202` in about one second. The phone shows a waiting
    screen. **Something is on screen, so the 30-second promise is kept.**
 4. The workflow calls the `assess` function. That function makes the one model call. If the call
-   times out or the provider is busy, the workflow tries again, **at most two more times**.
+   times out or the provider is busy, the workflow calls the model again, **at most two more
+   times**. It counts each call in `callsMade`, so it gives the try back only when the run made no
+   call at all.
 5. The workflow writes the result onto the row.
 6. The phone has one open connection to the `watch` function. It sends the result the moment the
    row changes. This is **server-sent events**, the same thing the model provider uses to stream.
@@ -85,12 +87,18 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
     [*] --> ClaimRun
-    ClaimRun --> Assess : UpdateItem queued to running, conditional
+    ClaimRun --> Assess : UpdateItem queued to running, conditional. callsMade = 0
     ClaimRun --> [*] : condition failed, another run owns this row, stop
-    Assess --> Assess : Retry only ProviderTimeout, ProviderThrottled, ProviderUnavailable, and Lambda.TooManyRequests. At most 2 more
+    Assess --> Assess : Retry only Lambda.TooManyRequests. Free, the function never ran. At most 2 more
     Assess --> Persist : a parsed answer
-    Assess --> Refund : refused, no call made: feature off or breaker open
-    Assess --> RecordFailure : a named failure, or the retries are used up
+    Assess --> RetryOrStop : Catch ProviderTimeout, ProviderThrottled, ProviderUnavailable. callsMade + 1
+    RetryOrStop --> Backoff : callsMade under 3
+    Backoff --> Assess : wait 2 s, then 4 s
+    RetryOrStop --> RecordFailure : callsMade = 3
+    Assess --> AnyCallMade : refused (feature off or breaker open), or still throttled
+    AnyCallMade --> Refund : callsMade = 0, no call made
+    AnyCallMade --> RecordFailure : callsMade above 0
+    Assess --> RecordFailure : a named failure, or any other error
     Persist --> Rollup : UpdateItem the result onto the row. Retry on DynamoDB errors
     RecordFailure --> Rollup : UpdateItem the failure by its name
     Refund --> RecordFailure : UpdateItem ADD attempts minus one
@@ -157,20 +165,25 @@ flowchart TD
 3. S3 tells EventBridge "a file was created under `uploads/`". EventBridge starts the workflow.
 4. The `decode` function cleans the photo, removes EXIF, saves it under `photos/` and deletes the
    raw upload. This function can reach S3 and nothing else.
-5. The `assess` function makes the model call, with the same retry rule as Option E.
+5. The `assess` function makes the model call, with the same retry and refund rule as Option E.
 6. The workflow writes the result. The phone gets it over the same stream as in Option E.
 
 ```mermaid
 stateDiagram-v2
     [*] --> ClaimRun
-    ClaimRun --> Decode : UpdateItem queued to running, conditional
+    ClaimRun --> Decode : UpdateItem queued to running, conditional. callsMade = 0
     ClaimRun --> [*] : condition failed, a duplicate event, stop
     Decode --> Assess : clean JPEG under photos/, raw object deleted
     Decode --> Refund : not an image, too small, or the decoder refused it. No call made
-    Assess --> Assess : Retry only the three thrown errors and Lambda.TooManyRequests. At most 2 more
+    Assess --> Assess : Retry only Lambda.TooManyRequests. Free. At most 2 more
     Assess --> Persist : a parsed answer
-    Assess --> Refund : refused, feature off or breaker open
-    Assess --> RecordFailure : a named failure, or the retries are used up
+    Assess --> RetryOrStop : Catch the three thrown errors. callsMade + 1
+    RetryOrStop --> Assess : callsMade under 3, after 2 s, then 4 s
+    RetryOrStop --> RecordFailure : callsMade = 3
+    Assess --> AnyCallMade : refused (feature off or breaker open), or still throttled
+    AnyCallMade --> Refund : callsMade = 0
+    AnyCallMade --> RecordFailure : callsMade above 0
+    Assess --> RecordFailure : a named failure, or any other error
     Refund --> RecordFailure : UpdateItem ADD attempts minus one
     Persist --> Publish : UpdateItem the result onto the row. Retry on DynamoDB errors
     RecordFailure --> Publish : UpdateItem the failure by its name
@@ -222,8 +235,9 @@ one.
 Today the danger is a loop in the code. In the new shapes the danger is **a service retrying on
 its own**. Every such place has one setting:
 
-- Step Functions: retry at most 2 times, only for a timeout or a busy provider. Switch off the
-  hidden retry that the CDK adds by default.
+- Step Functions: at most 2 more model calls, only after a timeout or a busy provider, counted in
+  `callsMade`. A throttled start of `assess` is retried for free, because the function never ran.
+  Switch off the hidden retry that the CDK adds by default.
 - EventBridge rules and timers: retry 2 times, then send the event to a dead-letter queue.
 - The `assess` function: one copy at a time. A second run waits, for free.
 - The model client: `maxRetries: 0` stays, as today.
@@ -309,14 +323,15 @@ On 2026-09-17 the owner chose **Option E** and approved the grown shape in §8 a
 screen; an attempt is given back when no model call was made; and the retry is capped at two inside
 the workflow. The decision is in `factory/feature.md` under "Human decisions already made", in
 ADR-0014, ADR-0015 and ADR-0016, and in `00-options.md` §11, which scores E and F next to the run-1
-options.
+options. On 2026-10-29 the owner accepted ADR-0018 (gate 84), which sets how the workflow counts its
+model calls, so a try is given back only when the whole run made no call.
 
 ## 10. Where the detail is
 
 | Question | Full file |
 | --- | --- |
 | Which service is free, cheap, or closes the account, with links | §2 |
-| Why the retry can only fire on a thrown error | §4.3 |
+| Why the workflow can only see a thrown error | §4.3 |
 | Why the result is streamed, and why not a WebSocket or a poll | §4.4 |
 | Why the whole API is not behind a Function URL | §4.7 |
 | Why one upload permission is for one exact file name | §5.2 |

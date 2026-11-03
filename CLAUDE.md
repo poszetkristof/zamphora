@@ -114,8 +114,8 @@ the mitigations and the evidence pack. Two things in it change what you may writ
   answered on 2026-09-17: sending the photo outside the EU is accepted for run 1, and the trigger to
   re-open it is the day a second person uses the app.
 
-**600 QA ran on 2026-09-17**, and the line is complete. Five more gates are open: 74, 79, 80, 81 and
-82. The top of `docs/600-qa/001-photo-assessment/00-test-plan.md` lists them. None of them blocks
+**600 QA ran on 2026-09-17**, and the line is complete. Four more gates are open: 74, 79, 80 and
+81. The top of `docs/600-qa/001-photo-assessment/00-test-plan.md` lists them. None of them blocks
 code.
 
 ## Hard rules
@@ -141,7 +141,8 @@ code.
   push. Editing a generated agent anywhere is always wrong.
 - **Comments: two lines maximum.** Plain English, explain _why_, never _what_. No commented-out
   code, no `TODO`. Longer explanations go in `docs/` or an ADR.
-- **Never `git commit` or `git push`** unless told to. "Write a commit message" means output text.
+- **Never run `git commit` or `git push`.** The owner commits. Any message about committing, even
+  "commit the staged changes", means: write the commit message or MR text as output, nothing more.
 
 ## Decisions that are never yours
 

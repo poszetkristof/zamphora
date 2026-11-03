@@ -1,7 +1,7 @@
 # Test plan — photograph a sick plant, get an assessment and a next action
 
-**Written by** 600 QA, run 1 (`001-photo-assessment`), 2026-09-17. **Read next by** whoever writes
-the first task, and by 600 QA on every later run.
+**Written by** 600 QA, run 1 (`001-photo-assessment`). **Read next by** whoever writes the first
+task, and by 600 QA on every later run.
 
 ---
 
@@ -15,10 +15,10 @@ measured is in `02-ai-evals.md`.
 
 1. Nobody has measured yet whether the model is right. The check that measures it costs money, so it
    cannot block a merge.
-2. Three retry settings have wrong defaults. If one of them is left alone, the $5 Anthropic balance
-   can be spent in one day.
-3. The CI files are not ready. `ci.yml` still uses npm, and `pr-preview.yml` does not exist. Nine
-   NFR checks have no job to run them.
+2. Four retry settings must all be right, and two of them have wrong defaults. If one of them is
+   left alone, a worst day costs about $0.70 instead of $0.12, against a $5 Anthropic balance.
+3. The CI files are not ready. `ci.yml` still uses npm, and `dev.yml` does not exist. Nine NFR
+   checks have no job to run them.
 
 **Still open, and the owner decides:**
 
@@ -28,11 +28,12 @@ measured is in `02-ai-evals.md`.
 | 79 | US-15 AC-8: does a screen that you visit twice count once or twice? |
 | 80 | Is 10 the right minimum number of `likely` answers for the accuracy figure? |
 | 81 | Is 8 in 10 the right bar for the judge agreeing with a person? |
-| 82 | Does a failed assessment still count against the 10 per day? |
 
-Gates 69 and 71 (from 900 Security) are hard stops before the first deploy.
+Gates 69 and 71 (from 900 Security) are hard stops before the first deploy. Gate 88 (from 800
+Infra) is open as well. It asks whether `dev.yml` resets the test account's daily counter before
+`e2e` and `perf-flow`. §4.1 keeps the tests inside one day's 10 tries either way.
 
-**Before any test can run:** `ci.yml` is rewritten for pnpm, `pr-preview.yml` exists,
+**Before any test can run:** `ci.yml` is rewritten for pnpm, `dev.yml` exists,
 `packages/contracts` exists, and a stub `LlmProvider` exists. Section 5 has the full list.
 
 ---
@@ -55,7 +56,7 @@ stories are tested.** US-12 is not, and section 2 says why.
 | A failure message that says whether trying again helps | US-09 | §10 |
 | The 180-day photo rule, and deleting a photo | US-10 | §11 |
 | The whole flow in Hungarian and English | US-11 | §12 |
-| The kill-switch works within 60 seconds, with no deploy | US-13 | §13 |
+| The kill-switch works within 60 seconds, with no deploy, and a missing or wrong row means off | US-13 | §13 |
 | A normal account cannot do admin actions | US-14 | §14 |
 | Add a pot | US-15 | §15 |
 | The 37 things the screens must **not** do (`02-SPEC.md` §7) | all | §16 |
@@ -101,18 +102,33 @@ check. **So this plan adds a second kind of gate: a release gate** (section 7.2)
 hand, before the first production deploy. Whether it is mandatory is the owner's decision (gate 74).
 
 **Risk 2 — Wrong defaults can empty the balance.** The AWS account closes instead of sending a
-bill, and the Anthropic balance is $5. Three settings control the cost (T-43 in `01-threats.md`):
-`MaxAttempts` must be 2 at most, `retryOnServiceExceptions` must be off (its default is 6 attempts),
-and the Anthropic client's `maxRetries` must be 0. **Two of these three have a wrong default.** A
-fourth risk is a typing mistake in `DAILY_LIMIT` (T-14): 10,000 per day costs about $40 per day.
-**The owner set the valid range to 1–20 (gate 75).** Every one of these settings has a test that
-runs on every push: TC-NF-05a, TC-NF-05b, TC-09-5, TC-09-6, TC-08-7 and TC-13-7.
+bill, and the Anthropic balance is $5. Four settings control the number of paid calls (T-43 in
+`01-threats.md`, R-18 in `02-mitigations.md`):
+
+- The three provider errors go to the `Catch` that adds 1 to `callsMade`, the number of model calls
+  the run has made. They never go in a `Retry`.
+- The workflow's `RetryOrStop` runs `Assess` again only while `callsMade` is under 3.
+- `retryOnServiceExceptions` must be off. Its default is 6 attempts.
+- The Anthropic client's `maxRetries` must be 0.
+
+**Two of these four have a wrong default.** With a hidden retry left on, a worst day at 10 photos
+costs about $0.70 instead of $0.12 (T-43). The one `Retry` that stays, `MaxAttempts: 2` on a
+throttled start of the function, costs nothing, because the function never ran.
+
+Another risk is a wrong value typed into the `CONFIG` rows (T-14). A `DAILY_LIMIT` of 10,000 would
+cost about $40 per day at one call per assessment. **The owner set the valid range to 1–20 (gate
+75).** A `MODEL_ID` outside the three ids in ADR-0017 is refused, and the default model is used. An
+`AI_ENABLED` row that is missing, or whose `enabled` is not the boolean `true`, turns the feature
+off, so no model call runs (NFR-39, ADR-0019). Every one of these settings has a test inside
+`ci-ok`, so a change that breaks one cannot merge: TC-NF-05a, TC-NF-05b, TC-09-5, TC-09-6, TC-08-7
+to TC-08-12, TC-13-7 to TC-13-12. The cases in `infra-assert` run when `infra/` changes, which is
+the only way the state machine can change.
 
 **Risk 3 — The CI files are not ready.** `04-ci-cd.md` §3 lists seven workflows. Only `ci.yml` and
 `codeql.yml` exist. And `ci.yml` is wrong: it uses `npm` in a pnpm workspace, and it has no
 `infra-assert` job (`04-ci-cd.md` §6.1). So nine NFR checks have no job today: NFR-01, 07, 08, 33,
-37 and 50 (in `pr-preview.yml`), and NFR-05, 38 and 40 (in `infra-assert`). **Section 5 makes both
-files an entry rule.**
+37 and 50 (in `dev.yml`), and NFR-05, 38 and 40 (in `infra-assert`). **Section 5 makes both files
+an entry rule.**
 
 ## 4. Test levels
 
@@ -122,28 +138,96 @@ Prove each rule at the cheapest level that can prove it.
 | --- | --- | --- | --- |
 | Unit | `test` | A constant, a schema, a mapping. No network | Free |
 | Integration | `test` | One route or handler, with a stub model and a local table | Free |
-| Template | `infra-assert` | What the CDK output says: lifecycle rule, retry list, roles. No AWS call | Free |
-| End to end | `e2e`, `perf-flow` | What a real browser does, against a preview deploy | A preview stack |
+| Template | `infra-assert` | What the CDK output says: lifecycle rule, retry list, call cap, the path into `Refund`, roles. No AWS call | Free |
+| End to end | `e2e`, `perf-flow` | What a real browser does, in the permanent `dev` environment | No money, because `dev` uses the stub. Each send uses one of the test account's 10 tries a day (§4.1) |
 
 **Two checks never run in CI.** The golden-set run costs money (`ai-eval`, button press). The
 bucket audit needs AWS credentials (`retention-audit`, monthly).
 
-**The preview never calls the real model.** `LLM_PROVIDER` is `stub` there. EV-16 checks that a
-missing or misspelled value falls back to the stub, not to the real model.
+**`dev` never calls the real model.** `LLM_PROVIDER` is `stub` there, and `dev` holds no model key.
+EV-16 checks that a missing or misspelled value falls back to the stub, not to the real model.
+
+**The local table in `test` starts with the kill-switch row.** The setup of every integration test
+writes `CONFIG / AI_ENABLED` with `enabled` set to the boolean `true`. A table without that row
+means the feature is off (NFR-39, ADR-0019), so every other test would get `feature-off`. Only the
+kill-switch cases change the row or leave it out.
+
+### 4.1 The `dev` environment, and the tries each job spends
+
+`dev` is one permanent environment, shared by every pull request (gate 87, `04-ci-cd.md` §7). Three
+facts about it change how a case is written.
+
+- **Two pull requests never test at the same time.** One `dev.yml` run holds `dev` from
+  `deploy-dev` to `dev-ok`, and a second run waits. So a case never meets another pull request's
+  code.
+- **Data from earlier runs stays.** Pots, assessments, care tasks and the daily counter are all
+  still there. So no case may assume an empty table, a new account, or a known number of tries
+  left. A case reads only the rows it created in the same run, found by the id it got back. A pot
+  that a case creates has a name that holds the run's number, so an older pot never matches it.
+- **No test writes a `CONFIG` row.** The owner wrote `dev`'s three rows by hand. So no case in
+  `dev` turns the kill-switch off. Those cases run in `test`, on the local table. If the
+  `AI_ENABLED` row in `dev` is missing or wrong, every send answers `feature-off` (NFR-39), and
+  `e2e` fails on its first send.
+
+**The tries each job spends.** The test account, A, has the normal limit of 10 assessments a day,
+counted per UTC day. Gate 88 is open, so nothing resets that count between runs. The budget below
+keeps one whole `dev.yml` run at 10 sends on account A. This table is a lookup.
+
+| Job | Sends on account A | What the sends are for |
+| --- | --- | --- |
+| `e2e` | **7** | The seven sends in the list below |
+| `perf-flow` | **3** | One journey for each stub setting: it waits 8,000 ms, it waits 18,000 ms, and it times out twice and then answers (TC-01-10, TC-01-11, `04-ci-cd.md` §7). The last one makes 3 model calls, but it is one assessment, so it uses one try. With one journey per setting, each journey must be under the bar by itself |
+| `bundle-budget` | 0 | It sends nothing |
+| **All of `dev.yml`** | **10** | |
+
+The seven sends in `e2e`, in order:
+
+1. `likely`, `followUpDays: 7`, in Hungarian, from a 4,000 × 3,000 photo, with send tapped twice:
+   TC-01-5, TC-01-9, TC-02-1, TC-02-8, TC-03-1, TC-10-4, TC-11-1, EV-24 part one.
+2. `unsure` with one tip, in English: TC-03-3, TC-04-1, TC-11-2.
+3. `cannot-tell` with `too-dark`: TC-03-4, TC-05-1, TC-05-7.
+4. `nothing-wrong` with `followUpDays: null`: TC-02-11.
+5. The stub times out three times, so the run fails. Then the same `requestId` again, which costs
+   nothing: TC-09-3, EV-24 part two.
+6. Try again with a new `requestId`. The stub answers `likely` with `followUpDays: null`: TC-09-9,
+   TC-03-5, EV-24 part two.
+7. The network drops before the `202`, then the same `requestId` again. The stub answers `unsure`
+   with no tips: TC-09-10, TC-04-3.
+
+Every other `e2e` case reads these seven results, in both languages where it needs both. Reading a
+result again costs no try. **`e2e` also sends on account B, at most once:** only when B has no
+assessment yet, so that TC-07-2 and EV-19 have a real id of B's to ask for. B has its own count.
+
+- **While gate 88 is open, one run fits in one UTC day.** A second `dev.yml` run on the same UTC
+  day meets `daily-limit-reached`. That failure comes from the environment, not from the product.
+  Run it again after midnight UTC. The owner may also raise `dev`'s `limit` row to 20, the code's
+  maximum. If gate 88 is answered yes, each job deletes the count first and has 10 of its own, and
+  7 and 3 are both under that.
+- **No case asserts how many tries are left.** TC-08-3 and TC-08-4 need a known count, so they run
+  in `test` on the local table.
+- **Playwright does not retry a test in `dev`.** A retried send spends another try, and the budget
+  has no spare.
+- **A new send in `e2e` or `perf-flow` changes this table in the same pull request**, and the total
+  stays at 10 or below.
+- **Two checks need more tries than a job has.** EV-23 needs 10 sends from a count of 0, and EV-24
+  part three needs a count that is already at the limit. They run by hand in `dev` (§7.2, row 9).
+  The race they check is also TC-08-2, which runs in `test` on every pull request.
 
 ## 5. Entry rules — what must be true before testing starts
 
 1. `ci.yml` uses pnpm, with the six fixes in `04-ci-cd.md` §6.1, and an `infra-assert` job inside
    `ci-ok`.
-2. `pr-preview.yml` exists, with `bundle-budget`, `e2e` and `perf-flow`. `preview-ok` is added to
-   the branch rules **in the same change, never before**. A required check that never reports blocks
-   every merge.
+2. `dev.yml` exists, with `deploy-dev`, `bundle-budget`, `e2e` and `perf-flow`. `dev-ok` is added
+   to the branch rules **in the same change, never before**. A required check that never reports
+   blocks every merge.
 3. `packages/contracts` exists, and every test reads its values from it. A test with its own copy of
    a list only tests that copy.
 4. A stub `LlmProvider` exists. It can return any answer, throw each retryable error a set number of
    times, return each failure, and wait a set number of milliseconds.
-5. Two test accounts exist in the `preview` Cognito pool, made by hand. Self sign-up is off (gate
-   49). Two accounts are needed to prove that one cannot read the other's data.
+5. `dev` is deployed and holds its three `CONFIG` rows, written by hand, with `enabled` set to the
+   boolean `true`. Two test accounts, A and B, exist in the `dev` Cognito pool, made by hand. Self
+   sign-up is off (gate 49). Two accounts are needed to prove that one cannot read the other's data.
+   `04-ci-cd.md` §10 step 11 creates only one, so account B is missing from that checklist.
 6. The golden set exists, before any `ai-eval` run. Where the photos and labels come from is decided
    (gates 77 and 78). The set still has to be built.
 
@@ -159,15 +243,17 @@ This is **not** the release decision. That belongs to the owner.
 | 1 | Each of the 14 stories has at least one passing positive and one passing negative case | `01-test-cases.md` §19 |
 | 2 | Each NFR row in section 8 has a test that ran, or a written reason why it cannot | Section 8 |
 | 3 | Each of the 37 "must not" rules has a check | `01-test-cases.md` §16 |
-| 4 | `ci-ok` and `preview-ok` are green, and CodeQL has no alert above the owner's threshold | The pull request |
-| 5 | The golden set ran once on the dated model, and the results are written down | `02-ai-evals.md` §8 |
+| 4 | `ci-ok` and `dev-ok` are green, and CodeQL has no alert above the owner's threshold | The pull request |
+| 5 | The golden set ran once on the two Haiku models (gate 85), and the results are written down | `02-ai-evals.md` §8 |
 | 6 | The judge was checked against a person's scores, and the figure is written down | `02-ai-evals.md` §6 |
 | 7 | Every `03-evidence.md` check that does not need `prod` has its output, date and result filled in | EV-09 to EV-28, EV-33 to EV-36 |
 | 8 | Every open defect is fixed with a guard test, or recorded with a priority **a person** set | Section 10 |
 | 9 | Every gate QA raised is answered or recorded as open | Section 12 |
 
-**Condition 5 costs money and needs a person.** One run is about $0.16 on one model and $1.28 on
-all three. The Anthropic key is in a GitHub environment with required reviewers, so a second person
+**Condition 5 costs money and needs a person.** The first run is 40 × ($0.0040 + $0.0004), about
+$0.18, on `claude-haiku-4-5-20251001` and `claude-haiku-5-5` (`04-ci-cd.md` §8). One run on
+`claude-sonnet-5-5` alone is about $0.32, over the $0.20 in NFR-11, so it needs a new decision by
+the owner. The Anthropic key is in a GitHub environment with required reviewers, so a second person
 click is needed to start it.
 
 ## 7. What blocks a merge, what blocks a release, what only gets read
@@ -178,8 +264,8 @@ A change cannot reach `main` unless these pass (`04-ci-cd.md` §9).
 
 | Gate | Jobs | File | NFRs it carries |
 | --- | --- | --- | --- |
-| `ci-ok` | `quality`, `audit`, `test`, `infra-assert`, `build` | `ci.yml` | 02, 03, 04, 05, 10, 12, 23, 30, 31, 32, 34, 35, 36, 38, 40, 42, 43, 52 |
-| `preview-ok` | `bundle-budget`, `e2e`, `perf-flow` | `pr-preview.yml` | 01, 07, 08, 33, 37, 50 |
+| `ci-ok` | `quality`, `audit`, `test`, `infra-assert`, `build` | `ci.yml` | 02, 03, 04, 05, 10, 12, 23, 30, 31, 32, 34, 35, 36, 38, 39, 40, 42, 43, 52 |
+| `dev-ok` | `bundle-budget`, `e2e`, `perf-flow` | `dev.yml` | 01, 07, 08, 33, 37, 50 |
 | CodeQL | `analyze` | `codeql.yml` | A code-scanning rule, not a status check |
 
 - **A skipped required check counts as a pass.** So each gate job needs `if: always()` and a step
@@ -189,7 +275,8 @@ A change cannot reach `main` unless these pass (`04-ci-cd.md` §9).
 
 ### 7.2 Release gates — by hand, once, before the first production deploy
 
-These cannot block a merge. Each one costs money, needs AWS credentials, or needs `prod`.
+These cannot block a merge. Each one costs money, needs AWS credentials, needs `prod`, or needs more
+tries than a job in `dev` may spend.
 
 | # | Check | Why not a merge gate | Written in |
 | --- | --- | --- | --- |
@@ -199,8 +286,9 @@ These cannot block a merge. Each one costs money, needs AWS credentials, or need
 | 4 | EV-31: multi-factor sign-in on the AWS account | An account setting. Gate 71 is a hard stop | `03-evidence.md` §5 |
 | 5 | EV-25: prompt injection through a photo and a pot name | Needs the real model, about $0.008 | `03-evidence.md` §4 |
 | 6 | EV-08: is `cloudfront.net` on the Public Suffix List | Never run yet | `03-evidence.md` §2 |
-| 7 | The preview IAM role cannot touch a `Prod` stack | The roles do not exist yet | `02-mitigations.md` R-05 |
+| 7 | The `dev` IAM role cannot touch a `Prod` stack, and cannot write a `CONFIG` row | The roles do not exist yet | `02-mitigations.md` R-05 |
 | 8 | Measure SC-1 and replace the 170 KB guess in NFR-50 | No screen is built yet | `06-nfrs.md` §8 |
+| 9 | EV-23, then EV-24 part three: ten sends at once, then a refusal written on the `IDEM#` row | Needs 10 tries from a count of 0, on an account with no assessment that day. A job in `dev` has fewer (§4.1) | `03-evidence.md` §4 |
 
 **Which of these is mandatory is the owner's decision (gate 74).** None is marked mandatory here.
 
@@ -220,7 +308,7 @@ runtime number shows how often the case happens. Both are needed.
 
 ## 8. Every NFR, and what checks it
 
-**33 rows, one for each requirement in `06-nfrs.md`.** Four have no job, and each says why. A
+**34 rows, one for each requirement in `06-nfrs.md`.** Four have no job, and each says why. A
 number with nothing checking it is only a wish.
 
 | NFR | Requirement | Case | Job | Merge gate? |
@@ -229,7 +317,7 @@ number with nothing checking it is only a wish.
 | 02 | The `api` function's request ≤ 20,000 ms | TC-NF-02 | `test` | Yes |
 | 03 | The model call's abort ≤ 18,000 ms per attempt | TC-NF-03 | `test` | Yes |
 | 04 | 1 model call normally, never more than 3 | TC-09-5, TC-09-6 | `test` | Yes |
-| 05 | Only the workflow retries: `MaxAttempts: 2`, `maxRetries: 0` | TC-NF-05a, 05b | `test`, `infra-assert` | Yes |
+| 05 | Only the workflow's `RetryOrStop` allows another call, while `callsMade` is under 3, and `maxRetries: 0` | TC-NF-05a, 05b | `test`, `infra-assert` | Yes |
 | 06 | Cold start ≤ 2,000 ms p95 | none | none | No. Read from the logs with the query in `03-observability.md` §4 |
 | 07 | Tap to result on screen ≤ 60,000 ms p95 | TC-01-11 | `perf-flow` | Yes |
 | 08 | Stream delivers ≤ 1,000 ms after the row is written | TC-02-8 | `e2e` | Yes |
@@ -250,7 +338,8 @@ number with nothing checking it is only a wish.
 | 35 | A session older than 30 days is accepted = 0 | TC-07-3 | `test` | Yes |
 | 36 | Model calls with no signed-in user = 0 | TC-07-5 | `test` | Yes |
 | 37 | Result screens with no AI notice = 0 | TC-06-1 | `e2e` | Yes |
-| 38 | Refunds where a call was made = 0 | TC-08-7, TC-NF-38 | `test`, `infra-assert` | Yes |
+| 38 | Refunds where a call was made = 0 | TC-08-7 to TC-08-12, TC-NF-38 | `test`, `infra-assert` | Yes |
+| 39 | Model calls while the `AI_ENABLED` row is missing, or `enabled` is not a boolean = 0 | TC-13-9 to TC-13-12 | `test` | Yes |
 | 40 | Lifecycle rule deletes photos at exactly 180 days | TC-10-5 | `infra-assert` | Yes |
 | 41 | Photos older than 182 days = 0 | TC-10-6 | `retention-audit` | No, monthly |
 | 42 | Copies of a photo outside the bucket = 0 | TC-10-3 | `test` | Yes |
@@ -285,7 +374,7 @@ uploaded into the product.**
 | `followUpDays` | `null` · 0 · 1 · 30 · 31 · 2.5 |
 | Session | None · valid · older than 30 days · another account's · no profile row |
 | `requestId` | New · the same one twice · new after a reported failure · the same one after no answer |
-| Kill-switch and breaker | On · off · changed during a run · breaker open |
+| Kill-switch and breaker | On (the boolean `true`) · off (the boolean `false`) · row missing · wrong type (`"false"`, `"true"`, `1`) · changed during a run · breaker open |
 
 ## 10. Defects
 
@@ -329,17 +418,18 @@ blocks nothing.
 | Gate | Question | Status |
 | --- | --- | --- |
 | 74 | Must the golden-set run (and the other release gates in §7.2) pass before the first production deploy? | **Open.** The owner's |
-| 75 | What is the valid range for `DAILY_LIMIT`? | **Closed: 1 to 20.** TC-13-7 can run once `03-api-spec.md` §6 names the range (500-engineering repair) |
-| 76 | After a failed assessment, may the person send the same photo again? | **Closed.** A new `requestId` when the API **answered** with a failure. The same `requestId` when the request got **no answer**. Cases TC-09-9 and TC-09-10. `02-web-spec.md` §4.2 still needs the 500-engineering repair |
+| 75 | What is the valid range for `DAILY_LIMIT`? | **Closed: 1 to 20.** `03-api-spec.md` §6 names it, and TC-13-7 tests it |
+| 76 | After a failed assessment, may the person send the same photo again? | **Closed.** A new `requestId` when the API **answered** with a failure. The same `requestId` when the request got **no answer**. Cases TC-09-9 and TC-09-10. `02-web-spec.md` §4.2 holds the rule |
 | 77 | Where do the 40 golden-set photos come from? | **Closed.** See section 9 |
 | 78 | Who writes the expected verdict for each photo in group A? | **Closed.** A named reference, written in `labelSource` with the date it was checked |
 | 79 | US-15 AC-8: is SC-1 counted once or twice? | **Open.** Goes back to 200-product. TC-15-7 runs with "count once" |
 | 80 | Is 10 the right minimum of `likely` answers? | **Open.** QA's proposal, no source |
 | 81 | Is 8 in 10 the right bar for the judge? | **Open.** QA's proposal, no source |
-| 82 | Does a failed assessment count against the 10 per day? | **Open.** The owner's. Today it counts |
+| 82 | Does a failed assessment count against the 10 per day? | **Closed.** Yes, whenever the model was called. A try is given back only when the whole run made no call (ADR-0016, ADR-0018). Cases TC-08-8 to TC-08-12 |
 
 Gates 64, 69 and 71 are also open. They come from 900 Security. 69 and 71 are hard stops before the
-first deploy.
+first deploy. Gate 88 is open too. It comes from 800 Infra, and §4.1 says what the tests do while
+it is open.
 
 ## 13. Seams — facts QA needed and did not get
 
@@ -349,7 +439,7 @@ A **seam** is a place where the line gave a role less than it needed. These are 
 | Finding | What was wrong | Label | Effect |
 | --- | --- | --- | --- |
 | 41 | Three files together made the try-again button do nothing for 10 minutes: `02-web-spec.md` §4.2, US-09 AC-2, `03-api-spec.md` §4a | contradiction | Answered by gate 76 |
-| 42 | `03-evidence.md` EV-23 expects `201` and counts `modelCalls`. The API answers `202` since ADR-0014, and NFR-12 counts assessments started | stale | TC-08-2 uses the right values. EV-23 needs a 900-security repair |
+| 42 | `03-evidence.md` EV-23 expected `201` and counted `modelCalls`. The API answers `202` since ADR-0014, and the daily limit counts `attempts` | stale | Repaired. EV-23 and TC-08-2 both count `attempts` |
 | 43 | NFR-22 is measured on a golden set that holds unusable photos on purpose. The result then describes the set, not the model | ambiguous | `02-ai-evals.md` §4.3 splits it in two |
 | 44 | `docs/300-design/03-tokens.md` was not an input | under-supply | §16 and §17 of the cases name tokens, not values |
 | 45 | The prices in `00-context-brief.md` §4 were not an input | under-supply | The judge's cost cannot be computed |

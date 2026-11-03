@@ -1,14 +1,14 @@
 # The assessment flow, with the clock running
 
-**Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
-**Rewritten 2026-09-17** for ADR-0014 to ADR-0016, when the assessment moved into the background.
+**Written by** 400 Architecture, run 1 (`001-photo-assessment`). It describes Option E, where the
+assessment runs in the background (ADR-0014 to ADR-0016, ADR-0018).
 **Read next by** 500 Engineering, 900 Security, 800 Infra, 600 QA.
 
 The owner set one number on 2026-08-25: **30 seconds, from the tap that takes the photo to
-something on screen.** Since 2026-09-17 the thing on screen is the waiting screen with the run
-confirmed. The result then follows over one open connection, and the screen gives up after 60
-seconds. This file spends both budgets step by step and shows that the parts add up to less than
-the whole.
+something on screen.** The owner decided on 2026-09-17 (ADR-0014) that the thing on screen is the
+waiting screen with the run confirmed. The result then follows over one open connection, and the
+screen gives up after 60 seconds. This file spends both budgets step by step and shows that the
+parts add up to less than the whole.
 
 Every millisecond below is labelled **sourced**, **estimated** or **guessed**. A guessed number that
 reads like a commitment is worse than no number, so section 6 lists all of them in one place.
@@ -24,7 +24,7 @@ covers the resize, the upload and the model call."*
 person opens the camera.
 
 **Stop for the promise:** the waiting screen shows that the assessment is running. That is the
-moment the `202` arrives. US-01 AC-8 was reworded on 2026-09-17 to say exactly this.
+moment the `202` arrives. US-01 AC-8 says exactly this.
 
 **Stop for the result:** the first paint of SC-3, SC-4, SC-5 or a `FailureNote`. A failure screen
 stops this clock exactly as a verdict does.
@@ -68,31 +68,39 @@ calls again; a second timeout waits 4 seconds and calls a third time. Three time
 60 seconds, which is why the waiting screen gives up at exactly that number. A retry that succeeds on
 the second call lands at about 30 seconds on the bad run.
 
-## 3. The retry, and why it is safe now
+## 3. The retry, and why it is safe in the background
 
-**Decided by the owner on 2026-09-17 (ADR-0014).** The workflow retries the `Assess` task at most
-twice, only on `provider-timeout`, `provider-throttled` and `provider-unavailable`. The `assess`
-handler throws exactly those three as errors so the workflow can see them; everything else is
-returned as a value and never retried.
+**Decided by the owner on 2026-09-17 (ADR-0014). How the workflow does it is ADR-0018, accepted by
+the owner at gate 84.** The workflow calls the model again at most twice, and only after
+`provider-timeout`, `provider-throttled` or `provider-unavailable`. The `assess` handler throws
+exactly those three as errors so the workflow can see them; everything else is returned as a value
+and never retried.
 
-This was "no retry" from 2026-08-26, and the reason it was is worth keeping. While the phone waited,
-a retry broke two numbers at once: two calls cost about $0.0070 against a $0.0040 ceiling, and a
-first call had to fail early enough to leave room for a second. Moving the assessment into the
-background removed both. The cost ceiling is now $0.012 per photo (NFR-10), and no call has to be
-cut short to leave room for another.
+The workflow handles the three with a `Catch`, not a `Retry`. The `Catch` adds 1 to `callsMade`,
+the number of model calls this run has made, and `RetryOrStop` runs `Assess` again while that number
+is under 3. A `Retry` cannot record that a call was made, and the refund needs exactly that fact: an
+attempt is given back only when the whole run made no call (ADR-0016, gate 82). A throttled start of
+`assess` is different. The function never ran, so it is retried with a plain `Retry` and does not
+count.
 
-**The cap is two lines and both must stay:** `MaxAttempts: 2` in the workflow and `maxRetries: 0`
-in the adapter. Every retry is a billed Step Functions transition and a paid call, so the cap is a
-cost control, not a convenience.
+**Why the retry needs the background.** If the phone waited on the model call, a retry would break
+two numbers at once. Two calls cost about $0.0070 against the $0.0040 per-call ceiling, and a first
+call would have to fail early enough to leave room for a second. That is why the owner allowed no
+retry on 2026-08-26, while the call still sat inside the request. In the background neither problem
+exists. The cost ceiling is $0.012 per photo (NFR-10), and no call has to be cut short to leave room
+for another.
+
+**The cap is two lines and both must stay:** "`callsMade` under 3" in the workflow's `RetryOrStop`
+and `maxRetries: 0` in the adapter. Every retry costs Step Functions transitions and a paid call, so
+the cap is a cost control, not a convenience.
 
 ## 4. The clocks, and why no platform clock is on the paid path
 
-In run 1 the model call sat inside the request, under four stacked clocks: the app's 20 seconds,
-the function's 22, CloudFront's 25 and API Gateway's 30. The first version of this file showed why
-the app had to fail first: a platform cut-off answers with a 504 that nothing in this product wrote.
+The model call is not inside a request. If it were, it would sit under four stacked clocks: the
+app's 20 seconds, the function's 22, CloudFront's 25 and API Gateway's 30. The app would then have
+to fail first, because a platform cut-off answers with a 504 that nothing in this product wrote.
 
-That problem is gone, because the paid path no longer has a request. The clocks are now these, and
-every one of them is ours:
+With the call in the background, every clock on the paid path is ours:
 
 | Clock | Value | Who owns it | What the user sees if it fires |
 | --- | --- | --- | --- |
@@ -136,13 +144,14 @@ sequenceDiagram
     A-->>W: 202, the assessment id
     W->>U: The waiting screen confirms the run. The promise is kept
     W->>X: GET /api/assessments/:id/events, one open connection
-    S->>T: UpdateItem state = running, only if it was queued
+    S->>T: UpdateItem state = running, only if it was queued. callsMade = 0
     S->>M: Task: assess
-    M->>T: Re-read the kill-switch and the breaker. Off or open means refuse, no call, refund
+    M->>T: Re-read the kill-switch and the breaker. Off or open means refuse, no call
     M->>AN: POST /v1/messages, output_config.format
     AN-->>M: An answer, or a timeout, a 429, a 503
     M-->>S: A parsed answer, or a named failure. Three failures are thrown as errors
-    Note over S,M: Retry only the three thrown errors. At most 2 more, after 2 s and 4 s
+    Note over S,M: A throttled start is retried at most twice, free. A thrown error adds 1 to callsMade, and Assess runs again while it is under 3, after 2 s and 4 s
+    Note over S,T: A refusal, or a throttle that did not clear, refunds the attempt only when callsMade is 0
     S->>T: UpdateItem the result onto the row. UpdateItem the day rollup
     X->>T: GetItem every 500 ms, a heartbeat every 5 s
     X-->>W: event: done, with the four fields
@@ -162,7 +171,8 @@ sequenceDiagram
 
 **If the model call turns out to take 15 seconds instead of 8, this still works.** The bad run
 becomes about 28 seconds to the result, inside 60, and the promise at step 10 does not move at all,
-because the model call is no longer in front of it. That is the whole point of the change.
+because the model call is not in front of it. That is the main reason the call runs in the
+background.
 
 ## 7. What is deliberately not in this flow
 
@@ -171,6 +181,6 @@ because the model call is no longer in front of it. That is the whole point of t
 | A cancel button | The call is paid the moment `assess` runs. `01-CONTEXT.md` §4 |
 | A poll from the phone | The result is pushed over one connection (ADR-0015). The plain `GET` is only the reconnect fallback |
 | A queue that a function reads | An idle queue read by Lambda still costs requests. The workflow pushes |
-| A second model call | The ladder in `00-options.md` §8 |
+| A chain of different model calls | The ladder in `00-options.md` §8. The retry in §3 repeats the same call; it is not a chain |
 | A second opinion service | Rejected outright by the owner |
 | A cache in front of the photo | ADR-0007 |

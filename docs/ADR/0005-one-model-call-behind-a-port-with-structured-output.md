@@ -1,8 +1,8 @@
 # ADR-0005 — Make one model call, behind one port, with structured output
 
 - **Status:** Accepted. **The "no retry" rule is superseded in part by ADR-0014 (2026-09-17):** the
-  background workflow retries the model call at most twice, on three named errors. Everything else
-  in this record stands.
+  background workflow retries the model call at most twice, on three named errors. ADR-0018 says how
+  the workflow counts those calls. Everything else in this record stands.
 - **Date:** 2026-08-25
 
 ## Context
@@ -82,18 +82,18 @@ vendor supports this month.
 **The adapter itself never retries.** The Anthropic client is built with `maxRetries: 0`, because
 the SDK retries twice on its own by default, and a hidden retry is a hidden cost.
 
-**The retry lives in one declared place: the Step Functions workflow (ADR-0014, 2026-09-17).** The
+**The retry lives in one declared place: the Step Functions workflow (ADR-0014, ADR-0018).** The
 `assess` handler throws exactly three of the adapter's failure values as errors — `provider-timeout`,
-`provider-throttled` and `provider-unavailable` — and the workflow retries those three at most
-twice, after 2 seconds and then 4. Every other outcome is returned as a value and is never retried:
-a refusal, a truncated answer, a bad request, an empty balance.
+`provider-throttled` and `provider-unavailable` — and the workflow calls the model again at most
+twice after those three, after 2 seconds and then 4. Every other outcome is returned as a value and
+is never retried: a refusal, a truncated answer, a bad request, an empty balance.
 
-**Why this was "no retry" from 2026-08-26 to 2026-09-17.** While the phone waited for the answer, a
-retry broke two numbers at once: two calls cost about $0.0070 against a $0.0040 ceiling, and a
-first call had to fail early enough to leave room for a second. Moving the assessment into the
-background removed both problems, which is exactly what the earlier text predicted: *"a retry
-becomes right again when the assessment runs in the background."* The cost ceiling is now stated
-per photo, $0.012 for three calls, and the cap is two lines: `MaxAttempts: 2` in the workflow and
+**Why the retry needs the background.** If the phone waited for the answer, a retry would break two
+numbers at once: two calls cost about $0.0070 against the $0.0040 per-call ceiling, and a first call
+would have to fail early enough to leave room for a second. That is why the owner allowed no retry
+on 2026-08-26, while the call still sat inside the request. With the assessment in the background
+neither problem exists. The cost ceiling is stated per photo, $0.012 for three calls (NFR-10), and
+the cap is two lines: "`callsMade` under 3" in the workflow's `RetryOrStop` (ADR-0018) and
 `maxRetries: 0` here.
 
 ## Consequences
@@ -113,9 +113,9 @@ the budget column of `03-flow.md` at a guessed 1,500 ms and not in a footnote.
 called. If a new provider has a failure mode none of the current names fit, the list in
 `05-patterns.md` §8 grows, and every new name needs a screen in `02-SPEC.md` §6 before it can ship.
 
-**A third cost, already visible.** `02-SPEC.md` §3.14 withdrew the `unreadable-answer` state from
-SC-5 and says the failure path still needs it. The name `answer-unreadable` exists here and has no
-screen yet. That is 300 Design's open gap, recorded in seam 14.
+**A third cost.** A malformed answer needs its own place on screen, and it must not look like a
+verdict. It is `answer-unreadable` on the failure path, shown as a `FailureNote` in state
+`retry-may-work` (`02-SPEC.md` §3.14 and §3.16 state 10). It never reaches SC-5.
 
 ## Alternatives considered
 
@@ -138,9 +138,10 @@ machinery around it.
 This was on the table and **the owner rejected it on 2026-08-24**: cheaper and fully testable, but
 it gives the same date for the same verdict every time. Recorded here, not re-opened.
 
-**Five retries with doubling waits.** Rejected by the owner on 2026-08-25. The usual advice assumes
-a retry is nearly free. Here every attempt is a paid call, and the waits alone overrun the budget.
-It becomes right in run 3, when the assessment runs in the background.
+**Five tries with doubling waits.** Rejected by the owner on 2026-08-25. The usual advice assumes a
+retry is nearly free. Here every attempt is a paid call. While the phone waited, the waits alone
+overran the budget. With the assessment in the background (ADR-0014), the owner capped a run at
+three calls in total instead, because each one still costs money.
 
 ## Agent-Readable Summary
 
@@ -149,6 +150,6 @@ It becomes right in run 3, when the assessment runs in the background.
 > a chain, an agent loop or a second opinion service. Always send `output_config.format` with
 > `additionalProperties: false` and every field in `required`, and always read `stop_reason` before
 > reading the content. Keep `maxRetries: 0` on the client. **Do not write a retry anywhere in
-> code** — the only retry in the product is the workflow's, at most two, on the three errors the
-> `assess` handler throws (ADR-0014). Do not call `LlmProvider` from the `api` function. Do not
-> match on the raw text of an answer — parse it.
+> code** — the only retry in the product is the workflow's, at most two more calls, on the three
+> errors the `assess` handler throws (ADR-0014, ADR-0018). Do not call `LlmProvider` from the `api`
+> function. Do not match on the raw text of an answer — parse it.

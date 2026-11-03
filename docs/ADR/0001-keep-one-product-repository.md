@@ -3,10 +3,6 @@
 - **Status:** Accepted. **The package manager half is superseded by
   [ADR-0012](0012-run-the-workspace-on-pnpm-and-turborepo.md)**, 2026-08-26
 - **Date:** 2026-08-25
-- **Corrected 2026-08-31:** the Agent-Readable Summary named ADR-0012 and then still said *"Do not
-  add Turborepo or Nx"* in the next sentence. Turborepo is the task runner and is in use, so that
-  clause told an agent to remove it. The clause now says Turborepo stays and only Nx is refused.
-  Nothing had been built on the old text, so this record is corrected rather than superseded.
 
 ## Context
 

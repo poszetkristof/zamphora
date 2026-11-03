@@ -1,7 +1,7 @@
 # Architecture — what to read, and in what order
 
-**Written 2026-08-25 by 400 Architecture. Updated 2026-08-26 with the owner's decisions, and
-2026-09-17 when the owner chose the background assessment, Option E.**
+**Written by 400 Architecture.** The owner chose the background assessment, Option E, on
+2026-09-17 (gate 72).
 
 This folder says how zamphora is built and why. **Read it in the order below.** Each file assumes
 the one above it.
@@ -10,7 +10,7 @@ the one above it.
 
 | # | File | What it answers |
 | --- | --- | --- |
-| 1 | [`00-options.md`](00-options.md) | What shape is this system, what else was on the table, and how the choice changed on 2026-09-17 (§11) |
+| 1 | [`00-options.md`](00-options.md) | What shape is this system, what else was on the table, and why the background shape was chosen (§11) |
 | 2 | [`08-async-options-short.md`](08-async-options-short.md) | The current shape, drawn, and the shape grown to run 6 |
 | 3 | [`01-context.mmd`](01-context.mmd) | Who talks to the product, and what does it depend on? |
 | 4 | [`02-containers.mmd`](02-containers.mmd) | What is inside, and what talks to what? |
@@ -42,7 +42,7 @@ everywhere else is one sentence and a pointer. This table says which place.
 | Why the session and the profile are two reads | `05-patterns.md` §1 |
 | Sign-in, the two cookies, why the session is ours | `05-patterns.md` §2, then ADR-0003 |
 | The clocks, and why none is on the state machine | `03-flow.md` §4, `05-patterns.md` §7 |
-| Why the retry is capped at two, and where the cap lives | `03-flow.md` §3, ADR-0014 |
+| Why the retry is capped at two, and where the cap lives | `03-flow.md` §3, ADR-0018 |
 | Every millisecond, and which are guesses | `03-flow.md` §2 and §6 |
 | What one assessment costs, and the ceilings | `06-nfrs.md` §3 |
 | Why cost is a correctness property here | `00-options.md` §3, constraint C-1 |
@@ -59,33 +59,25 @@ everywhere else is one sentence and a pointer. This table says which place.
 $0.012      the most one photo may cost: three model calls. The account closes when the credit is gone
 ```
 
-## What changed on 2026-09-17
+## The decisions that shape the design
 
-The owner chose **Option E**: the assessment runs in the background (gate 72, ADR-0014 to ADR-0016).
-`00-options.md` §11 holds the scoring and the reason. The short version:
+Each decision is the owner's. `factory/runs/001-photo-assessment/human-gates.md` has the gate behind
+each one, and `00-options.md` §11 has the scoring behind Option E.
 
-- **The phone stops waiting.** The API answers `202` in about a second, a Step Functions workflow
-  makes the model call in its own `assess` function, and the result is pushed to the phone over one
-  server-sent-events stream. The 30-second promise is now kept by the waiting screen.
-- **A capped retry came back.** At most two more tries, only on `provider-timeout`,
-  `provider-throttled` and `provider-unavailable`, declared once in the workflow. So **one photo may
-  cost up to three calls, about $0.012**.
-- **An attempt is given back when no model call was made** (ADR-0016).
-- **The model key left the `api` function.** Only `assess` can read it, which closed gate 70.
-- **Two new deadlines:** the waiting screen gives up at 60 seconds, and there is no timeout on the
+- **The phone does not wait for the model** (Option E, ADR-0014 to ADR-0016). The API answers `202`
+  in about a second, a Step Functions workflow makes the model call in its own `assess` function,
+  and the result is pushed to the phone over one server-sent-events stream. The 30-second promise
+  is kept by the waiting screen.
+- **A capped retry.** At most two more model calls, only after `provider-timeout`,
+  `provider-throttled` and `provider-unavailable`. The workflow counts them in `callsMade` (ADR-0018).
+  So **one photo may cost up to three calls, about $0.012**.
+- **An attempt is given back only when the whole run made no model call** (ADR-0016, ADR-0018).
+- **Only `assess` can read the model key.** The `api` function cannot, which closed gate 70.
+- **Two deadlines:** the waiting screen gives up at 60 seconds, and there is no timeout on the
   state machine at all.
-
-## What changed on 2026-08-26
-
-The owner made ten decisions and a fresh-session pre-mortem found three defects. Both are recorded
-where they belong — `factory/runs/001-photo-assessment/human-gates.md` for the decisions,
-`seam-ledger.md` for the defects — but the short version is:
-
-- **No retry, at that time.** One model call per assessment, which is why the deadline moved from
-  24,000 to 20,000 ms. **Replaced on 2026-09-17 by the capped retry above.**
 - **`apps/web` is a static export.** No Node server, no second Lambda.
-- **DynamoDB runs in provisioned capacity.** On-demand is outside the free amount. The split was
-  fixed at 25/25 that day, and gate 43 changed it on 2026-08-27 to `prod` 20/20 plus `preview` 5/5.
+- **DynamoDB runs in provisioned capacity.** On-demand is outside the free amount. The split is
+  `prod` 20/20 plus `dev` 5/5 (gate 43). Both environments are permanent (gate 87).
 - **Components come from shadcn/ui**, which uses Base UI underneath.
 - **No cache service.** ElastiCache and DAX would save 24 ms and cost money by the hour. ADR-0002.
 - **No admin route at all in run 1** (gate 30). The account type and the permission check still ship.
@@ -95,8 +87,6 @@ where they belong — `factory/runs/001-photo-assessment/human-gates.md` for the
 - **The 180-day wording stays** (gate 27), **the next-action text names its language** (gate 28),
   **the 11-month warning email moves to the notifications run** (gate 29), and **there is no
   availability target** (gate 31).
-- **Three defects fixed:** the session and profile could not be read in one call, the time budget was
-  measured on the wrong run, and two requirements contradicted each other on cost.
 
 ## What this folder does not decide
 
