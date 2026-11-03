@@ -1,10 +1,7 @@
 # Patterns — the shapes this system repeats
 
-**Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
-**Updated 2026-09-17, twice.** First for ADR-0014 to ADR-0016: the assessment row gained a `state`,
-pattern 7 became per-task clocks, pattern 8 gained the workflow's retry, and pattern 13 is new. Then
-an audit found **pattern 5 had been missed**: the counter now counts assessments started rather than
-model calls, and the refund was not written down at all.
+**Written by** 400 Architecture, run 1 (`001-photo-assessment`). The patterns fit Option E, where
+the assessment runs in the background (ADR-0014 to ADR-0016, ADR-0018).
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA.
 
 A pattern here is a shape that appears more than once, or a shape that is easy to build a second
@@ -20,7 +17,7 @@ are not two versions of the same text, and neither repeats the other.
 | 3 | Refuse by default | ADR-0004 |
 | 4 | One port, one adapter, for the model | ADR-0005, ADR-0006, ADR-0017 |
 | 5 | The counter that cannot be raced | ADR-0008, ADR-0018 |
-| 6 | A switch read from a cache with a ceiling | ADR-0009 |
+| 6 | A switch read from a cache with a ceiling | ADR-0009, ADR-0019 |
 | 7 | The clocks: one per task, none on the platform | ADR-0014, and `03-flow.md` §4 |
 | 8 | Failure is a value with a name | ADR-0005, ADR-0014, ADR-0018 |
 | 9 | Deletion belongs to the storage rule | ADR-0007 |
@@ -47,7 +44,7 @@ remember to write.
 | Profile | `USER#<sub>` | `PROFILE` | Account type, language, when they last signed in, when the account was made |
 | Session | `SESSION#<opaque id>` | `SESSION` | The user id, and when the session stops being valid |
 | Pot | `USER#<sub>` | `POT#<potId>` | The name the person typed, the room |
-| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` | **`state` — `queued`, `running`, `done` or `failed` — and a `failureCode` when failed** (added 2026-09-17, ADR-0014). Then band, verdict, next action, follow-up days, language, photo key, model id, cost |
+| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` | **`state` — `queued`, `running`, `done` or `failed` — and a `failureCode` when failed** (ADR-0014). Then band, verdict, next action, follow-up days, language, photo key, model id, cost |
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` | The pot, the assessment it came from, the action text |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` | One number |
 | **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` | The fields are listed in `../500-engineering/03-api-spec.md` §4a, which owns them. This row fixes only the key shape |
@@ -55,15 +52,15 @@ remember to write.
 | The kill-switch | `CONFIG` | `AI_ENABLED` | On or off. **One field only** — see the note under this table |
 | **The circuit breaker** | `CONFIG` | `BREAKER` | How many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live |
 
-**Two rows were added on 2026-08-31.**
+**Two rows in this table guard money, and each needs its reason written down.**
 
 **`IDEM#<requestId>` is what makes one tap one charge.** `POST /api/assessments` is the only path
-that spends money and it had no protection against running twice, while the design's own budget
-allows a 4,000 ms upload — which is exactly when a person taps again. The browser makes a new UUID
-for a new photo, and for a retry after the API answered with a failure. When a request got no
-answer, the browser sends the same UUID again (gate 76 in `../../factory/feature.md`). The API
-claims it with a conditional `PutItem` before anything else happens
-(`../500-engineering/03-api-spec.md` §4a). This closes F-13 in `001-photo-assessment/07-adversarial.md`.
+that spends money. Without this row it has no protection against running twice, and the design's
+own budget allows a 4,000 ms upload — which is exactly when a person taps again. The browser makes a
+new UUID for a new photo, and for a retry after the API answered with a failure. When a request got
+no answer, the browser sends the same UUID again (gate 76 in `../../factory/feature.md`). The API
+claims it with a conditional `PutItem` before it counts the attempt; `../500-engineering/03-api-spec.md`
+§4a owns the exact order. This closes F-13 in `001-photo-assessment/07-adversarial.md`.
 
 **`CONFIG / BREAKER` is the automatic cost guard** (gate 50, `../800-infra/02-cost-guardrails.md`
 §5.6). **It must never share a row with `AI_ENABLED`.** The kill-switch is a person's decision and
@@ -72,14 +69,14 @@ puts the human above the machine on purpose.
 
 ### Every item carries a version, and this is how a shape changes
 
-**Added 2026-08-31.** DynamoDB has no schema and no migration tool, and an assessment row has **no
-clock** — ADR-0007 keeps the text as long as the pot exists. So an item written today can still be
-read in three years, and there was no rule at all for changing a shape.
+DynamoDB has no schema and no migration tool, and an assessment row has **no clock** — ADR-0007
+keeps the text as long as the pot exists. So an item written today can still be read in three years,
+and changing a shape needs a rule.
 
 **Every item carries `v`, a whole number. It is `1` today.**
 
-The rules that go with it are three sentences, and they are cheaper now than the scan-and-rewrite
-they replace:
+The rules that go with it are three sentences, and they are cheaper than a scan-and-rewrite of every
+item:
 
 1. **A reader ignores a field it does not know.** So adding a field is always safe.
 2. **Never rename a field and never change what one means.** Write a new field, stop writing the old
@@ -87,10 +84,10 @@ they replace:
 3. **Raise `v` only when a reader must behave differently**, and keep the code that reads the older
    version until nothing on disk still uses it.
 
-**The kill-switch row holds one field, and this changed on 2026-08-26.** It used to hold who flipped
-it and when. The owner removed the admin route (gate 30), so nothing in the application ever writes
-that row — the developer edits it in the AWS website, and AWS keeps its own record of who did that.
-ADR-0009 says plainly: **do not add `changedBy` or `changedAt`.**
+**The kill-switch row holds one field.** The owner decided on 2026-08-26 that run 1 has no admin
+route (gate 30). So nothing in the application ever writes that row — the developer edits it in the
+AWS website, and AWS keeps its own record of who did that. ADR-0009 says plainly: **do not add
+`changedBy` or `changedAt`.**
 
 **The same thing as a picture.** One table, and the partition key is what separates one person's
 data from everyone else's. Everything a person owns sits under one key, so one `Query` gets it.
@@ -347,18 +344,13 @@ Four properties fall out of this and each one is an acceptance criterion:
 - **The date is in the key**, so yesterday's counter is never read and never needs clearing. The TTL
   on the item exists only to stop the table growing, and nothing depends on it firing on time.
 
-**One consequence, written down because it is easy to meet by surprise.** Since 2026-09-17 the
-counter counts **assessments started**, not model calls. The increment runs once in the `api`
-function, before the workflow starts, and the workflow's own retry never touches it. So ten a day is
-ten assessments, and each of those may cost up to three model calls (ADR-0014). **The daily ceiling
-in money is therefore 10 × $0.012, about $0.12 a day**, not 10 × $0.0040. `06-nfrs.md` §3 and
-`../800-infra/02-cost-guardrails.md` §5 both use that figure.
-
-**This is a change from the run-1 rule and the old reading is worth knowing.** Until 2026-09-17 there
-was no retry, so one assessment was exactly one call and the two readings of the limit — "ten
-assessments" and "ten calls" — said the same thing. They no longer do. **Where a document says the
-limit counts calls, it is out of date.** US-08 AC-5 was reworded on 2026-09-17 to say that the
-workflow's retries do not count again.
+**What the counter counts, written down because it is easy to get wrong.** The counter counts
+**assessments started**, not model calls. The increment runs once in the `api` function, before the
+workflow starts, and the workflow's own retry never touches it. So ten a day is ten assessments, and
+each of those may cost up to three model calls (ADR-0014). **The daily ceiling in money is therefore
+10 × $0.012, about $0.12 a day**, not 10 × $0.0040. `06-nfrs.md` §3 and
+`../800-infra/02-cost-guardrails.md` §5 both use that figure. US-08 AC-5 says the same thing from
+the user's side: the workflow's retries do not count again.
 
 **The day is a UTC calendar day.** The message that says when the limit resets shows that moment in
 the reader's own time. **Do not** compute the day from a timezone sent by the browser: two
@@ -377,15 +369,22 @@ fails, on or off, and there is no good answer to write down.
 **Do not** put the value in an environment variable. Changing one is a deploy, and US-13 AC-2 says
 a switch that needs a release is not a kill-switch.
 
+**A row that cannot be used means off** (ADR-0019, gate 86). Two cases are different. When the read
+**fails**, the function keeps the last known value, and refuses the call when it has none
+(ADR-0009). When the read **succeeds** but the row is missing, or `enabled` is not a boolean — the
+string `"false"`, for example — the switch is off. The function answers `feature-off`, writes the
+`config-value-refused` log line, and caches "off" for the normal 30 seconds. Only the boolean `true`
+turns the feature on. **Do not** fall back to a compiled-in `true` for this row. `DAILY_LIMIT` and
+`MODEL_ID` still fall back to their defaults.
+
 **A call already in flight finishes** (US-13 AC-4). That falls out for free: the check happens once,
 before the call, and nothing re-checks it afterwards.
 
 ## 7. The clocks: one per task, none on the platform
 
-**Changed on 2026-09-17 (ADR-0014).** Until then the whole server side ran against one 20,000 ms
-deadline, because the model call sat inside the request and API Gateway would cut the request at
-30 seconds. The model call now runs in the background, so the paid path has no platform clock at
-all, and the clocks are these:
+The model call runs in the background (ADR-0014), so the paid path has no platform clock at all. If
+the call sat inside a request, API Gateway would cut it at 30 seconds, and the whole server side
+would have to run against one 20,000 ms deadline. The clocks are these:
 
 | Where | Clock | What happens when it fires |
 | --- | --- | --- |
@@ -396,8 +395,8 @@ all, and the clocks are these:
 
 **Do not** put a timeout on the whole state machine. A machine-level timeout ends a run without
 running any `Catch`, so the row would stay `running` for ever. Per-task timeouts always reach
-`RecordFailure`. And the old rule still holds inside one function: one clock, checked often, never a
-generous timeout per step that nobody adds up.
+`RecordFailure`. Inside one function the rule is: one clock, checked often, never a generous timeout
+per step that nobody adds up.
 
 ## 8. Failure is a value with a name
 
@@ -405,10 +404,10 @@ Every failure in this feature is one of a closed list, and each name carries two
 needs: whether trying again helps, and whether it may be retried automatically. The two are not the
 same. "The person may tap again" and "the code retries by itself" are different permissions.
 
-**The middle column changed twice.** On 2026-08-26 the owner removed every automatic retry, because
-the phone was waiting and a second call ate the same clock. On 2026-09-17 the assessment moved into
-the background (ADR-0014), and a capped retry came back for exactly three names. It happens inside
-the workflow, never on the screen, and never for the other names.
+**The middle column says which names the workflow retries.** Only three are retried, and the run
+makes at most three model calls in total (ADR-0014, ADR-0018). The retry happens inside the
+workflow, never on the screen, and never for the other names. `03-flow.md` §3 says why a retry is
+safe only because the assessment runs in the background.
 
 | Name | Retried by the workflow? | The sentence the screen ends with |
 | --- | --- | --- |
@@ -438,9 +437,9 @@ workflow's `RetryOrStop`, which runs `Assess` again only while `callsMade` is un
 place a second call can come from (ADR-0018). The workflow catches the three names with a `Catch`,
 not a `Retry`, so that it can count each call.
 
-**One name is missing a screen and it is recorded, not papered over.** `02-SPEC.md` §3.14 withdrew
-the `unreadable-answer` state from SC-5 and says out loud that the failure path still needs it. That
-is 300 Design's open gap; the name `answer-unreadable` above is the value it will need.
+**A malformed answer never reaches SC-5.** It is a failure, not a verdict, so it goes to the failure
+path as `answer-unreadable`. `02-SPEC.md` §3.14 and §3.16 state 10 draw it as a `FailureNote` in
+state `retry-may-work`, with no verdict and no task.
 
 ## 9. Deletion belongs to the storage rule, not to code
 
@@ -465,17 +464,17 @@ in whichever language the person is reading. `02-SPEC.md` §9 and US-11 AC-5 nee
 the request carries the reader's language, the prompt tells the model to answer in it, and the
 assessment row records which language it was written in.
 
-**That left a hole nobody had covered, and the owner closed it on 2026-08-26 (gate 28).** An
-assessment written in Hungarian and read later in English shows a Hungarian next action inside an
-English screen. **The answer: show the text exactly as written, and put a short line next to it
-saying which language it is in.** The assessment row already stores the language, so the screen has
-what it needs and no extra read is done.
+**An old assessment can be read in the other language, and the owner decided what happens on
+2026-08-26 (gate 28).** An assessment written in Hungarian and read later in English shows a
+Hungarian next action inside an English screen. **The answer: show the text exactly as written, and
+put a short line next to it saying which language it is in.** The assessment row already stores the
+language, so the screen has what it needs and no extra read is done.
 
 Two alternatives lost. Translating on read means a second paid model call every time somebody opens
 an old assessment, on an account that closes when the credit runs out. Saying nothing at all is
-cheapest and leaves the reader wondering why one line looks different. **US-11 AC-6 is the new
-criterion**, and it does not contradict AC-1: AC-1 is about walking the flow now, AC-6 is about
-re-reading something written earlier.
+cheapest and leaves the reader wondering why one line looks different. **US-11 AC-6 is the
+criterion for this**, and it does not contradict AC-1: AC-1 is about walking the flow now, AC-6 is
+about re-reading something written earlier.
 
 **Do not** build a sentence by joining fragments. `02-SPEC.md` §9 forbids it, and Hungarian does not
 put the parts in the English order.
@@ -499,10 +498,9 @@ fields to draw SC-3, SC-4 and SC-5, so the schema is a wire type and belongs in 
 
 ## 12. There is no admin route at all in run 1, and that is a shape too
 
-**Decided by the owner on 2026-08-26 (gate 30), which reversed the first version of this section.**
-Run 1 builds no admin route and no admin screen. The developer reads the usage figures straight from
-the DynamoDB table with AWS credentials, and flips the kill-switch by editing its row in the AWS
-website (ADR-0009).
+**Decided by the owner on 2026-08-26 (gate 30).** Run 1 builds no admin route and no admin screen.
+The developer reads the usage figures straight from the DynamoDB table with AWS credentials, and
+flips the kill-switch by editing its row in the AWS website (ADR-0009).
 
 **The role decorator still ships, carried by no route.** Every route declares `@Anonymous()`,
 `@Roles('USER')` or `@Roles('ADMIN')`, and one with none of them does not run (ADR-0004, NFR-32).
@@ -510,9 +508,9 @@ website (ADR-0009).
 year, and the default has to already be *refuse* on the day they add it.
 
 **Do not** build a second way in for the admin when that route finally arrives — no separate key and
-no shared secret. Editing the row in the AWS console is no longer on that list, because it is now the
-run-1 answer; what makes it acceptable is that only the person holding the AWS account can do it, and
-in run 1 that is the same person.
+no shared secret. Editing the row in the AWS console is allowed, because it is the run-1 answer.
+What makes it acceptable is that only the person holding the AWS account can do it, and in run 1
+that is the same person.
 
 **One credential deliberately stays out of the running system.** US-12 AC-2 asks for the app's
 model-call count to match the provider's own record exactly. Anthropic publishes that record through
@@ -524,13 +522,14 @@ locally, against the table directly. 900 Security confirms or overrules that pla
 
 ## 13. The workflow owns the run
 
-**Added 2026-09-17 (ADR-0014 to ADR-0016).** The assessment runs in the background. This pattern
+The assessment runs in the background, and ADR-0014 to ADR-0016 carry that decision. This pattern
 says who does what, in order, so nobody builds a second way. ADR-0018 draws the states as a diagram.
 
 ```
-api          checks the switch and the breaker, counts the attempt, claims the IDEM row,
-             re-encodes the photo, writes the row as queued,
-             StartExecution with name = the assessment id, answers 202 in about a second
+api          re-encodes the photo, checks the switch and the breaker, claims the IDEM row,
+             counts the attempt, writes the photo and the row as queued,
+             StartExecution with name = the assessment id, answers 202 in about a second.
+             The exact order is ../500-engineering/03-api-spec.md §4
 ClaimRun     UpdateItem queued -> running, with a condition. A duplicate start stops here.
              Sets callsMade to 0
 Assess       the one model call, in the assess function. Re-reads the switch and the breaker first.

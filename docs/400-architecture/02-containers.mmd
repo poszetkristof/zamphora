@@ -1,5 +1,5 @@
 %% C4 level 2 — containers for zamphora.
-%% Written by 400 Architecture, 2026-08-25. Redrawn 2026-09-17 for ADR-0014 to 0016 (Option E).
+%% Written by 400 Architecture. It shows Option E, ADR-0014 to ADR-0016 and ADR-0018.
 %% Every connection a box describes has an arrow.
 %%
 %% Two properties this diagram is drawn to show:
@@ -7,7 +7,7 @@
 %%   2. Only `assess` reaches Anthropic, through one adapter. The api holds no model key.
 
 C4Container
-    title Containers — zamphora, from 2026-09-17
+    title Containers — zamphora
 
     Person(keeper, "Plant keeper", "Account type USER. Phone, one hand, evening light.")
     Person(admin, "Admin", "The developer. Reaches the table through the AWS console only.")
@@ -19,9 +19,9 @@ C4Container
 
         Container(api, "api", "Nest.js on Lambda, apps/api", "Session, ownership, kill-switch, breaker, daily limit, photo checks and re-encode, the queued row. Starts the workflow and answers 202. Holds no model key. ADR-0002, ADR-0004, ADR-0014.")
 
-        Container(workflow, "workflow", "Step Functions Standard", "ClaimRun, Assess, Persist, Rollup, Refund, RecordFailure. Retries Assess at most twice on three thrown errors. Writes rows directly. ADR-0014.")
+        Container(workflow, "workflow", "Step Functions Standard", "ClaimRun, Assess, RetryOrStop, Backoff, AnyCallMade, Persist, Rollup, Refund, RecordFailure. Counts the run's model calls in callsMade and runs Assess again only while it is under 3. Writes rows directly. ADR-0014, ADR-0018.")
 
-        Container(assess, "assess", "Lambda, apps/api", "The one model call. Own role: the model key, the two CONFIG rows, the breaker row. Reserved concurrency 1. ADR-0014.")
+        Container(assess, "assess", "Lambda, apps/api", "The one model call. Own role: the model key, the two CONFIG rows, the breaker row, and a read of the photo object. Reserved concurrency 1. ADR-0014.")
 
         Container(watch, "watch", "Lambda with a Function URL, apps/api", "Streams the result to the phone over server-sent events. Reads the session and the row. ADR-0015.")
 
@@ -60,6 +60,7 @@ C4Container
     Rel(workflow, markfailed, "FAILED, TIMED_OUT, ABORTED", "EventBridge rule")
     Rel(markfailed, table, "UpdateItem state = failed", "IAM role")
     Rel(assess, table, "Reads CONFIG, writes the breaker row", "IAM role")
+    Rel(assess, photos, "GetObject the re-encoded photo", "IAM role")
     Rel(assess, llm, "assess(photo, plantName, locale)", "LlmProvider port")
     Rel(llm, anthropic, "POST /v1/messages with output_config.format", "HTTPS")
     Rel(watch, table, "GetItem the session, then the row every 500 ms", "IAM role")

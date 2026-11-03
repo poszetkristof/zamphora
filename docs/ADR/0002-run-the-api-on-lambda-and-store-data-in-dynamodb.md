@@ -5,22 +5,6 @@
   result stream runs in a third function, `watch` (ADR-0015). The `api` function still holds every
   other route. The DynamoDB half of this record is unchanged.
 - **Date:** 2026-08-25
-- **Corrected 2026-08-26:** the capacity mode was written as **on demand**, which is outside the
-  free allowance. It is now **provisioned, fixed at 25/25**. See "The capacity mode" below. Nothing
-  had been built on the old value, so this record is corrected rather than superseded.
-- **Corrected 2026-08-31, two changes.** First, the free allowance is billed in **capacity-unit
-  hours per month**, not as a ceiling that applies at every moment. Second, gate 43 (owner,
-  2026-08-27) split the allowance across **two** tables — `prod` at 20/20 and `preview` at 5/5 —
-  because `06-nfrs.md` needs a preview environment. This record still said "fixed at 25/25" and
-  "do not add a second table", which contradicted the built system. The rule is now a total, not a
-  per-table number. See "The capacity mode" below. Nothing had been built on the old text.
-- **Corrected 2026-09-01, after an outside review of the compute choice. The decision does not
-  change; two pieces of reasoning do.** First, the "fifth cost" said ADR-0004 does the work of least
-  privilege. It does not — it answers a different threat, and the text now says which. Second, the
-  cold-start figure quotes a plain Node.js number that does not carry over to a Nest.js application.
-  Both are in "Consequences" below. The review also confirmed the shape of this decision against
-  outside practice: a whole framework in one function is a named, recommended pattern at this size,
-  and it scales per function, not per account. Nothing had been built on the old text.
 
 ## Context
 
@@ -47,7 +31,7 @@ place to look and one cold start to pay.
 
 **Data: one DynamoDB table per environment, provisioned capacity, auto scaling switched off. The
 total across every table in the Region must never pass 25 write and 25 read units.** Today that is
-`prod` at 20/20 and `preview` at 5/5 (gate 43). The key design and every access pattern are in
+`prod` at 20/20 and `dev` at 5/5 (gates 43 and 87). The key design and every access pattern are in
 `docs/400-architecture/05-patterns.md` §1. Summary:
 
 - The owner id is the partition key of everything a person owns.
@@ -73,9 +57,9 @@ above would otherwise read as "the whole stack is free", and it is not. **800 In
 
 ### The capacity mode
 
-**Verified first-party on 2026-08-26, and it changed the decision.** The free amount does not cover
-on demand capacity. AWS states it on the pricing page: *"It uses **provisioned capacity** and the
-DynamoDB Standard table class"*
+**Verified first-party on 2026-08-26.** The free amount does not cover on demand capacity. AWS
+states it on the pricing page: *"It uses **provisioned capacity** and the DynamoDB Standard table
+class"*
 ([DynamoDB provisioned pricing](https://aws.amazon.com/dynamodb/pricing/provisioned/), checked
 2026-08-26). The on demand pricing page names no free amount at all
 ([DynamoDB on demand pricing](https://aws.amazon.com/dynamodb/pricing/on-demand/), checked
@@ -106,16 +90,16 @@ day is nowhere near it.
 provisioned capacity per **capacity-unit-hour**. So the free amount is not "25 units at every
 moment"; it is 25 units held for a whole month, which is about **18,250 unit-hours per Region per
 month**. `prod` at 20 units for a full month uses 14,600 of them. That leaves 3,650 — exactly enough
-for a 5-unit `preview` table to run for the whole month as well. **This is why two tables fit inside
-one allowance**, and why a preview table that is left running by accident costs a small amount
-rather than taking capacity away from `prod`.
+for the 5-unit `dev` table to run for the whole month as well. **This is why the two permanent
+tables fit inside one allowance**, and why both can run all month, every month. Nothing is left over
+for a third table.
 
 ### Why there is no cache in front of the table
 
-**Asked and answered on 2026-08-26.** A cache such as ElastiCache or DAX is not added, and the
-reason is arithmetic. The reads it would remove are the session and the profile: **24 ms out of a
-typical 8,191 ms run** (`../400-architecture/001-photo-assessment/03-flow.md` §2, step 5). That is
-0.3% of one assessment, against a model call of 6,000 to 8,000 ms.
+A cache such as ElastiCache or DAX is not added, and the reason is arithmetic. The reads it would
+remove are the session and the profile: **24 ms out of a typical run of about 8,800 ms from tap to
+result** (`../400-architecture/001-photo-assessment/03-flow.md` §2, step 5). That is 0.3% of one
+assessment, against a model call of 6,000 to 8,000 ms.
 
 A cache in front of DynamoDB is normally bought for latency or for read units. Neither applies:
 DynamoDB already answers in single-digit milliseconds, and one user is nowhere near 25 read units.
@@ -142,7 +126,7 @@ correct when ten requests arrive at once (ADR-0008).
 **What it costs, and the first cost is the sharpest.** An API Gateway HTTP API cuts a request off at
 **30 seconds, and that cannot be raised** — the same number the user was promised. If it fires, the
 person gets a 504 whose body nothing in this product wrote. **The application therefore fails at
-20 seconds and answers for itself. The three stacked deadlines are in `03-flow.md` §4.**
+20 seconds and answers for itself. `03-flow.md` §4 lists every clock.**
 
 **The capacity mode has two costs of its own.** The allowance is **shared across every table in the
 account, in one Region**, and nothing warns you when a new table eats into it. That is why the
@@ -160,14 +144,12 @@ checked 2026-08-26).
 **Second cost:** a cold start on the first request after a quiet period. Published figures put an
 optimised Node.js cold start at roughly 200 to 800 ms
 ([Sedai](https://sedai.io/blog/what-is-cold-starts-in-lambda-understanding), checked 2026-08-25).
-Secondary source, budgeted at the top of the range in `03-flow.md`.
-
-**Corrected 2026-09-01: expect more than that, and the range above is the wrong kind of
-measurement.** It is for a plain Node.js function. This is a Nest.js application, whose cold start
-also has to build the dependency-injection container before it can answer. A published measurement
-of a Nest.js application in one Lambda function reports about **1.0 to 1.1 seconds**. That is one
-app, not a promise about this one, and NFR-06's 2,000 ms still leaves room. **Replace this whole
-paragraph with the measured number** once `03-observability.md` §4's query returns one.
+**Expect more than that, because that range is the wrong kind of measurement.** It is for a plain
+Node.js function. This is a Nest.js application, whose cold start also has to build the
+dependency-injection container before it can answer. A published measurement of a Nest.js
+application in one Lambda function reports about **1.0 to 1.1 seconds**. That is one app, not a
+promise about this one. `03-flow.md` and NFR-06 budget 2,000 ms. **Replace this whole paragraph with
+the measured number** once `03-observability.md` §4's query returns one.
 
 **Third cost:** the repository layer is written against DynamoDB's key model. Moving to a relational
 store later would mean rewriting it. That cost is accepted because the eleven questions would map
@@ -184,8 +166,7 @@ function per route would let each one carry only the permissions it needs, which
 privilege asks for. That is given up here on purpose: the trade is a real one, and at one developer
 with one function the reading cost of many small roles is worse than the risk.
 
-**Reworded 2026-09-01, because the old text claimed more cover than it had.** It said the border
-doing the work instead is ADR-0004. Two different problems are being mixed there, and they need
+**ADR-0004 does not pay this cost.** Two different problems are easy to mix up here, and they need
 separating:
 
 - **A route with a missing ownership check.** ADR-0004 answers this one, and answers it well. The
@@ -196,10 +177,10 @@ separating:
   every object, because at that point there is no "route" left to constrain. Least privilege exists
   for exactly this case, and OWASP's serverless guidance names role-per-function for it.
 
-**The trade is still accepted, and now for the stated reason:** one developer, one function, and
-data that is plant photos and care schedules. It is not accepted because ADR-0004 covers it. **900
-Security owns this when that role runs**, and should look at it with the `sharp` decode path in
-`01-iac-plan.md` §4.4 in mind. If the API is ever split, split the role with it.
+**The trade is accepted for the stated reason:** one developer, one function, and data that is plant
+photos and care schedules. It is not accepted because ADR-0004 covers it. **900 Security owns this
+risk**, and should look at it with the `sharp` decode path in `01-iac-plan.md` §4.4 in mind. If the
+API is ever split, split the role with it.
 
 ## Alternatives considered
 
@@ -223,9 +204,9 @@ known sharp edge and would need a proxy to solve.
 **One Lambda per route.** Rejected. It multiplies cold starts across a flow that already has a
 30-second budget, and it gives one developer many small things to look at instead of one.
 
-**Added 2026-09-01: the trigger to revisit this, and which route goes first.** Scale is not the
-trigger. AWS states the scaling rate **per function** — 1,000 more copies every 10 seconds — so one
-function holding twelve routes scales as well as twelve functions would
+**The trigger to revisit this, and which route goes first.** Scale is not the trigger. AWS states
+the scaling rate **per function** — 1,000 more copies every 10 seconds — so one function holding
+twelve routes scales as well as twelve functions would
 ([Lambda scaling behavior](https://docs.aws.amazon.com/lambda/latest/dg/scaling-behavior.html),
 checked 2026-09-01). The table gives up first: 20 read units is about 20 reads a second, roughly one
 sixth of what the default 1,000-copy account limit already allows through.
@@ -249,7 +230,7 @@ same table with none of the reading cost.
 
 > `apps/api` is one Nest.js application in one Lambda function behind an API Gateway HTTP API, and
 > all data is in one DynamoDB table per environment, keyed by owner, in **provisioned** capacity
-> mode. Today that is `prod` at 20/20 and `preview` at 5/5. Do not create a table in on demand mode
+> mode. Today that is `prod` at 20/20 and `dev` at 5/5. Do not create a table in on demand mode
 > and do not switch one to on demand — the free allowance does not cover on demand, and the account
 > closes when the credit is gone. Do not turn on auto scaling. **The total provisioned capacity
 > across every table in `eu-central-1` must never pass 25 write and 25 read units** (gate 43); if
@@ -261,7 +242,7 @@ same table with none of the reading cost.
 > Do not let any request run past the 20,000 ms application deadline — the gateway cuts the request
 > off at 30 seconds and answers with a 504 the app did not write. Do not rely on DynamoDB TTL to
 > delete anything on time; always check the expiry in code.
-> The model call is not in the `api` function any more: ADR-0014 moved it to `assess`, and ADR-0015
-> gave the result stream to `watch`. Do not split the remaining routes into more functions, and do
+> The model call does not run in the `api` function: ADR-0014 put it in `assess`, and ADR-0015 put
+> the result stream in `watch`. Do not split the remaining routes into more functions, and do
 > not argue for it from scaling — Lambda scales per function, and the table's 20 units give up
 > first. ADR-0001 holds the only trigger for a further split.

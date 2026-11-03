@@ -1,6 +1,6 @@
 # Engineering conventions
 
-**Written by** 500 Engineering, run 1 (`001-photo-assessment`). **Date:** 2026-08-26.
+**Written by** 500 Engineering, run 1 (`001-photo-assessment`).
 **Read next by** 800 Infra, 900 Security, 600 QA, and anybody writing TypeScript in this repository.
 
 This file is written once, in run 1. Later runs read it and add to it. It holds the rules that apply
@@ -36,10 +36,9 @@ One repository, `zamphora` (ADR-0001). Four workspace packages and one infrastru
 
 ## 2. Where a file goes, before the borders between packages
 
-**Added 2026-08-27.** The borders below are between *packages*. The structure **inside** a package
-decided the shape of every file and lived only in `../learn/monorepo-architecture.md` — a learning
-note that nothing routes to during a build. It is named here so the chain is not broken, and the
-`coding-standards` skill carries the short form.
+The borders in §3 are between *packages*. This section is the structure **inside** a package, and
+that structure decides the shape of every file. It is written here, and not only in a learning note,
+because a build reads this file. The `coding-standards` skill carries the short form.
 
 **`apps/web`** — `app/` is routing only, and thin. `features/<feature>/` holds the real code.
 `components/` is for what two or more features use. `lib/` is the fetch client, i18n and formatting.
@@ -99,9 +98,9 @@ These five come from `CLAUDE.md` and hold everywhere outside a test file.
 
 ### `type` or `interface` — three rules, and the reason for each
 
-**This replaced a flat ban on `interface` on 2026-08-27, at the owner's decision.** The ban had no
-source behind it. The TypeScript handbook says the two are mostly a preference, and the TypeScript
-team's own performance page recommends `interface` for one specific job.
+**The owner chose these three rules on 2026-08-27.** The TypeScript handbook says the two are mostly
+a preference, and the TypeScript team's own performance page recommends `interface` for one
+specific job.
 
 1. **Default to `type`.** Two reasons that both bite in this repo. Almost everything in
    `packages/contracts` is `z.infer<typeof X>`, and only `type` can name that. And two `type`
@@ -120,8 +119,7 @@ team's own performance page recommends `interface` for one specific job.
    nothing. `interface … extends` reports the conflict.
 
 3. **Use `interface` when you need declaration merging.** Augmenting Nest's `Request` to carry the
-   session, or any `declare module`. `type` cannot do this at all, and the old ban made it
-   impossible.
+   session, or any `declare module`. `type` cannot do this at all.
 
 **Never write `type A = B & C` to build an object type.** This is the one point the TypeScript team
 and every critic of `interface` agree on. Rule 2 is what to write instead.
@@ -165,12 +163,21 @@ Three values live in the `CONFIG` partition of the DynamoDB table and are read o
 memory cache: the kill-switch, the daily limit, and the model id (ADR-0006, ADR-0008, ADR-0009).
 
 - **Every value read from `CONFIG` is checked against a closed list or a range.** A value that fails
-  the check is ignored and the compiled-in default is used instead. It is never sent to the API.
-  The one range is for `DAILY_LIMIT`: a whole number from 1 to 20 (gate 75). The one closed list is
-  for `MODEL_ID`: exactly `claude-haiku-4-5-20251001`, `claude-haiku-5-5` and `claude-sonnet-5-5`,
-  and the default is `claude-haiku-4-5-20251001` (ADR-0017). `03-api-spec.md` §6 owns both checks.
+  the check is never used. The one range is for `DAILY_LIMIT`: a whole number from 1 to 20
+  (gate 75). The one closed list is for `MODEL_ID`: exactly `claude-haiku-4-5-20251001`,
+  `claude-haiku-5-5` and `claude-sonnet-5-5` (ADR-0017). A refused `DAILY_LIMIT` or `MODEL_ID` falls
+  back to its compiled-in default, 10 or `claude-haiku-4-5-20251001`, so a refused model id never
+  reaches the Anthropic API. `03-api-spec.md` §6 owns both checks.
+- **The kill-switch has no compiled-in default. Only the boolean `true` turns the feature on**
+  (ADR-0019, gate 86). A missing `AI_ENABLED` row, a missing `enabled` field, or an `enabled` of any
+  other type, such as the string `"false"`, means off. Never read a string as a boolean.
+  `03-api-spec.md` §6, "The kill-switch row", owns this rule.
+- **A refused value is never fixed in silence.** Each refusal writes one `warn` log line,
+  `config-value-refused`, that names the row, the refused value and the value used instead.
+  `03-api-spec.md` §6 lists its fields.
 - **A failed read keeps the last known value.** If there has never been a known value, the model
-  call does not run (ADR-0009).
+  call does not run (ADR-0009). This rule is only for a read that fails. A read that succeeds always
+  replaces the cached value, even when the value is refused (ADR-0019).
 - **Never cache the session and never cache the daily count** (ADR-0002).
 
 ## 7. Styling
@@ -283,23 +290,24 @@ the architecture and the code agree.
 | NFR-36 zero model calls with no session | The guard runs before the controller, so the provider is unreachable without a session | `test` |
 | NFR-37 zero result screens with no AI notice | One `ResultLayout` component renders `NoticeLines`, and SC-3, SC-4 and SC-5 all use it | `e2e` |
 | NFR-38 zero refunds after a made call | The `Refund` state is reachable only through `AnyCallMade`, and only when `callsMade` is 0. Every `Catch` of a provider error adds 1 to `callsMade` (ADR-0016, ADR-0018) | `test`, `infra-assert` |
+| NFR-39 zero model calls while the `AI_ENABLED` row is missing or not a boolean | The `CONFIG` reader in `apps/api` turns the switch on only when `enabled === true`. Anything else gives off, caches it, and writes `config-value-refused`. Both `api` (step 6 of `03-api-spec.md` §4) and `assess` (step 1 of §4d) read the switch through it (ADR-0019) | `test` |
 | NFR-40 lifecycle rule at exactly 180 days | The CDK stack for the bucket. 800 Infra owns it | `infra-assert` |
 | NFR-41 zero objects older than 182 days | A scheduled job that lists the bucket | `retention-audit` |
 | NFR-42 zero copies of a photo | One write path, `PhotoRepository.put()`. A test asserts no other code path writes an image, and that no photo URL is served through a cache | `test` |
 | NFR-43 ≤ 300,000 ms signed URL life | `apps/api` constant `PHOTO_URL_TTL_MS = 300_000` | `test` |
 | NFR-50 ≤ 170 KB for SC-1 | A `size-limit` entry for the SC-1 route. **The number is a guess. Measure the real screen and replace it** | `bundle-budget` |
 | NFR-51 ≤ 10 minutes of CI | The workflow's own duration | read from Actions |
-| NFR-52 every workflow filtered by path | The test in §2 above | `test` |
+| NFR-52 every workflow filtered by path | The workflow-file test in §3 above, "What enforces each line" | `test` |
 
 ## 12. Decisions that are not made in this file
 
 Each of these was left open on purpose, and each needs a person.
 
-- **The unit test runner.** No input names one. Choosing it is accepting a new dependency.
 - **The exact wording of every sentence.** Brand voice is the owner's. `02-SPEC.md` §10 gives the
   rules the words must obey; the words themselves are not here.
 - **What each of the ten verdict codes means.** The codes are in `01-contracts.md` §3, copied from
   `docs/200-product/001-photo-assessment/00-prd.md` §5.2. **The meanings stay in that file only**, so
   the two cannot drift, and the ten sentences in each language are written from there.
 - **Any new dependency at all.** A library, a lint plugin, an image tool or anything the model may
-  call goes to the owner first.
+  call goes to the owner first. The unit test runner was one of these, and the owner chose Vitest
+  (gate 33, ADR-0013).

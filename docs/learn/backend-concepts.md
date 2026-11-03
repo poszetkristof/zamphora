@@ -1728,20 +1728,22 @@ people are using.
 **The rule that makes them useful: as much as possible must be identical, and what differs must be
 written down in one list.** Otherwise "it worked in staging" is meaningless.
 
-**In zamphora.** Three environments, and the list of what changes is short and explicit
+**In zamphora.** Three environments: `local` on the developer's machine, and two on AWS that always
+exist, `dev` and `prod`. `dev` is where the end-to-end tests run before a merge. The list of what
+changes is short and explicit
 (`00-environments.md` §4): resource names, the host, log retention, DynamoDB capacity, the
 concurrency numbers, **and which `LlmProvider` is used — a stub everywhere except `prod`**.
 
 **What must never change is the more interesting list**, because it is where bugs would hide: Node 24
-everywhere, the Cognito tier, the 180-day lifecycle rule, and **every cookie attribute**. A preview
+everywhere, the Cognito tier, the 180-day lifecycle rule, and **every cookie attribute**. The `dev`
 bucket carries the same lifecycle rule, so the test that checks it is checking the code that ships.
 
-**Two details that only come up on a free account.** The preview environment needed its own DynamoDB
+**Two details that only come up on a free account.** The `dev` environment needs its own DynamoDB
 table, and **the free allowance of 25 capacity units is per Region and shared by every table** — so
-`prod` was dropped to 20 and `preview` given 5, rather than both getting 25. And local development
+`prod` was dropped to 20 and `dev` given 5, rather than both getting 25. And local development
 uses **DynamoDB Local and MinIO** in Docker, so no test run touches the real account.
 
-**The trap.** A preview environment that points at the production database. It always starts as
+**The trap.** A test environment that points at the production database. It always starts as
 "just for reading".
 
 ## 55. Observability
@@ -2179,8 +2181,8 @@ names.
 **The rule: push each test as far down as it can go.** An end-to-end test that checks a validation
 message is a slow, flaky way to test something a unit test does in 2 ms.
 
-**In zamphora.** Vitest for all three packages, one runner. Playwright for end-to-end against a real
-preview deploy. **The AI-specific parts are what a normal project does not have** (entry 71).
+**In zamphora.** Vitest for all three packages, one runner. Playwright for end-to-end against the
+`dev` environment. **The AI-specific parts are what a normal project does not have** (entry 71).
 
 **Two rules from `CLAUDE.md` worth stealing.** **Tests ship with the change** — CI blocks a pull
 request that deletes a test file unless the commit message says `DELETE_TESTS: <reason>`. And **at

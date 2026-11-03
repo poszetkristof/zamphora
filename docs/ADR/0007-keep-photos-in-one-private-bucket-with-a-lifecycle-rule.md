@@ -1,6 +1,10 @@
 # ADR-0007 — Keep photos in one private bucket, and let a lifecycle rule delete them
 
-- **Status:** Accepted
+- **Status:** Accepted. **Decision 1 is superseded in part by
+  [ADR-0014](0014-run-the-assessment-as-a-step-functions-workflow.md) (2026-09-17):** the API does
+  not call the model. It writes the photo to the bucket, and the `assess` function reads it from
+  there for the call (`docs/400-architecture/05-patterns.md` §13). The upload still goes through the
+  API in one request, and everything else in this record stands.
 - **Date:** 2026-08-25
 
 ## Context
@@ -76,12 +80,13 @@ roughly 4.5 MB of photo. This ADR caps the body at 2 MB and a real photo is abou
 **2. The key is `photos/<userId>/<potId>/<createdAt>.jpg`.** The owner id is in the path, which
 means an IAM policy can be written to match it later if it is ever needed.
 
-**This said `<assessmentId>` until 2026-08-26, and the owner changed it (gate 38).** 500 Engineering
+**The owner chose the timestamp over the assessment id on 2026-08-26 (gate 38).** 500 Engineering
 found that the assessment id is not a plain value: with no secondary index, the row is found by pot
-id **and** timestamp, so the id is those two joined with a `#`. Written into the old key it produced
-`photos/u123/pot9/pot9#2026-08-26T10:00:00Z.jpg` — the pot id twice, and a `#` inside an S3 key,
-which AWS lists as a character needing special handling. **The timestamp alone is enough**, because
-the pot id is already the folder above it, and the folder then sorts by time with no extra work.
+id **and** timestamp, so the id is those two joined with a `#`. Written into the key it would
+produce `photos/u123/pot9/pot9#2026-08-26T10:00:00Z.jpg` — the pot id twice, and a `#` inside an S3
+key, which AWS lists as a character needing special handling. **The timestamp alone is enough**,
+because the pot id is already the folder above it, and the folder then sorts by time with no extra
+work.
 
 **3. The bucket is private.** Block Public Access on. No bucket policy grants anonymous read.
 Encryption at rest is SSE-S3 (`AES256`).
@@ -118,8 +123,8 @@ things are true and all three should be said together:
 - The object may still physically exist for a short time.
 
 NFR-41 therefore measures at **182 days**, not 180. **This is a change to how M-07 reads, and the
-number is printed on a screen (US-10 AC-1), so it goes to the owner as gate 27** rather than being
-adjusted quietly.
+number is printed on a screen (US-10 AC-1), so it went to the owner as gate 27** rather than being
+adjusted quietly. The owner closed gate 27 on 2026-08-26: the wording on the screen stays.
 
 **A second cost.** Sending the photo through the API means the bytes pass through the function. At
 2 MB that is fine, and it is well inside the API Gateway payload limit. If a later run raises the

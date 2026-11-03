@@ -1,12 +1,13 @@
 # Architecture options — how this system is shaped
 
-**Written by** 400 Architecture, run 1 (`001-photo-assessment`). **Date:** 2026-08-25.
+**Written by** 400 Architecture, run 1 (`001-photo-assessment`).
 **Read next by** 500 Engineering, 800 Infra, 900 Security, 600 QA.
 
-**Updated 2026-09-17.** Sections 1 to 10 are the record of run 1, where Option A won. Section 11
-adds two more shapes the owner asked for, scores them on the same constraints plus one new one, and
-records the owner's choice: **Option E, the assessment runs in the background.** Read §11 last; it
-is the current state.
+**What this file decides.** Sections 1 to 10 score four whole-system shapes. Option A won, and the
+owner confirmed it on 2026-08-26 by rejecting Option D. Section 11 scores two more shapes on the
+same constraints plus one new one, and records the owner's later choice on 2026-09-17: **Option E,
+the assessment runs in the background.** Option E is the current architecture. It keeps Option A's
+parts and moves the model call out of the request. Read §11 last.
 
 This file does one job: it puts whole-system shapes side by side, scores them on the things that
 actually pull in different directions on this project, and names the winner. Everything else in
@@ -60,9 +61,8 @@ of them.
 - Every user signs in. Two account types, `USER` and `ADMIN`, from day one.
 - 180 days for a photo, deleted by a storage lifecycle rule and not by application code.
 - 30 seconds from the tap to something on screen. **One model call per assessment in the normal
-  case, and never more than three** (owner, 2026-09-17, §11 and ADR-0014; it was "no retry" from
-  2026-08-26 to that date). 10 assessments a day. A kill-switch that takes effect inside 60 seconds.
-  A 30-day session.
+  case, and never more than three** (decided by the owner on 2026-09-17, §11 and ADR-0014). 10
+  assessments a day. A kill-switch that takes effect inside 60 seconds. A 30-day session.
 - No second-opinion service, ever. No option below leaves a place for one.
 
 ## 3. The four constraints the options are scored on
@@ -151,7 +151,7 @@ flowchart LR
 
 **A and D are one point apart, and the role was not allowed to break that tie.** It was recorded as
 gate 26. **The owner rejected Option D on 2026-08-26: there will be a separate API.** So Option A
-stands, and this is now settled rather than assumed.
+stood against D, and that choice is settled. §11 records the later move to Option E.
 
 ### Why each score is what it is
 
@@ -177,15 +177,16 @@ put an optimised Node.js cold start at roughly 200 to 800 ms, and 200 to 400 ms 
 the range for production workloads
 ([Sedai](https://sedai.io/blog/what-is-cold-starts-in-lambda-understanding),
 [oneuptime](https://oneuptime.com/blog/post/2026-01-27-lambda-cold-start-optimization/view), both
-checked 2026-08-25). **These are secondary sources, not a measurement of this application**, and
-`03-flow.md` budgeted the top of that range until 2026-08-31 and now budgets **2,000 ms**, because those figures describe a plain Node handler and this is a bundled Nest+Express application (NFR-06). Against a 30-second budget, 2,000 ms is under 7%.
+checked 2026-08-25). **These are secondary sources, not a measurement of this application.** They
+describe a plain Node handler, and this is a bundled Nest+Express application, so `03-flow.md`
+budgets **2,000 ms** (NFR-06). Against a 30-second budget, 2,000 ms is under 7%.
 
 There is a second and harder ceiling on A and D, and it is the reason neither scores 5. **An API
 Gateway HTTP API cuts a request off at 30 seconds and that cannot be raised** — the same number the
-user was promised. So the whole server side must finish inside a budget somebody else is already
-counting. The design obeys it by failing at 20 seconds and writing its own message.
-**The stacked deadlines and the arithmetic were in `03-flow.md` §4 until 2026-09-17.** That was a
-constraint to obey, not a fault in the option. §11 says how Option E removed it from the paid path.
+user was promised. So in Option A the whole server side must finish inside a budget somebody else is
+already counting, and the design obeys it by failing at 20 seconds and writing its own message. That
+was a constraint to obey, not a fault in the option. In Option E the model call is not inside a
+request, so this ceiling is not on the paid path (§11, `03-flow.md` §4).
 
 C scores 3, which is the surprising one. Moving the model call to a worker removes the gateway
 ceiling entirely — that is worth something. But the user in US-01 is standing in front of a plant
@@ -245,28 +246,32 @@ phone collects the result later. That removes the 30-second ceiling for good. It
 function, a queue, a polling loop in the web app and a new waiting state on a screen spec that is
 already agreed at five states. **Two triggers, either one:** a second model call is added to the
 flow, or the model call alone regularly passes 15 seconds. Until then Option C buys headroom that
-`03-flow.md` says is not needed — the typical run is 8.2 seconds against 30.
+Option A's flow did not need: its typical run was about 8.2 seconds against 30.
 
-*This was re-opened on 2026-09-17 by the owner's choice, not by a trigger. See §11. Option E is
-Option C with the poll replaced by a stream and the queue replaced by a workflow.*
+The owner re-opened this on 2026-09-17 by choice, before either trigger fired (§11.5). Option E is
+Option C with the poll replaced by a stream and the queue replaced by a workflow.
 
-## 7. What Option A is made of
+## 7. What the chosen shape is made of
 
-The detail is in `02-containers.mmd` and in the ADRs. In one table:
+The detail is in `02-containers.mmd` and in the ADRs. This table is a lookup table, one row per
+part of Option E.
 
 | Part | What it is | ADR |
 | --- | --- | --- |
 | Repository | One repo, pnpm workspaces + Turborepo, `apps/` + `packages/` + `infra/` | ADR-0001, ADR-0012 |
-| Compute | Nest.js as one function behind an HTTP API. Next.js served from the same origin | ADR-0002, ADR-0010 |
+| Compute | Nest.js as the `api` function behind an HTTP API. Two small functions beside it: `assess` makes the model call, `watch` streams the result. Next.js served from the same origin | ADR-0002, ADR-0010, ADR-0014, ADR-0015 |
+| The background run | A Step Functions Standard workflow runs `assess`. At most three model calls per photo | ADR-0014, ADR-0018 |
+| Result delivery | One server-sent-events stream from `watch` to the phone | ADR-0015 |
 | Data | DynamoDB, one table, the owner in the partition key | ADR-0002, ADR-0004 |
 | Photos | Private S3 bucket, lifecycle expiry at 180 days, short-lived signed reads | ADR-0007 |
 | Sign-in | OpenID Connect to a Cognito user pool. No token ever reaches the browser | ADR-0003 |
 | Account types | Refuse by default. Every route names its role or it does not run | ADR-0004 |
-| The model call | One call, behind `LlmProvider`, with structured output | ADR-0005 |
-| Which model | Chosen by measurement. Haiku 4.5 until the measurement exists | ADR-0006 |
-| The daily limit | One atomic conditional increment, before the call and before the retry | ADR-0008 |
+| The model call | One call per attempt, behind `LlmProvider`, with structured output | ADR-0005 |
+| Which model | Chosen by measurement. Three allowed ids; Haiku 4.5 until the measurement exists | ADR-0006, ADR-0017 |
+| The daily limit | One atomic conditional increment in the `api` function, before the workflow starts. It counts assessments started, not calls | ADR-0008 |
+| The refund | An attempt is given back only when the whole run made no model call | ADR-0016, ADR-0018 |
 | The kill-switch | A row in the table, cached 30 seconds | ADR-0009 |
-| Components | shadcn/ui, which uses Base UI underneath. Accepted 2026-08-26 | ADR-0011 |
+| Components | shadcn/ui, which uses Base UI underneath. Accepted by the owner on 2026-08-26 | ADR-0011 |
 
 ## 8. Where the AI sits on the ladder
 
@@ -274,11 +279,11 @@ The ladder is plain code → one model call → a fixed chain of calls → an ag
 the lowest rung that works, and to say why the rung below it does not.
 
 **Plain code is used, and it is used first.** Three things happen before any model call and none of
-them needs a model: the file must be one of JPEG, PNG or WebP (GIF dropped 2026-09-17, gate 68); the shorter side must be at
-least 200 px; a pot must be picked. Two more happen after the answer arrives and are also plain
-code: the follow-up must be a whole number from 1 to 30, and the date is the assessment day plus
-that number. `00-context-brief.md` §5.2 is the reason the last one is code — the model chooses the
-interval, but nothing about turning an interval into a date needs a model.
+them needs a model: the file must be one of JPEG, PNG or WebP (GIF is not accepted, gate 68); the
+shorter side must be at least 200 px; a pot must be picked. Two more happen after the answer arrives
+and are also plain code: the follow-up must be a whole number from 1 to 30, and the date is the
+assessment day plus that number. `00-context-brief.md` §5.2 is the reason the last one is code — the
+model chooses the interval, but nothing about turning an interval into a date needs a model.
 
 **Plain code cannot produce the verdict.** The input is a photograph. There is no rule set that
 turns pixels into "too much water" without a vision model.
@@ -303,7 +308,7 @@ Written out so no reader mistakes one for a commitment.
 
 | Number | Where it came from | What replaces it |
 | --- | --- | --- |
-| Cold start 200–800 ms | Secondary sources, checked 2026-08-25. Not a measurement of this app | The `InitDuration` metric after the first deploy |
+| Cold start 2,000 ms (NFR-06) | An estimate for a bundled Nest.js function. The 200–800 ms from secondary sources, checked 2026-08-25, is for a plain Node handler | The Logs Insights query in `03-observability.md` §4 after the first deploy. There is no `InitDuration` metric |
 | "A load balancer and a database cost money every hour" | Shape, not a figure. No first-party price was checked | Nothing. Option B lost and the figure is not needed |
 | Model call latency | **No source at all.** `03-flow.md` budgets 8,000 ms as a guess | The first real call. 500 Engineering records it |
 | Bundle size of any component library | The projects' own published figures, per `factory/feature.md` | One real screen, built and measured. ADR-0011 |
@@ -329,7 +334,7 @@ function held every permission, including the model key, because the call was in
 
 ### 11.2 Option E — the phone stops waiting, and little else moves
 
-`POST /api/assessments` does everything it does today up to the model call: the session, the
+`POST /api/assessments` does everything Option A does up to the model call: the session, the
 kill-switch, the daily limit, the photo checks and the re-encode. Then it writes the assessment row
 as `queued`, starts an **AWS Step Functions** workflow and answers `202` in about a second. Step
 Functions is an AWS service that runs steps in order, retries the steps you mark, and keeps a
@@ -353,7 +358,7 @@ sweep. Every function has one job and one role.
 
 What it adds beyond E: the direct upload, EventBridge rules, the timer service, DynamoDB Streams,
 SES for email, three more functions, and a second web address for the upload, which needs a CORS
-rule and one exception to ADR-0010. About sixteen pieces instead of four today.
+rule and one exception to ADR-0010. About sixteen pieces instead of four in Option A.
 
 ### 11.4 The scoring, on the same constraints plus one
 
@@ -381,7 +386,7 @@ brings those with it saves a later run from adding them one at a time.
   size, and the two priced lines — custom events and the stream's function-seconds — are cents.
 - **C-2.** A scores 4 because of the gateway ceiling. E and F remove the ceiling, and the stream
   delivers the result within half a second of the write. They stay at 4 for a different reason: the
-  promise is now kept by a waiting screen, which the owner had to accept.
+  promise is kept by a waiting screen, which the owner had to accept.
 - **C-3.** A is four managed pieces. E adds a workflow, two functions and a rule, and one new
   service to learn. F adds a bus, a scheduler, a stream, a presigned upload and three more
   functions. Every piece is a documented AWS pattern; the cost is the count, not the cleverness.
@@ -414,7 +419,7 @@ The decision is recorded in ADR-0014, ADR-0015 and ADR-0016. The shape, drawn, a
 to run 6 are in `08-async-options-short.md`. Every checked fact and link behind this section is in
 `08-async-options.md`, which is a reference and does not need to be re-read.
 
-### 11.6 What losing looks like now
+### 11.6 What losing looks like for Option E
 
 If Option E is wrong, it shows up as one of these, and both are countable: the waiting screen is
 felt as a failure by the person, so the give-up at 60 seconds fires often; or the workflow's

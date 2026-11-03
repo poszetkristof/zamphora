@@ -39,8 +39,8 @@ Where each column comes from, all checked 2026-10-29 unless the row says otherwi
   [models overview](https://platform.claude.com/docs/en/about-claude/models/overview). It says all
   current models accept image input. The Haiku 4.5 price is from ADR-0006, checked 2026-08-28. The
   condition on the Haiku 5.5 price, "for prompts up to 100,000 tokens", is quoted in
-  `factory/feature.md` from the pricing page and was not re-checked in this pass. One assessment is
-  about 2,000 input tokens, so it is far under that condition and the lower price applies.
+  `factory/feature.md` from the pricing page and was not re-checked for this record. One assessment
+  is about 2,000 input tokens, so it is far under that condition and the lower price applies.
 - **Retirement dates** from [model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations).
   All three are Active. Anthropic gives at least 60 days' notice before it retires a model.
 - **Structured outputs** from [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).

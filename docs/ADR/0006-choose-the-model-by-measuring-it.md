@@ -1,10 +1,9 @@
 # ADR-0006 — Choose the model by measuring it, and run on Haiku 4.5 until the measurement exists
 
-- **Status:** Accepted. **Corrected in place 2026-08-28** for gates 53 and 62: the two model id
-  forms are both real, and the run-1 default has a retirement date. Nothing in the decision moved.
-  **Superseded in part by [ADR-0017](0017-allow-three-model-ids-each-a-fixed-version.md)
-  (2026-10-29, gate 83):** the list of models to compare, the rule that every id carries a date, and
-  the retirement table. The rest of this record stands.
+- **Status:** Accepted. **Superseded in part by
+  [ADR-0017](0017-allow-three-model-ids-each-a-fixed-version.md) (2026-10-29, gate 83):** the list
+  of models to compare, the rule that every id carries a date, and the retirement table. The rest of
+  this record stands.
 - **Date:** 2026-08-25
 
 ## Context

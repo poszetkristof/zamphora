@@ -1,6 +1,6 @@
 # API spec — `apps/api`
 
-**Written by** 500 Engineering, run 1 (`001-photo-assessment`). **Date:** 2026-08-26.
+**Written by** 500 Engineering, run 1 (`001-photo-assessment`).
 **Read next by** 800 Infra, 900 Security, 600 QA.
 
 Every route in the product, what it takes, what it answers, and which decorator it carries. The
@@ -26,9 +26,8 @@ All three share the same modules, the same repository layer and the same session
 is written once. The `api` function is the only one behind the gateway, and the rest of this
 section is about it.
 
-**Three packages sit in that sentence, and the third one was missing until 2026-09-01.** Naming it
-here matters, because the wrong choice fails on the first real request in production, not at build
-time.
+**Three packages sit in that sentence, and the third one is easy to miss.** Naming it here matters,
+because the wrong choice fails on the first real request in production, not at build time.
 
 | Piece | Package | What it does |
 | --- | --- | --- |
@@ -80,15 +79,15 @@ There is no second origin and no CORS configuration anywhere (ADR-0010).
 sort key without its prefix (`01-contracts.md` §2.1), so they contain a `#`. An unencoded `#` in a
 URL starts a fragment and cuts the value in half.
 
-**~~`DELETE /api/me/photos`~~ was removed from run 1 on 2026-08-31 (owner).** It deleted one S3
-object and updated one row **per assessment**, under the same 20,000 ms interceptor as every other
-route, with no batching, no continuation token and no way to resume. On an account with a few hundred
-assessments it would time out half way: the person is told the request failed, and some photos are
-gone while others are not. That is the delete-my-data promise of US-10 AC-7, so a half-working
-version is worse than none. `02-web-spec.md` already said *"Deleting every photo at once has no
-screen in run 1"*, so nothing could reach it anyway. **It returns in the run that gives it a screen,
-as a paged delete** — `DeleteObjects` in batches with a "more remaining" flag. US-10 AC-7 moves to
-that run with it.
+**There is no `DELETE /api/me/photos` in run 1. The owner decided this on 2026-08-31.** A route that
+deletes every photo at once would delete one S3 object and update one row **per assessment**, under
+the same 20,000 ms interceptor as every other route, with no batching, no continuation token and no
+way to resume. On an account with a few hundred assessments it would time out half way: the person
+is told the request failed, and some photos are gone while others are not. That is the
+delete-my-data promise of US-10 AC-7, so a half-working version is worse than none. `02-web-spec.md`
+says *"Deleting every photo at once has no screen in run 1"*, so nothing could reach the route
+anyway. **It returns in the run that gives it a screen, as a paged delete** — `DeleteObjects` in
+batches with a "more remaining" flag. US-10 AC-7 moves to that run with it.
 
 **Thirteen routes and a health check. None of them is an admin route, and that is deliberate.**
 The owner moved admin screens and admin routes out of run 1 on 2026-08-26 (gate 30). `@Roles('ADMIN')`
@@ -161,10 +160,10 @@ putting the user id in the cookie — is rejected, because it undoes the point o
 
 ### The callback creates the profile, and a missing profile is never defaulted
 
-**Added 2026-08-31. Without this the product does not work for anybody.**
+**Without this the product does not work for anybody.**
 
-Every route with a role decorator reads the profile and takes the account type from it. **Nothing in
-any spec wrote that item.** The callback wrote only a session row. So a person would sign in
+Every route with a role decorator reads the profile and takes the account type from it. So something
+has to write that item. If the callback wrote only a session row, a person would sign in
 successfully, and then every request would answer `not-signed-in` — forever, for every new account.
 
 **`GET /api/auth/callback` writes the profile after it has verified the ID token**, in the same step
@@ -185,7 +184,7 @@ PutItem
   decide a new account's type.
 
 **A session with no profile is refused, never defaulted.** This is written down because the obvious
-repair for the bug above is *"if there is no profile, treat them as `USER`"* — and that is
+repair for a missing profile is *"if there is no profile, treat them as `USER`"* — and that is
 fail-open, which ADR-0004 forbids by name. If the guard reads a session and finds no profile, that
 is a broken account, not a new one: answer `not-signed-in` and log it.
 - **The account type is read from the profile on every request**, never from the session and never
@@ -203,9 +202,9 @@ read, so a query with no owner does not compile (NFR-30).
 
 ## 4. `POST /api/assessments` — the one path that spends money
 
-**Rewritten 2026-09-17 (ADR-0014).** The `api` function does everything up to the model call, then
-hands the call to the background workflow and answers at once. Every step is in order, and the
-order is the specification. **Nothing in the `api` function calls the provider.**
+The `api` function does everything up to the model call, then hands the call to the background
+workflow and answers at once (ADR-0014). Every step is in order, and the order is the
+specification. **Nothing in the `api` function calls the provider.**
 
 | # | Step | Fails with | Why here |
 | --- | --- | --- | --- |
@@ -215,7 +214,7 @@ order is the specification. **Nothing in the `api` function calls the provider.*
 | 4 | Read the pot: `PK = USER#<sub>`, `SK = POT#<potId>` | `not-found` | Ownership is the key, not a check (ADR-0004) |
 | 5 | Re-check the photo: type in `ACCEPTED_PHOTO_TYPES`, shorter side ≥ 200, longer side ≤ 1000 | `wrong-format`, `photo-too-small`, `photo-too-large` | A check that only runs in the browser is not a check (ADR-0007). US-01 AC-2, AC-4, AC-5 |
 | 5b | **Decode and re-encode the photo to JPEG. Use the re-encoded bytes from here on** | `wrong-format` | §4b below. Strips EXIF, proves the bytes are an image, fixes rotation |
-| 6 | Read the kill-switch from the `CONFIG` cache | `feature-off` | US-13 AC-1, AC-3. NFR-34 |
+| 6 | Read the kill-switch from the `CONFIG` cache. **Only the boolean `true` is on.** A missing row, or an `enabled` that is not a boolean, is off (§6, ADR-0019) | `feature-off` | US-13 AC-1, AC-3. NFR-34, NFR-39. Before step 7, so an attempt is never counted |
 | 6b | **Read the circuit breaker row. If it is open and the retry moment has not passed, stop** | `provider-unavailable` | Gate 50, `02-cost-guardrails.md` §5.6. **Before step 7, so an open breaker does not spend one of the person's ten** |
 | 6c | **Claim the request id: conditional `PutItem` on `SK = IDEM#<requestId>`** | — **not a failure**; answer from what the stored row holds | §4a below. A resend of the same `requestId` gets the same answer as the first send |
 | 7 | **The daily limit: one conditional `UpdateItem`** | `daily-limit-reached` | US-08 AC-1, AC-3. NFR-12. §5 below |
@@ -249,13 +248,14 @@ integration, with no Lambda in between (`05-patterns.md` §13).
 
 ### 4a. The request id, so one tap is one charge
 
-**Added 2026-08-31 (owner). This closes F-13 in `07-adversarial.md`, which was open.**
+**This answers F-13 in `07-adversarial.md`. The owner decided it on 2026-08-31.**
 
-`POST /api/assessments` is the only route that spends money, and it was the only route with no
+`POST /api/assessments` is the only route that spends money, so it is the route that most needs
 protection against running twice. The design's own budget allows **4,000 ms for the upload on a weak
 signal** (`03-flow.md` §2, step 3), and a weak signal is exactly when a person taps again or a
-browser resends. Each duplicate was a second quota increment, a second S3 object, a second **paid**
-model call and a second row — for one result on screen. The person would lose two of their ten.
+browser resends. Without this protection, each duplicate would be a second quota increment, a second
+S3 object, a second **paid** model call and a second row — for one result on screen. The person
+would lose two of their ten.
 
 **The browser makes the `requestId`** and puts it in the form body. The API never makes one. When
 the browser sends the same id again and when it makes a new one is set in `02-web-spec.md` §4.2.
@@ -269,9 +269,9 @@ Step 6c:
     ttl                  now + 10 minutes
 ```
 
-**The claim is step 6c, after the kill-switch and the breaker and before the daily limit.** It used
-to be step 3a, before the photo was even decoded. It moved so that a request the product was going
-to refuse anyway never leaves a row behind.
+**The claim is step 6c, after the kill-switch and the breaker and before the daily limit.** It comes
+after those checks so that a request the product is going to refuse anyway never leaves a row
+behind.
 
 - **The condition passes** — this send is new. Carry on to step 7.
 - **The condition fails** — this send has been seen. Read the row, and answer by what it holds.
@@ -332,18 +332,18 @@ the rows never accumulate. The TTL is a tidy-up, not a rule — nothing depends 
 
 ### 4b. Re-encoding the photo, which is three fixes in one step
 
-**Added 2026-08-31 (owner).** Step 5 used to be the only photo check, and it read the type the
-client **declared**. `02-web-spec.md` §5 already says why that is not enough: *"a script is not the
-browser"*. So the original bytes went to the bucket and to Anthropic exactly as sent.
+**The owner decided this on 2026-08-31.** Step 5 on its own reads the type the client **declares**.
+`02-web-spec.md` §4.1 says why that is not enough: *"a script is not the browser"*. Without step 5b,
+the original bytes would go to the bucket and to Anthropic exactly as sent.
 
-**Three problems came from that one gap:**
+**That one gap causes three problems:**
 
 1. **EXIF.** A phone photo carries the GPS position where it was taken — for a plant on a windowsill,
    that is the person's home. It would sit in the bucket for 180 days and be sent to a third party.
    `.claude/skills/security/SKILL.md` makes stripping it a rule and says it *"must be provable on the
    server"*.
-2. **The type check was not a check.** An extension is not evidence. A file that is not an image
-   would reach S3 and the model.
+2. **A check of the declared type is not a check.** An extension is not evidence. A file that is not
+   an image would reach S3 and the model.
 3. **Rotation.** Orientation lives in the EXIF that is being removed, so it has to be applied first
    or the photo arrives sideways.
 
@@ -351,18 +351,18 @@ browser"*. So the original bytes went to the bucket and to Anthropic exactly as 
 real: a file that will not decode is not an image.** Use the re-encoded bytes for step 8 and for the
 model call — never the bytes that arrived.
 
-**This needs `sharp`, and it changes the infrastructure plan.** `01-iac-plan.md` used to say "use a
-pure-JavaScript image-header reader, not `sharp`", because a native module breaks an `ARM_64` bundle
-built on an x86 runner. That line was amended on the same day: the condition it names has a second
-half — *"or the build must run on an arm64 runner"* — and the build moves to `ubuntu-24.04-arm`.
-Pure-JavaScript decoding of a 2 MB photo would spend real CPU inside the 20,000 ms deadline.
+**This needs `sharp`, a native module, and the infrastructure plan carries two consequences.** A
+native module built on an x86 runner breaks an `ARM_64` bundle, so the build runs on an arm64
+runner, `ubuntu-24.04-arm` (`01-iac-plan.md`). And esbuild cannot bundle a native module, so `sharp`
+is marked external and copied into the Lambda bundle (gate 73 in `factory/feature.md`).
+Pure-JavaScript decoding of a 2 MB photo would spend real CPU inside the 20,000 ms deadline, which
+is why `sharp` is used at all.
 
 ### 4c. What reaches the model, and what may never reach it
 
-**Added 2026-08-31.** ADR-0005 names the port as `assess(input: AssessmentRequest)`. **`AssessmentRequest`
-was not defined in any file**, and it was missing from `01-contracts.md` §10 — the table that exists
-to catch a wire type with no schema. So nothing said what is sent to the model, and no step in
-§4 built a prompt.
+ADR-0005 names the port as `assess(input: AssessmentRequest)`. `01-contracts.md` §4.2 defines
+`AssessmentRequest`, and §10 of that file lists it like every other type that crosses a border. This
+section says what is sent to the model and how the prompt is built.
 
 **Two user-supplied values reach the model, and both are untrusted input:**
 
@@ -382,14 +382,14 @@ to catch a wire type with no schema. So nothing said what is sent to the model, 
 
 ### 4d. The `assess` handler, and the one retry in the product
 
-**Rewritten 2026-09-17 (ADR-0014).** The workflow invokes `src/assess.ts` with the assessment key.
-In order:
+The workflow invokes `src/assess.ts` with the assessment key (ADR-0014). In order:
 
-1. **Re-read the kill-switch and the breaker** on the same 30-second cache the API uses. If the
-   switch is off or the breaker is open, **return a refusal value** — `feature-off` or
-   `provider-unavailable`. The workflow sends a refusal to `AnyCallMade`. That state gives the
-   attempt back through `Refund` only when `callsMade` is 0. When an earlier try of the same run
-   already called the model, the try counts (ADR-0016, ADR-0018).
+1. **Re-read the kill-switch and the breaker** on the same 30-second cache the API uses. The switch
+   follows the same rule as step 6 of §4: only the boolean `true` is on, and a row that cannot be
+   used is off (§6, ADR-0019). If the switch is off or the breaker is open, **return a refusal
+   value** — `feature-off` or `provider-unavailable`. The workflow sends a refusal to `AnyCallMade`.
+   That state gives the attempt back through `Refund` only when `callsMade` is 0. When an earlier
+   try of the same run already called the model, the try counts (ADR-0016, ADR-0018).
 2. Read the row and the re-encoded photo object. Build `AssessmentRequest` (§4c).
 3. **One** call to `LlmProvider.assess()`, with an 18,000 ms abort. The client is built with
    `maxRetries: 0`, because the SDK retries on its own by default and two hidden retries would turn
@@ -411,9 +411,8 @@ function did not run and no call was made. When these retries run out, the run g
 `AnyCallMade` like a refusal, and the failure is recorded as `provider-unavailable` (ADR-0018).
 
 **Once the model has answered, the write always finishes, because the money is already spent.**
-That rule is kept from run 1, and it is now easier to keep: `Persist` and `Rollup` are workflow
-steps with their own retry on DynamoDB errors, so a throttled write costs a transition, never a
-paid answer.
+`Persist` and `Rollup` are workflow steps with their own retry on DynamoDB errors, so a throttled
+write costs a transition, never a paid answer.
 
 The handler runs with reserved concurrency 1 and a 30-second function timeout, above the task's
 25-second timeout, above the model's 18-second abort. Its role is the model key parameter, the two
@@ -518,13 +517,13 @@ display only — it draws `LimitNote` — and it is never used to decide whether
 ## 6. The kill-switch and the other configuration
 
 Three values live in the `CONFIG` partition and are read on one memory cache in the function
-(ADR-0006, ADR-0008, ADR-0009, `05-patterns.md` §6):
+(ADR-0006, ADR-0008, ADR-0009, ADR-0019, `05-patterns.md` §6):
 
-| Item | Field | Compiled-in default |
+| Item | Field | When the row cannot be used |
 | --- | --- | --- |
-| `PK = CONFIG, SK = AI_ENABLED` | `enabled` | `true` |
-| `PK = CONFIG, SK = DAILY_LIMIT` | `limit` | `10` |
-| `PK = CONFIG, SK = MODEL_ID` | `modelId` | `claude-haiku-4-5-20251001` |
+| `PK = CONFIG, SK = AI_ENABLED` | `enabled` | **Off.** This row has no compiled-in default (ADR-0019) |
+| `PK = CONFIG, SK = DAILY_LIMIT` | `limit` | The compiled-in default, `10` |
+| `PK = CONFIG, SK = MODEL_ID` | `modelId` | The compiled-in default, `claude-haiku-4-5-20251001` |
 
 `05-patterns.md` §1 lists only the first of the three. The other two are put in the same partition by
 ADR-0006 and ADR-0008, both of which say the value sits beside the kill-switch.
@@ -536,16 +535,23 @@ export const CONFIG_CACHE_MS = 30_000;
 **30,000 ms, not 60,000.** Gate G-8 promises 60 seconds; thirty leaves the rest as headroom so a
 slow read still lands inside the promise (NFR-34). Do not raise it.
 
-Four rules, each one a "do not" in ADR-0009, ADR-0006 or ADR-0017:
+Five rules, each one a "do not" in ADR-0009, ADR-0006, ADR-0017 or ADR-0019:
 
 - **Do not read the row on every request.** The cache is the design.
 - **A failed read keeps the last known value.** The switch does not flip itself on a network blip.
 - **If there has never been a known value, the call does not run.** A function that cannot read its
-  own configuration should not be spending money.
-- **Every value is checked against a closed list or a range on read**, and an invalid value falls
-  back to the compiled-in default rather than being used. A bad value in this partition would
-  otherwise break three things at once. The one range is for `DAILY_LIMIT`, and the one closed list
-  is for `MODEL_ID`. Both are below.
+  own configuration should not be spending money. This rule is about a read that **failed**. A read
+  that succeeds and finds no row is a different case, covered in "When a value is refused" below.
+- **A read that succeeds always replaces the cached value, even when the value is refused.** "Keep
+  the last known value" is only for a read that fails. For `AI_ENABLED`, a refused row is cached as
+  off. If it did not replace a cached `true`, a mistake made while switching the feature off would
+  keep the feature on (ADR-0019).
+- **Every value is checked against a closed list or a range on read**, and an invalid value is never
+  used. A bad value in this partition would otherwise break three things at once. The one range is
+  for `DAILY_LIMIT`, and the one closed list is for `MODEL_ID`. Both are below, and both fall back
+  to their compiled-in default. For `AI_ENABLED` the check is that `enabled` is a boolean, and a
+  value that fails it means off — see "The kill-switch row" below. **Every refusal writes one log
+  line**, described in "When a value is refused" below.
 
 **`DAILY_LIMIT` must be a whole number from 1 to 20** (gate 75 in `factory/feature.md`).
 
@@ -581,14 +587,134 @@ ids have no date, and each one is already a fixed version. **The list is the pin
 not on it never reaches the API, so a moving alias cannot arrive by accident. Adding an id to the
 list is a new decision by the owner (ADR-0017).
 
-**The `AI_ENABLED` row holds one field.** `05-patterns.md` §1 still describes it as holding "on or
-off, who changed it, when". ADR-0009 was corrected on 2026-08-26 and its summary now says: **do not
-add `changedBy` or `changedAt`** — nothing in the application writes this row. The ADR wins.
+**The `AI_ENABLED` row holds one field, `enabled`.** Do not add `changedBy` or `changedAt`, because
+nothing in the application writes this row (ADR-0009, `05-patterns.md` §1).
+
+### When a value is refused
+
+A refused value goes unnoticed unless the API says so. A typing mistake such as
+`DAILY_LIMIT = 200` or a wrong `MODEL_ID` would pass in silence, while the product quietly runs on a
+value nobody chose. A wrong `AI_ENABLED` would turn the feature off with no visible cause. So
+**every refusal writes one structured log line**, as JSON, at level `warn`.
+
+For `DAILY_LIMIT` and `MODEL_ID` the request goes on with the default. The person sees nothing, and
+no `Problem` is sent, because the refusal is the owner's mistake and not theirs. For `AI_ENABLED`
+the request is refused with `feature-off`, exactly as when the switch is off ("The kill-switch row"
+below).
+
+The line has exactly these fields:
+
+| Field | Value |
+| --- | --- |
+| `level` | `warn` |
+| `event` | `config-value-refused`. This fixed string is the one field an alarm filters on |
+| `function` | `api` or `assess` — the function whose cache made the read. Both read `CONFIG` |
+| `configKey` | The sort key of the row: `AI_ENABLED`, `DAILY_LIMIT` or `MODEL_ID` |
+| `reason` | One of the four reasons in the table below |
+| `refusedValue` | The value as stored, turned into a string with `JSON.stringify` and cut to 100 characters. `null` when the reason is `row-missing`, or when the field is missing from the row |
+| `usedValue` | The value used instead. For `DAILY_LIMIT` and `MODEL_ID` it is the compiled-in default. For `AI_ENABLED` it is `false` (ADR-0019) |
+
+| `reason` | When |
+| --- | --- |
+| `row-missing` | The read succeeded, and the row is not in the table |
+| `wrong-type` | The row is there, and its field is missing or has the wrong type. `DAILY_LIMIT` needs a whole number, `MODEL_ID` a string, `AI_ENABLED` a boolean |
+| `out-of-range` | `DAILY_LIMIT` is a whole number outside 1 to 20 |
+| `not-on-list` | `MODEL_ID` is a string that is not in `ALLOWED_MODEL_IDS` |
+
+```ts
+export const CONFIG_REFUSED_EVENT = 'config-value-refused';
+export const CONFIG_REFUSAL_REASONS = ['row-missing', 'wrong-type', 'out-of-range', 'not-on-list'] as const;
+```
+
+Both live beside the `CONFIG` reader in `apps/api`, because neither crosses the wire.
+
+**A missing row is handled like a refused value.** The read worked, so this is not the failed-read
+case above. The table holds nothing for that key, which is the same as a row whose field is missing.
+So the line is written with `reason: row-missing`. `DAILY_LIMIT` and `MODEL_ID` then use their
+defaults, 10 and the Haiku 4.5 id. That is safe, because those defaults keep spending at its normal
+level. A missing `AI_ENABLED` row means off (ADR-0019).
+
+**Three facts about the line, and the reason for each.**
+
+- **It is written once per cache refresh, not once per request.** The cache refreshes at most every
+  `CONFIG_CACHE_MS`. So while a wrong value stays in the table, each warm function writes about two
+  lines a minute. The signal keeps coming until somebody fixes the row, and the volume stays small.
+- **`refusedValue` is safe to log.** The `CONFIG` partition is written only by the owner, in the AWS
+  website, and it holds no personal data. The value is cut to 100 characters so that a very long
+  value cannot fill the log.
+- **A wrong type on `AI_ENABLED` turns the feature off.** For example, the string `"true"` instead of
+  the boolean `true` is refused, and every new assessment answers `feature-off`. The person sees only
+  that the feature is off. This line is the one place that names the cause.
+
+**800 Infra decides whether an alarm reads this line**, and how. This file fixes only what the line
+holds.
+
+### The kill-switch row: only the boolean `true` turns the feature on
+
+**The owner decided this on 2026-10-29 (gate 86, ADR-0019).** The feature is on only when the
+`AI_ENABLED` row exists and its `enabled` field is the boolean `true`. The boolean `false` turns it
+off. Everything else also turns it off. This table is a lookup:
+
+| What a successful read finds | `reason` in the log line | Result |
+| --- | --- | --- |
+| `enabled` is the boolean `true` | No line | On |
+| `enabled` is the boolean `false` | No line | Off |
+| No `AI_ENABLED` row | `row-missing` | Off |
+| The row, with no `enabled` field | `wrong-type` | Off |
+| `enabled` of any other type: the string `"false"`, the string `"true"`, the number `0` or `1` | `wrong-type` | Off |
+
+**Do not read a string as a boolean, and do not fall back to a compiled-in `true`.** The check is
+`enabled === true` and nothing else. Reading `"false"` as off would mean guessing what a person
+meant, and every other spelling, such as `"False"` or `"no"`, would need another guess (ADR-0019).
+
+**What "off" does is the same, whatever caused it:**
+
+- **`api`** refuses at step 6 of §4 with `feature-off`, before it counts an attempt. The person sees
+  the normal "turned off" message (US-09 AC-4, SC-1 state 11).
+- **`assess`** refuses at step 1 of §4d, before the model call. The attempt is refunded, because no
+  call was made (ADR-0016, ADR-0018).
+- **When the row was refused, the function that read it writes the `config-value-refused` line.** So
+  the cause shows in the logs, not only the effect.
+- **"Off" is cached like any other read, for at most `CONFIG_CACHE_MS`.** When somebody fixes the
+  row, the feature comes back within 30 seconds, the same as a normal flip.
+
+**Why off, and what it costs.** A person edits this row by hand, and usually when something is
+already going wrong. A person who wants to stop the spending can type the string `"false"`, or
+delete the row. Both now stop the spending. The cost goes the other way: the string `"true"`, typed
+while switching the feature on, also leaves it off until somebody reads the log line and fixes the
+row. **A new table also starts with the feature off until the row exists.**
+
+**Both AWS environments, `prod` and `dev`, get their three `CONFIG` rows by hand** (gate 87 in
+`factory/feature.md`). Both environments are permanent. The owner writes the rows once, in the AWS
+website, after the first deploy of each environment. No deploy and no pipeline writes a `CONFIG`
+row. So the feature stays off in a new `dev` table, and in a `prod` table rebuilt from CDK, until
+the owner adds the `AI_ENABLED` row with `enabled = true` (ADR-0019).
+
+This rule is NFR-39: no model call while the row is missing or `enabled` is not a boolean.
+
+### The tests for this section
+
+**A unit test covers each refusal of `DAILY_LIMIT` and `MODEL_ID`.** It feeds the reader
+`DAILY_LIMIT = 200`, `MODEL_ID = claude-haiku-4-5` and a table with no `MODEL_ID` row. Each time it
+asserts three things: the default is used, exactly one line is written with the fields above, and a
+second read inside `CONFIG_CACHE_MS` writes no second line.
+
+**NFR-39 is tested on the same reader, for `AI_ENABLED`** (ADR-0019).
+
+- **Unit tests** feed it a missing row, a row with no `enabled` field, the string `"false"`, the
+  string `"true"` and the number `1`. Each time they assert that the result is off, that exactly one
+  line is written with `usedValue` `false`, and that a second read inside `CONFIG_CACHE_MS` writes
+  no second line.
+- **Two more unit tests** check the valid values: the boolean `true` gives on, and the boolean
+  `false` gives off. Neither writes a line.
+- **An integration test** caches `true`, replaces the row with the string `"false"`, waits past
+  `CONFIG_CACHE_MS`, and asserts that the provider is not called. This is the test that proves a
+  refused row replaces a cached `true`.
 
 ## 7. Deadlines
 
-**Changed 2026-09-17 (ADR-0014).** The model call is no longer inside a request, so the paid path
-has no platform clock. Two constants remain, and they belong to two different functions:
+The model call is not inside a request (ADR-0014), so the paid path has no platform clock. Two
+constants remain, and they belong to two different functions:
 
 ```ts
 export const REQUEST_DEADLINE_MS = 20_000;   // the api function's own request. NFR-02
@@ -611,7 +737,7 @@ developer can read them straight from the table with AWS credentials and run the
 local script (gate 30, ADR-0009, NFR-13).
 
 Every assessment adds to one day rollup item with an atomic `ADD`, so ten at once do not lose a
-count. Since 2026-09-17 the workflow's `Rollup` step does this write, not the `api` function:
+count. The workflow's `Rollup` step does this write, not the `api` function:
 
 ```
 UpdateItem   PK = USAGE, SK = <yyyy-mm-dd>
@@ -646,7 +772,7 @@ purpose, and `GSI1PK` style generic keys are forbidden there.
 | Profile | `USER#<sub>` | `PROFILE` |
 | Session | `SESSION#<opaque id>` | `SESSION` |
 | Pot | `USER#<sub>` | `POT#<potId>` |
-| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` — with `state` and `failureCode` since 2026-09-17 |
+| Assessment | `USER#<sub>` | `ASSESS#<potId>#<iso timestamp>` — with `state` and `failureCode` |
 | Care task | `USER#<sub>` | `TASK#<due date>#<taskId>` |
 | Today's attempts | `USER#<sub>` | `QUOTA#<yyyy-mm-dd>` |
 | **A claimed request** | `USER#<sub>` | `IDEM#<requestId>` |
@@ -654,7 +780,7 @@ purpose, and `GSI1PK` style generic keys are forbidden there.
 | Configuration | `CONFIG` | `AI_ENABLED`, `DAILY_LIMIT`, `MODEL_ID` |
 | **The circuit breaker** | `CONFIG` | `BREAKER` |
 
-**The last two rows were added on 2026-08-31.** `IDEM#` is §4a. `CONFIG / BREAKER` holds how many
+**The two rows in bold need a word each.** `IDEM#` is §4a. `CONFIG / BREAKER` holds how many
 model calls failed in a row, when the breaker opened and the moment it may next let one call
 through (gate 50, `02-cost-guardrails.md` §5.6). **It is never `CONFIG / AI_ENABLED`.** The
 kill-switch is a person's decision and the breaker is automatic; if they shared a row, the machine
@@ -666,9 +792,8 @@ capacity units (ADR-0002). The first index arrives in run 3, for backbone 6's qu
 ## 9. Photos
 
 - One object per photo, in one private bucket, at `photos/<userId>/<potId>/<createdAt>.jpg` — the
-  timestamp, **not** the assessment id, which carries a `#`. **Gate 38 settled this on 2026-08-26
-  and ADR-0007 was amended to match.** This bullet used to print the old reasoning underneath the
-  new key, which read as though the question were still open. It is not.
+  timestamp, **not** the assessment id, which carries a `#`. **The owner settled this on 2026-08-26
+  (gate 38), and ADR-0007 matches.**
 - **No thumbnail, no resized copy, no cached copy, no second copy anywhere** (NFR-42,
   `05-patterns.md` §9). US-10 AC-3 says every copy must go, and the cheapest way to satisfy that is
   never to make one.
@@ -707,11 +832,10 @@ is the specification:
    from and the action text (US-03 AC-3, `05-patterns.md` §1).
 7. **Write the new task's id back onto the assessment row's `careTaskId`.** Two writes, task first.
 
-**Step 0 and step 7 were added on 2026-08-31, and without them the field is a lie.**
-`Assessment.careTaskId` is declared in `01-contracts.md` §5 and **nothing ever wrote it**. So it was
-always `null` when a screen re-read the assessment, the result screen could never tell that a task
-already exists, and one assessment could produce any number of duplicate tasks because nothing
-checked.
+**Step 0 and step 7 keep `Assessment.careTaskId` true.** The field is declared in `01-contracts.md`
+§7. Without these two steps nothing writes it: it would always be `null` when a screen re-reads the
+assessment, the result screen could never tell that a task already exists, and one assessment could
+produce any number of duplicate tasks because nothing checks.
 
 **Step 0, before every other check:** if the assessment's `careTaskId` is already set, answer
 `task-not-possible`. **And `DELETE /api/care-tasks/:careTaskId` clears it**, so a person who deletes a
@@ -744,6 +868,24 @@ different events, and so are `provider-refused`, `answer-truncated` and `answer-
 difference is the whole signal for 800 Infra, and NFR-23 counts two of them apart (ADR-0005,
 `05-patterns.md` §8).
 
+**Only `prod` turns log lines into metrics.** A log line creates a CloudWatch custom metric, such as
+`ModelCalls` or `CostMicroUsd`, when it carries the Embedded Metric Format block. That block is the
+`_aws` field, and it tells CloudWatch which fields of the line are metrics. These metrics have no
+environment in their name or their dimensions. `dev` runs `e2e` and `perf-flow` on the stub model
+provider (gate 87), so its stub calls would be counted in the same metrics as `prod`'s real calls,
+and they could fire `prod`'s alarms. **The rule: one logger function adds the `_aws` block, and only
+when the environment variable `ENV_NAME` is `prod`.** The functions already receive `ENV_NAME`, set
+to `prod` or `dev` by 800 Infra (`03-observability.md` §4). In `dev`, in `local` and in tests every
+line is still written with all its other fields, and no metric is created. A missing `ENV_NAME`, or
+any value other than `prod`, means no metrics, so a new environment cannot add to `prod`'s numbers
+by mistake. A unit test asserts both cases: no `_aws` block when `ENV_NAME` is missing or `dev`,
+and the block when it is `prod`. **Do not add an environment dimension instead.** `dev` would then
+still write metrics, and each dimension value is a separate custom metric.
+
+**A refused `CONFIG` value writes one `warn` line, `config-value-refused`.** Its fields are in §6,
+"When a value is refused". It belongs to a cache read, not to an assessment, so it carries no
+assessment id.
+
 **Never logged:** the photo bytes, the pot name, the next-action text, the verdict sentence, any
 cookie value, and any token. A pot name is typed by a person and can hold anything, and the photo is
 of the inside of a home.
@@ -764,7 +906,7 @@ happens. AWS keeps its own record of the console change (ADR-0009, gate 30).
 | US-07 Sign in once, see only my own | `GET /api/auth/sign-in`, `GET /api/auth/callback`, `POST /api/auth/sign-out`, `GET /api/me`, **and the guard on every other route** |
 | US-08 Stopped at my own limit | `POST /api/assessments` (429), `GET /api/me` |
 | US-09 A message that says if trying again helps | **Every route.** The `Problem` envelope carries `retryHint` |
-| US-10 How long photos are kept, and delete | `GET /api/assessments/:id/photo-url`, `DELETE /api/assessments/:id/photo`. **AC-7 and its route moved out of run 1 on 2026-08-31** |
+| US-10 How long photos are kept, and delete | `GET /api/assessments/:id/photo-url`, `DELETE /api/assessments/:id/photo`. **AC-7 and its route are out of run 1** (owner, 2026-08-31) |
 | US-11 Hungarian or English | Every route takes or returns a `Locale`. The API sends codes, never prose |
 | US-12 An admin reads the figures | **No endpoint.** Moved out of run 1 by the owner, gate 30. The three numbers are written on every assessment (§8) and read from the table |
 | US-13 The feature can be turned off | **No endpoint.** The row is edited in the AWS website. Its effect is step 6 of §4 |
@@ -778,9 +920,6 @@ exactly why the guard has to be right now.
 
 ## 13. What this file does not decide
 
-The function timeout, the memory size and the log destination, which are 800 Infra's · whether SSE-S3
-is enough, which ADR-0007 hands to 900 Security · the unit test runner · whether the care task date
-should follow the reader's timezone instead of UTC.
-
-**Settled since this file was written:** ADR-0007's photo key (gate 38, the timestamp) and the Zod
-major version (4, pinned in the catalog). Neither is an open question any more.
+The function timeout, the memory size and the log destination, which are 800 Infra's · any alarm on
+the log lines in §11, which is 800 Infra's · whether SSE-S3 is enough, which ADR-0007 hands to 900
+Security · whether the care task date should follow the reader's timezone instead of UTC.

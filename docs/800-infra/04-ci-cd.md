@@ -1,8 +1,6 @@
 # The pipeline — build, test, scan, deploy, and how to go back
 
-**Written by** 800 Infra, run 1 (`001-photo-assessment`). **Date:** 2026-08-27.
-**Updated** 2026-08-28 with the owner's answers to gates 43 to 63.
-**Read next by** 900 Security, 600 QA.
+**Written by** 800 Infra, run 1 (`001-photo-assessment`). **Read next by** 900 Security, 600 QA.
 
 This file says which workflows exist and what each one runs. It says which checks must pass before a
 change can merge, and how a bad change is undone. It solves one problem. A gate has to fail the
@@ -15,9 +13,13 @@ reaches AWS without a stored password.
 **The repository is `poszetkristof/zamphora` and it is public** (gate 47, owner, 2026-08-27). That
 one fact changes several things in this file, and each is marked where it appears.
 
-**§6 is the list of work owed outside this document.** Two workflow files already exist and one does
-not match. Files that belong to other roles need changes this role may not make. Read §6 before
-writing any code.
+**§6 is the work owed outside this document.** Two workflow files already exist and one does not
+match. Read §6 before writing any code.
+
+**Pull requests are tested in the permanent `dev` environment** (gate 87, owner). §7 says how `dev`
+is deployed and how two pull requests are kept from clashing. **One question here is open and
+belongs to the owner: gate 88.** It asks whether `dev.yml` may delete test account A's daily
+counter row before `e2e` and `perf-flow` run (§7, `00-environments.md` §4).
 
 ---
 
@@ -35,15 +37,14 @@ writing any code.
 | **Only actions on the allow-list may run** | Gates 59 and 63 |
 | **Nothing secret is in the repository** | Gate 47. It is public. Every key is in Parameter Store |
 
-**NFR-51's 10 minutes is still the target even though minutes are now free.** The reason changed
-rather than disappearing. It was about a limited allowance. It is now about the developer's own
-waiting time, and about ADR-0001's split trigger, which fires at 15 minutes.
+**NFR-51's 10 minutes is still the target even though minutes are free.** The reason is not a
+limited allowance. It is the developer's own waiting time, and ADR-0001's split trigger, which fires
+at 15 minutes.
 
 ### Node 24, and why the number has a date beside it
 
-**Decided by the owner on 2026-08-27, gate 60.** ADR-0012 said Node 22 for both the Lambda runtime
-and the CI image. It is now **Node 24 in both places**, and the reason is support length rather than
-a feature.
+**Decided by the owner on 2026-08-27, gate 60.** The Lambda runtime and the CI image both run
+**Node 24**, and the reason is support length rather than a feature.
 
 Checked first-hand on the
 [AWS Lambda runtimes page](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html) on
@@ -112,7 +113,7 @@ workflow, and a rule that depends on memory is the weak part.
 | --- | --- | --- | --- |
 | `ci.yml` | Push to `main`, and every pull request | `detect`, `quality`, `audit`, `test`, `build`, `infra-assert`, **`ci-ok`** | No |
 | `codeql.yml` | Push to `main`, every pull request, and weekly | `detect`, `analyze` | No |
-| `pr-preview.yml` | Every pull request to `main` **from a branch in this repository** | `deploy-preview`, `bundle-budget`, `e2e`, `perf-flow`, `destroy-preview`, **`preview-ok`** | Yes |
+| `dev.yml` | Every pull request to `main` **from a branch in this repository** | `deploy-dev`, `bundle-budget`, `e2e`, `perf-flow`, **`dev-ok`** | Yes, `dev` only |
 | `deploy-prod.yml` | **A person presses the button** | `deploy` | Yes |
 | `rollback.yml` | A person presses the button, with a git SHA | `rollback` | Yes |
 | `retention-audit.yml` | Monthly, on a schedule | `retention-audit` | Yes, read only |
@@ -143,26 +144,26 @@ audience: sts.amazonaws.com
 | Role | May be assumed from | May do |
 | --- | --- | --- |
 | `zamphora-github-deploy` | `repo:poszetkristof/zamphora:ref:refs/heads/main` | Assume the CDK deploy roles for the `prod` stacks |
-| `zamphora-github-preview` | `repo:poszetkristof/zamphora:pull_request` | Assume the CDK deploy roles for `preview` stacks only |
+| `zamphora-github-dev` | `repo:poszetkristof/zamphora:pull_request` | Assume the CDK deploy roles for the `dev` stacks only. **No write to any `CONFIG` row** (gate 87). **If gate 88 says yes**, also `dynamodb:DeleteItem` on the `dev` table only, limited to the partition `USER#<test account A sub>` with the condition key `dynamodb:LeadingKeys` (§7) |
 | `zamphora-github-audit` | `repo:poszetkristof/zamphora:environment:audit` | Read only: `s3:ListBucket`, `s3:GetObject`, `dynamodb:Query`, `dynamodb:Scan`, `cloudformation:Describe*` |
 
-**Why the third role exists** (added 2026-08-31). §8 says the monthly retention audit "uses a
-read-only role", but only two roles were defined. A scheduled workflow runs on the default branch,
-so its OIDC claim is `repo:poszetkristof/zamphora:ref:refs/heads/main` — which matches the **deploy**
-role. An unattended job running every month with nobody watching would have held full deploy rights
-on `prod`. That is the exact thing §8's sentence exists to prevent.
+**Why the third role exists.** §8 says the monthly retention audit uses a read-only role. A
+scheduled workflow runs on the default branch, so its OIDC claim would be
+`repo:poszetkristof/zamphora:ref:refs/heads/main` — which matches the **deploy** role. An unattended
+job running every month with nobody watching would then hold full deploy rights on `prod`. That is
+the exact thing §8's sentence exists to prevent.
 
 **The `environment:audit` claim is what makes it tight.** `retention-audit.yml` declares
 `environment: audit`, and GitHub then puts `environment:audit` in the token's `sub` instead of the
-branch. So the deploy role's trust policy no longer matches this workflow, and this role's policy
+branch. So the deploy role's trust policy does not match this workflow, and this role's policy
 matches nothing else.
 
 **The `sub` condition must name the branch, not just the repository. This is the protection.** A
 trust policy that says only `repo:poszetkristof/zamphora:*` can be satisfied by **any** branch in
 that repository.
 
-**Both roles are created by hand, once, by the owner** (`01-iac-plan.md` §10). CI cannot create the
-role it needs in order to sign in.
+**All three roles are created by hand, once, by the owner** (`01-iac-plan.md` §10). CI cannot create
+the role it needs in order to sign in.
 
 ### Where the role's ARN lives
 
@@ -190,7 +191,7 @@ Every action in use today is GitHub's own — `actions/checkout`, `actions/setup
 `github/codeql-action`.
 
 **`aws-actions/configure-aws-credentials` is the one exception, and it is added by name**
-(gate 63, owner, 2026-08-28). `deploy-prod.yml`, `rollback.yml`, `pr-preview.yml` and
+(gate 63, owner, 2026-08-28). `deploy-prod.yml`, `rollback.yml`, `dev.yml` and
 `retention-audit.yml` all need it. It is Amazon's action, not GitHub's, so the current list refuses
 it, and without the change the first deploy fails with an error about a disallowed action.
 
@@ -222,7 +223,7 @@ permissions:
 Connect token, because otherwise anybody on the internet could open a pull request that assumes a
 role in this AWS account. **This cannot be switched off, and it is the wall that matters.**
 
-So `pr-preview.yml` carries a condition:
+So `dev.yml` carries a condition:
 
 ```yaml
 if: github.event.pull_request.head.repo.full_name == github.repository
@@ -269,8 +270,8 @@ detect         is there a package.json yet?
 | `detect` | Looks for a `package.json` | Lets CI pass on a repository that is still only specs |
 | `quality` | `pnpm format:check`, `pnpm lint` | ADR-0001 rule 1 lives in the linter: no relative import crosses an app border |
 | `audit` | `pnpm audit --audit-level=high` | A high or critical advisory stops the merge. Low and moderate are reported and do not fail |
-| `test` | Per workspace, in a matrix over `apps/web`, `apps/api`, `packages/contracts`: `pnpm type-check`, then `pnpm test` | NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-42, NFR-43, NFR-52 |
-| `infra-assert` | `cdk synth` and assertions, no AWS call | **NFR-40**, the capacity total in §6, and since 2026-09-17 the state machine's call cap and its one path into `Refund` (NFR-05, NFR-38) |
+| `test` | Per workspace, in a matrix over `apps/web`, `apps/api`, `packages/contracts`: `pnpm type-check`, then `pnpm test` | NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-39, NFR-42, NFR-43, NFR-52 |
+| `infra-assert` | `cdk synth` and assertions, no AWS call | **NFR-40**, the capacity total in §6, and the state machine's call cap and its one path into `Refund` (NFR-05, NFR-38) |
 | `build` | `pnpm build` | A change that does not build cannot ship |
 | `ci-ok` | Asserts every job above succeeded | §9 |
 
@@ -287,15 +288,14 @@ detect         is there a package.json yet?
 - **`infra-assert` makes no AWS call.** It runs `cdk synth` into a template in memory and asserts
   against it, so it needs no credential and costs nothing (`06-nfrs.md` §1). Two assertions on day
   one. First, the photo bucket's lifecycle rule expires objects at exactly 180 days (NFR-40).
-  Second, the DynamoDB read and write capacity is 20 in `prod` and 5 in `preview`, and the total
-  never adds up to more than 25 (gate 43, `01-iac-plan.md` §4.1). **Five more since 2026-09-17**,
-  on the state machine. `01-iac-plan.md` §4.4b lists them, and ADR-0018 sets the last two. In
-  short: the type is `STANDARD`; there is no machine-level `TimeoutSeconds`; the `Assess` `Retry`
-  list is exactly `Lambda.TooManyRequestsException` with `MaxAttempts: 2`, and
-  `retryOnServiceExceptions` is off; the three provider errors are in the `Catch` that counts
-  `callsMade`, and `RetryOrStop` stops at 3; and every path into `Refund` passes `AnyCallMade` with
-  `callsMade` at 0. Plus one on roles: the `api` function's role has no read on the model key
-  parameter.
+  Second, the DynamoDB read and write capacity is 20 in `prod` and 5 in `dev`, and the total never
+  adds up to more than 25 (gate 43, `01-iac-plan.md` §4.1). **Five more on the state machine.**
+  `01-iac-plan.md` §4.4b lists them, and ADR-0018 sets the last two. In short: the type is
+  `STANDARD`; there is no machine-level `TimeoutSeconds`; the `Assess` `Retry` list is exactly
+  `Lambda.TooManyRequestsException` with `MaxAttempts: 2`, and `retryOnServiceExceptions` is off;
+  the three provider errors are in the `Catch` that counts `callsMade`, and `RetryOrStop` stops at
+  3; and every path into `Refund` passes `AnyCallMade` with `callsMade` at 0. Plus one on roles: the
+  `api` function's role has no read on the model key parameter.
 - **The router test is in `test` and it is the one that guards a security rule.** NFR-32: a test
   walks the whole Nest.js router and asserts every route carries `@Anonymous()`, `@Roles('USER')` or
   `@Roles('ADMIN')`. A new route with none fails the build before anybody can call it (ADR-0004).
@@ -327,9 +327,7 @@ never have been part of `ci-ok`.
 
 ## 6. Work owed outside this document
 
-Two kinds. The first is a file in this repository that disagrees with these specifications. The
-second is a set of changes in files that belong to other roles, which this role may name but may not
-make.
+One file in this repository disagrees with these specifications.
 
 ### 6.1 `.github/workflows/ci.yml` exists and does not match
 
@@ -372,108 +370,108 @@ discovered is the point of this section.
 **Nothing above changes what `ci-ok` is or how branch protection works.** That part of the file is
 already right, and §9 describes it.
 
-### 6.2 Changes owed in files this role may not write
+## 7. `dev.yml` — the jobs that need a real deploy
 
-Every line below was named somewhere in `docs/800-infra/`. They are collected here so the owner has
-one list instead of five.
-
-**Status 2026-09-17: every line in this table is now marked DONE.** The last six were applied in two
-passes — gates 53 and 62 into ADR-0006 on 2026-09-17, and the four `05-patterns.md` and
-`03-api-spec.md` lines on 2026-08-31, where the change landed but the row was never ticked. **A
-ledger that is not ticked is worse than no ledger**, because the next reader re-does the work or
-assumes it was skipped.
-
-**Two lines were missing from this table and are now in it:** `docs/context/stack.md` §3 still said
-"fixed at 25 write and 25 read units", and its gotcha table said "run 1 has one table". Only the
-Node line was listed. That is how a stale rule survives a list of stale rules.
-
-| File | Section | The change, in one sentence | From |
-| --- | --- | --- | --- |
-| **DONE** `docs/ADR/0002-run-the-api-on-lambda-and-store-data-in-dynamodb.md` | Decision, and the Agent-Readable Summary | "fixed at 25 write and 25 read units" and "Do not add a second table in run 1" both become: one table per environment, `prod` at 20/20 and `preview` at 5/5, and **the total across every table in the Region must never pass 25** | Gate 43 |
-| **DONE** `docs/ADR/0006-choose-the-model-by-measuring-it.md` | The 2026-08-27 note about the model id | **Both id forms are real, and neither is an error.** `claude-haiku-4-5-20251001` is the pinned snapshot and `claude-haiku-4-5` is an alias pointing at it. Say that the dated snapshot is the one written into `CONFIG`, because a provider can move an alias with no deploy and no warning. **This is a correction, not the removal of a mistake** | Gate 53 |
-| **DONE** `docs/ADR/0006-choose-the-model-by-measuring-it.md` | Decision 3, the run-1 default. **Landed as decision 8** | Record that **Claude Haiku 4.5 retires no sooner than 2026-10-15** (checked 2026-08-28), and add the re-check trigger. The id lives in a DynamoDB row, not in code, so changing model is one edit and no deploy | Gate 62 |
-| **DONE** `docs/ADR/0012-run-the-workspace-on-pnpm-and-turborepo.md` | "What it costs", the second cost | *"pnpm 11 needs Node 22"* becomes **Node 24**, with both deprecation dates written in: `nodejs24.x` deprecates 2028-04-30 and `nodejs22.x` deprecates 2027-04-30 (checked 2026-08-27) | Gate 60 |
-| **DONE** `docs/context/stack.md` | §1 | "22 or newer" becomes **24**, so the three files stop disagreeing about one number | Gate 60 |
-| **DONE** `docs/context/stack.md` | §3 and the gotcha table | "fixed at 25 write and 25 read units" and "run 1 has **one** table" become the two-table split and the unit-hour model. **This line was missing from the list** | Found 2026-08-31 |
-| **DONE** `docs/ADR/0001-keep-one-product-repository.md` | Agent-Readable Summary | The summary named ADR-0012 and then said *"Do not add Turborepo or Nx"* in the next sentence. Turborepo is in use, so that clause told an agent to remove it | Found 2026-08-31 |
-| **DONE** `docs/400-architecture/05-patterns.md` | §1, the item shapes | Add the circuit breaker's row: how many model calls failed in a row, when it opened, when it may next let one call through, and a time-to-live. **It must never be `PK = CONFIG, SK = AI_ENABLED`** | Gate 50 |
-| **DONE** `docs/500-engineering/03-api-spec.md` | §8.1, the item table | Add the same breaker row, so the API's own list of what it reads and writes is complete | Gate 50 |
-| **DONE** `docs/500-engineering/03-api-spec.md` | §4, the step list. **Landed as step 6b** | Add the breaker check **between step 6 and step 7** — after the kill-switch, before the daily limit — so an open breaker does not spend one of the person's ten | Gate 50 |
-| **DONE** `docs/400-architecture/06-nfrs.md` | NFR-06 | *"Read from the `InitDuration` CloudWatch metric"* is wrong: there is no such metric — use the Logs Insights query in `03-observability.md` §4. **The number also changed, 2026-08-31: 800 ms described a plain Node handler, not a bundled Nest+Express one. It is now 2,000 ms** | Found by this role |
-| **DONE** `docs/500-engineering/03-api-spec.md` | §9, first bullet | The bullet contradicts itself: it says the photo key uses the timestamp "**not** the assessment id", then says the key carries a `#`. ADR-0007 gate 38 settled it — delete the stale half | Found by this role |
-
-**One more, and it is conditional.** If the owner wants the open circuit breaker to have its own
-failure code rather than reusing `provider-unavailable`, then
-`docs/500-engineering/01-contracts.md` §8 gains the code and `docs/300-design/001-photo-assessment/02-SPEC.md`
-§6 gains a screen for it first (ADR-0005). **This role's recommendation is to reuse
-`provider-unavailable` and make neither change** — see `02-cost-guardrails.md` §5.
-
-## 7. `pr-preview.yml` — the jobs that need a real deploy
-
-**This workflow does not exist yet.** Gate 43 gave the `preview` environment its own DynamoDB table
-at 5 read and 5 write units. `prod` dropped to 20 and 20, so the two fit inside the free allowance
-of about 18,250 capacity-unit-hours a month (`00-environments.md` §5). So it can be built.
+**This workflow does not exist yet.** It deploys the pull request's code into the permanent `dev`
+environment and tests it there (gate 87, `00-environments.md` §2). `dev`'s table runs at 5 read and
+5 write units for the whole month, beside `prod`'s 20 and 20, inside the free allowance of about
+18,250 capacity-unit-hours a month (`00-environments.md` §5).
 
 ```
-deploy-preview ─> bundle-budget ─> e2e ─> perf-flow ─> destroy-preview  (always runs)
-                                                    └─> preview-ok      (always runs)
+deploy-dev ─> bundle-budget ─> e2e ─> perf-flow ─> dev-ok   (always runs)
 ```
 
 | Job | What it does | Requirement |
 | --- | --- | --- |
-| `deploy-preview` | `cdk deploy --all` into a stack named for the pull request, in `eu-central-1` | — |
+| `deploy-dev` | `cdk deploy` of the seven `dev` stacks (`01-iac-plan.md` §3), in `eu-central-1`. **It writes no table row** | — |
 | `bundle-budget` | `size-limit` on the built output for SC-1 | NFR-50 |
-| `e2e` | Playwright: sign in, then assert `localStorage` and `sessionStorage` are empty and the only cookie is `__Host-session` with `HttpOnly`, `Secure` and `SameSite=Strict`. Assert the two AI notice lines on SC-3, SC-4 and SC-5 in both languages | NFR-33, NFR-37 |
-| `perf-flow` | The whole journey, network throttled to 400 kbps up, a fixed 200 KB photo, the provider replaced by a stub. **Run it twice: once with the stub sleeping 8,000 ms and once with it sleeping 18,000 ms.** Both must assert two timers: tap to the confirmed waiting screen p95 ≤ 30,000 ms, and tap to the result p95 ≤ 60,000 ms. A third run has the stub throw a timeout twice and then answer, and asserts the result still arrives inside 60,000 ms | NFR-01, NFR-07 |
-| `destroy-preview` | `cdk destroy --all`, **with `if: always()`** | The environment must not survive a failed run |
-| **`preview-ok`** | Asserts the three test jobs succeeded. **`if: always()`** | The second required check. §9 |
+| `e2e` | First the counter reset below, if gate 88 says yes. Then Playwright: sign in, then assert `localStorage` and `sessionStorage` are empty and the only cookie is `__Host-session` with `HttpOnly`, `Secure` and `SameSite=Strict`. Assert the two AI notice lines on SC-3, SC-4 and SC-5 in both languages | NFR-33, NFR-37 |
+| `perf-flow` | First the counter reset below, if gate 88 says yes. Then the whole journey, network throttled to 400 kbps up, a fixed 200 KB photo, the provider replaced by a stub. **Run it twice: once with the stub sleeping 8,000 ms and once with it sleeping 18,000 ms.** Both must assert two timers: tap to the confirmed waiting screen p95 ≤ 30,000 ms, and tap to the result p95 ≤ 60,000 ms. A third run has the stub throw a timeout twice and then answer, and asserts the result still arrives inside 60,000 ms | NFR-01, NFR-07 |
+| **`dev-ok`** | Asserts the three test jobs succeeded. **`if: always()`** | The second required check. §9 |
 
-**Five things that are easy to get wrong here.**
+**`dev` is never destroyed.** There is no clean-up job. A failed run leaves `dev` holding that pull
+request's code, and the next run deploys its own code over it before testing.
 
-- **`destroy-preview` must run even when an earlier job failed.** Without `if: always()`, a broken
-  test leaves a stack behind. A stack left behind bills 5 read and 5 write units for every hour it
-  survives — about 3,650 unit-hours if it lives a month, which is the whole slice the allowance has
-  spare. It does not take capacity away from `prod`; it quietly spends the free allowance.
-- **`preview-ok` needs `if: always()` for the same reason `ci-ok` does**, and the reason is in §9.
-  Its `needs:` list is `[bundle-budget, e2e, perf-flow]` — **not** `destroy-preview`, because a
-  clean-up that failed should be seen and fixed but must not block a merge on its own.
-- **~~Only one preview environment at a time.~~ Withdrawn 2026-08-31.** This rule was written on the
-  belief that 25 capacity units is a ceiling applying at every moment, so two preview tables would
-  "break the 25 total". That is not how DynamoDB bills. The allowance is about **18,250
-  capacity-unit-hours a month** (`00-environments.md` §5), and a second short-lived preview table
-  costs unit-hours, not capacity taken from `prod`. A pull request that lives a few hours costs a
-  fraction of a cent. **Two open pull requests are fine.** What still matters is a preview stack left
-  running for weeks, and the answer to that is the clean-up job plus the monthly `cdk diff`, not a
-  queue.
+### Two pull requests at the same time
+
+**Only one run may use `dev` at a time.** `dev` is one copy, so two runs at once would deploy over
+each other, and one pull request's tests would run against the other's code. The workflow carries
+one concurrency group for all pull requests:
+
+```yaml
+concurrency:
+  group: dev
+  cancel-in-progress: false
+  queue: max
+```
+
+- **`group: dev`, at the workflow level, not per pull request.** One run holds `dev` from
+  `deploy-dev` to `dev-ok`. A second pull request's run waits as `pending` and starts when the first
+  ends. It then deploys its own code first, so its tests never see the other pull request's code.
+- **`cancel-in-progress: false` is the important line.** `cancel-in-progress: true` can stop a
+  `cdk deploy` in the middle. CloudFormation does not roll back because the runner went away; the
+  stack is simply left in `UPDATE_IN_PROGRESS` and the next deploy refuses to start until somebody
+  fixes it by hand.
+- **`queue: max` keeps every waiting run.** Without it, a group holds only one waiting run. GitHub's
+  documentation says that *"any existing `pending` job or workflow in the same concurrency group
+  will be canceled"* when a new one arrives. With `queue: max`, up to 100 runs can wait, and none is
+  cancelled. `queue: max` cannot be combined with `cancel-in-progress: true`
+  ([Control the concurrency of workflows and jobs](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/control-the-concurrency-of-workflows-and-jobs),
+  checked 2026-11-03).
+- **What it costs: waiting time.** A run that waits behind another adds that time to NFR-51's 10
+  minutes. With one developer, two pull requests at once are rare.
+
+### Test account A's daily limit — gate 88
+
+`e2e` and `perf-flow` make their assessments as test account A, and the daily limit counts that
+account's assessments per UTC day. `dev`'s table is permanent, so the count stays from one run to
+the next, and a later run on a busy day would fail with `daily-limit-reached`. **The proposal is a
+first step in each of the two jobs that deletes today's counter row of test account A.** Account B
+needs no reset, because 600 QA's test plan (`docs/600-qa/001-photo-assessment/00-test-plan.md`
+§4.1) has B send at most one assessment, and only when B has none yet, so B never reaches the
+limit.
+
+```
+aws dynamodb delete-item --table-name <the dev table> \
+  --key '{"PK":{"S":"USER#<test account A sub>"},"SK":{"S":"QUOTA#'"$(date -u +%F)"'"}}'
+```
+
+- **The role may do only this.** `dynamodb:DeleteItem`, on the `dev` table only, with
+  `dynamodb:LeadingKeys` limited to `USER#<test account A sub>` (§4). It cannot reach `CONFIG`, any
+  other account, or `prod`.
+- **The concurrency group above makes it safe.** No other run is counting on that row when it is
+  deleted.
+- **Each job then has `dev`'s full daily limit, 10.** 600 QA's test plan has to keep each job at or
+  below it. The owner may raise `dev`'s `limit` row to 20, the code's maximum, if a job needs more.
+- **It waits for the owner's answer to gate 88**, because it is a pipeline step that changes table
+  data. The reasons, and what happens if the answer is no, are in `00-environments.md` §4.
+
+### Six more things that are easy to get wrong here
+
+- **`dev` already holds its three `CONFIG` rows, and nothing in this workflow writes one** (gate
+  87). The owner wrote them once by hand (`00-environments.md` §4). If they are missing, every
+  assessment answers `feature-off` and `e2e` fails on its first one. That failure is the signal to
+  do step 6 of `00-environments.md` §10.
+- **`dev-ok` needs `if: always()` for the same reason `ci-ok` does**, and the reason is in §9. Its
+  `needs:` list is `[bundle-budget, e2e, perf-flow]`.
 - **`perf-flow` runs twice, and the second run is the one that matters.** The 8,000 ms stub is the
   budgeted model latency, and `03-flow.md` §6 calls that number *"the weakest in the file. No source
   at all"*. A job that only ever sleeps 8,000 ms can never fail for the reason the architecture
   itself names as its biggest risk. The second run sleeps **18,000 ms** — the model's own abort
-  point — and the result must still arrive inside 60,000 ms. **Since 2026-09-17 the first timer, the
-  30-second promise, no longer depends on the stub at all**, because the `202` arrives before the
-  model is called (ADR-0014). The real model latency is checked by the first live call, not by this
-  job.
-- **The preview environment never calls the real Anthropic API.** `LLM_PROVIDER` is `stub`. NFR-01's
-  own description already says the provider is a stub that sleeps for the budgeted time. A preview
-  that made real calls would spend the same one $5 balance on every pull request.
-- **The e2e sign-in needs an account, and self sign-up is off** (gate 49). The owner creates one
-  test account in the `preview` user pool by hand, once. Its password is a GitHub secret, not a file
-  in the repository — the repository is public.
-
-**The concurrency group:**
-
-```yaml
-concurrency:
-  group: preview-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
-```
-
-**Both lines changed on 2026-08-31, and the second one is the important change.**
-`cancel-in-progress: true` can stop a `cdk deploy` in the middle. CloudFormation does not roll back
-because the runner went away; the stack is simply left in `UPDATE_IN_PROGRESS` and the next deploy
-refuses to start until somebody fixes it by hand. That risk was accepted to protect a capacity limit
-that does not work the way this file assumed. With the limit understood correctly, the group is now
-per pull request and nothing is cancelled.
+  point — and the result must still arrive inside 60,000 ms. **The first timer, the 30-second
+  promise, does not depend on the stub at all**, because the `202` arrives before the model is
+  called (ADR-0014). The real model latency is checked by the first live call, not by this job.
+- **`dev` never calls the real Anthropic API.** `LLM_PROVIDER` is `stub`. NFR-01's own description
+  already says the provider is a stub that sleeps for the budgeted time. `dev` also holds no model
+  key (`01-iac-plan.md` §6). A `dev` that made real calls would spend the same one $5 balance on
+  every pull request.
+- **The e2e sign-in needs two accounts, and self sign-up is off** (gate 49). The owner creates two
+  test accounts, A and B, in the `dev` user pool by hand, once. Two, because the tests check that
+  one account cannot see the other's data. Each password is a GitHub secret, not a file in the
+  repository — the repository is public. Each `sub` is a repository variable, because the counter
+  reset needs A's.
+- **`dev` has no alarms** (`03-observability.md` §5). A failed run is read in `dev`'s log groups,
+  which keep 7 days, with the queries in `03-observability.md` §7.
 
 **NFR-50 is a placeholder and must be replaced.** `06-nfrs.md` says the 170 KB figure is a guess and
 asks for the measurement of the real SC-1. **Build SC-1, measure it, write the real number into
@@ -509,6 +507,8 @@ checkout ─> install ─> build
 - The stack order is the one in `01-iac-plan.md` §3.
 - **This is the workflow that needs the allow-list entry in §4.** It cannot run until
   `aws-actions/configure-aws-credentials` is allowed by name.
+- **This workflow never writes a `CONFIG` row.** In `prod` the owner writes them by hand
+  (`00-environments.md` §4), so a deploy can never turn the paid feature on.
 
 ### `rollback.yml` — the one-step rollback
 
@@ -523,7 +523,7 @@ one result.
 
 | Level | Command | Takes | Undoes |
 | --- | --- | --- | --- |
-| 1 — stop the money | Set `CONFIG / AI_ENABLED` to `false` in the AWS console | Under a minute | Nothing. It stops new model calls |
+| 1 — stop the money | Set `CONFIG / AI_ENABLED` to the boolean `false` in the AWS console | Under a minute | Nothing. It stops new model calls |
 | 2 — old API code | `aws lambda update-alias --function-name zamphora-prod-api --name live --function-version <N>` | About a minute | The API code only |
 | 3 — everything | `gh workflow run rollback.yml -f sha=<sha>` | One deploy | Code and infrastructure |
 
@@ -578,8 +578,7 @@ so its OIDC claim cannot match the deploy role. A job that runs unattended once 
 able to delete anything.
 
 **It also runs `cdk diff --all` and fails if anything differs.** §11 of `01-iac-plan.md` says "a
-resource created by hand fails this plan", and until now nothing checked. This is the check. It
-costs nothing and it is read-only.
+resource created by hand fails this plan". This is the check. It costs nothing and it is read-only.
 
 ## 9. What blocks a merge
 
@@ -589,7 +588,7 @@ costs nothing and it is read-only.
 | # | Rule | Type | Exists |
 | --- | --- | --- | --- |
 | 1 | **`ci-ok`** | Required status check | **Yes, today** |
-| 2 | **`preview-ok`** | Required status check | **No — added with `pr-preview.yml`** |
+| 2 | **`dev-ok`** | Required status check | **No — added with `dev.yml`** |
 | 3 | **A code scanning rule for CodeQL** | Code scanning rule | To be turned on |
 
 ### One aggregate per workflow
@@ -602,7 +601,7 @@ merge-blocking jobs, so it has two aggregates.
 
 ```
 ci.yml          quality, audit, test, infra-assert, build   ->  ci-ok
-pr-preview.yml  bundle-budget, e2e, perf-flow               ->  preview-ok
+dev.yml         bundle-budget, e2e, perf-flow               ->  dev-ok
 ```
 
 **Gate 56's reasoning is kept exactly, not weakened.** Its point was that a new job should be
@@ -633,8 +632,8 @@ block the merge. The failed build would merge.
 So `always()` makes the job run whatever happened, and the `run:` step is what turns each result into
 a pass or a fail. **The two halves belong together: `always()` alone would make every run green.**
 
-**`preview-ok` is the same shape**, over `[bundle-budget, e2e, perf-flow]`. It carries NFR-01,
-NFR-33, NFR-37 and NFR-50 — the four requirements that would otherwise run, report a number and stop
+**`dev-ok` is the same shape**, over `[bundle-budget, e2e, perf-flow]`. It carries NFR-01, NFR-33,
+NFR-37 and NFR-50 — the four requirements that would otherwise run, report a number and stop
 nothing.
 
 ### A code scanning rule is not a required status check
@@ -652,21 +651,21 @@ So the ruleset for `main` gains a code scanning rule naming **CodeQL**, with a s
 owner sets. An alert at or above that level blocks the merge. **Turning it on is a settings change,
 not a workflow change** — `codeql.yml` already produces the alerts.
 
-### Two things about `preview-ok` that must not be left implied
+### Two things about `dev-ok` that must not be left implied
 
-**1. A fork's pull request can never satisfy `preview-ok`, so it can never merge on its own.**
-GitHub will not sign an AWS token for a fork (§4), so `deploy-preview` cannot run, so the three test
-jobs cannot run, so `preview-ok` never reports. A required check that never reports is a merge that
-never happens.
+**1. A fork's pull request can never satisfy `dev-ok`, so it can never merge on its own.** GitHub
+will not sign an AWS token for a fork (§4), so `deploy-dev` cannot run, so the three test jobs
+cannot run, so `dev-ok` never reports. A required check that never reports is a merge that never
+happens.
 
 **The owner has accepted this.** For a repository with one developer who merges their own branches,
 it is the right trade. The path for an outside contribution is the one in §4: the owner reads it,
 approves the run, and re-opens the change from a branch in this repository, where all three checks
 run.
 
-**2. `preview-ok` goes into branch protection in the same change that adds `pr-preview.yml`, and
-never before.** A required check that never reports blocks **every** merge, including the owner's
-own. Adding the rule first would lock the repository until the workflow landed. It is step 8 of the
+**2. `dev-ok` goes into branch protection in the same change that adds `dev.yml`, and never
+before.** A required check that never reports blocks **every** merge, including the owner's own.
+Adding the rule first would lock the repository until the workflow landed. It is step 8 of the
 checklist in §10, written as its own line so it cannot be folded into something else.
 
 ### The jobs behind the two gates
@@ -676,17 +675,17 @@ checklist in §10, written as its own line so it cannot be folded into something
 | Job | Workflow | Blocks a merge because |
 | --- | --- | --- |
 | `quality` | `ci.yml` | Formatting, and ADR-0001 rule 1 in the linter: no relative import crosses an app border |
-| `test` | `ci.yml` | Type errors, and NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-42, NFR-43, NFR-52 |
+| `test` | `ci.yml` | Type errors, and NFR-04, NFR-05, NFR-12, NFR-23, NFR-30, NFR-31, **NFR-32**, NFR-34, NFR-35, NFR-36, NFR-39, NFR-42, NFR-43, NFR-52 |
 | `audit` | `ci.yml` | A high or critical dependency advisory |
 | `infra-assert` | `ci.yml` | **NFR-40**, the 180-day lifecycle rule, the 25-unit capacity total, and the state machine's call cap and its one path into `Refund` (NFR-05, NFR-38) |
 | `build` | `ci.yml` | A change that does not build cannot ship |
-| `bundle-budget` | `pr-preview.yml` | NFR-50 |
-| `e2e` | `pr-preview.yml` | NFR-33, NFR-37, NFR-08 |
-| `perf-flow` | `pr-preview.yml` | NFR-01, NFR-07 |
+| `bundle-budget` | `dev.yml` | NFR-50 |
+| `e2e` | `dev.yml` | NFR-33, NFR-37, NFR-08 |
+| `perf-flow` | `dev.yml` | NFR-01, NFR-07 |
 
 ### The rest of the `main` ruleset
 
-- `ci-ok` must pass. `preview-ok` must pass, from the day `pr-preview.yml` lands.
+- `ci-ok` must pass. `dev-ok` must pass, from the day `dev.yml` lands.
 - A CodeQL alert above the chosen severity blocks the merge.
 - The branch must be up to date before merging.
 - Force push and deletion are off.
@@ -710,18 +709,21 @@ A checklist. `00-environments.md` §10 has the AWS half; this is the pipeline ha
    means the publisher is who they say they are. It does not mean the code is safe, and ticking it
    would allow every action from every verified publisher for ever. The list is GitHub-authored
    actions only today, so without this entry the first deploy workflow is refused.
-4. The owner creates the GitHub OpenID Connect provider and the two roles for
-   `poszetkristof/zamphora` (§4).
+4. The owner creates the GitHub OpenID Connect provider and the three roles for
+   `poszetkristof/zamphora` (§4). The `dev` role gets no `CONFIG` write. If gate 88 says yes, it
+   also gets the one `DeleteItem` permission in §4, and nothing wider.
 5. The owner puts the deploy role's ARN in the repository secret `AWS_ROLE_ARN` (gate 54).
 6. Confirm the `main` ruleset requires `ci-ok` (§9).
 7. **Turn on the code scanning rule for CodeQL in the `main` ruleset**, with a severity threshold
    (gate 61). This can be done today, because `codeql.yml` already produces the alerts.
-8. **Add `preview-ok` to the ruleset in the same change that adds `pr-preview.yml` — never before**
-   (gate 61). A required check that never reports blocks every merge, including the owner's own.
+8. **Add `dev-ok` to the ruleset in the same change that adds `dev.yml` — never before** (gate 61).
+   A required check that never reports blocks every merge, including the owner's own.
 9. Confirm *"Require approval for all external contributors"* is on (gate 55).
 10. The owner creates the GitHub environment that holds the Anthropic key, with required reviewers.
-11. The owner creates one test account in the `preview` Cognito pool, and puts its password in a
-    GitHub secret. Self sign-up is off (gate 49), so `e2e` cannot make its own.
+11. The owner creates two test accounts, A and B, in the `dev` Cognito pool. The tests need two,
+    because they check that one account cannot see the other's data. The owner puts each password
+    in a GitHub secret and each `sub` in a repository variable. Self sign-up is off (gate 49), so
+    `e2e` cannot make its own.
 12. **After the first `prod` deploy, run `rollback.yml` once on purpose**, then deploy the newest
     commit again, and write down how long it took. **A rollback nobody has ever run is a paragraph,
     not a rollback.**
@@ -740,8 +742,10 @@ moment: the first time somebody is trying to ship something.
 | `cdk-nag` or any infrastructure policy scanner | A new dependency, and infrastructure security review is 900 Security's. **Recommended to them, not added here** |
 | A secret scanner beyond GitHub's own | GitHub's built-in secret scanning is free on a public repository and needs no new tool |
 | A container build | Nothing in this product is a container (`01-iac-plan.md` §2) |
-| A staging deploy | There is no staging environment (`00-environments.md` §2) |
+| A staging deploy | There is no staging environment. `dev` is where CI tests run, not a step a release passes through (`00-environments.md` §2) |
+| A copy of the environment for each pull request | Gate 87: one permanent `dev`, shared through the concurrency group in §7 |
 | An automatic deploy on merge | Gate 48: a person starts every deploy |
+| A pipeline step that writes a `CONFIG` row, in any environment | The owner writes them by hand in `prod` and in `dev`, so no pipeline can turn the paid feature on (gate 87, `00-environments.md` §4) |
 | `pull_request_target` | It hands a stranger the AWS account. §4 |
 | Every Marketplace verified creator | Gate 63: one action by name, not a whole class of publishers. §4 |
 | A long list of branch-protection entries | Gates 56 and 61: two aggregate checks, one per workflow, plus a code scanning rule. §9 |
@@ -749,5 +753,6 @@ moment: the first time somebody is trying to ship something.
 ## 12. What this document does not decide
 
 Whether anything is deployed · what counts as a release · the go / no-go on shipping the feature ·
-which new scanning tools may be added · the severity threshold on the code scanning rule · what
-happens to preview capacity if a second person ever works on this repository at the same time.
+which new scanning tools may be added · the severity threshold on the code scanning rule · whether
+one shared `dev` is still enough when a second person works on this repository at the same time ·
+whether `dev.yml` may delete test account A's daily counter row, which is gate 88.

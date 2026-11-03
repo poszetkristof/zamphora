@@ -5,8 +5,9 @@
   throttled run that made no call loses its attempt, and a refused run that did make a call gets it
   back. Both break ADR-0016.
 - **Date:** 2026-09-17
-- **Supersedes in part:** ADR-0002 (one function for everything) and ADR-0005 (no retry).
-  Everything else in both records still stands.
+- **Supersedes in part:** ADR-0002 (one function for everything), ADR-0005 (no retry) and ADR-0007
+  decision 1 (the API calls the model with the bytes it holds). Everything else in those records
+  still stands.
 
 ## Context
 
@@ -49,7 +50,7 @@ The pieces:
 | Piece | What it does | Its permissions |
 | --- | --- | --- |
 | `api` function | Everything up to the model call: session, kill-switch, breaker, daily limit, photo checks, the `queued` row. Then `StartExecution` and a `202` | The table, the bucket, Cognito, Parameter Store. **Not the model key** |
-| `assess` function | The one model call. Reserved concurrency **1** | The model key, read the two `CONFIG` rows, write the breaker row. **Nothing else** |
+| `assess` function | The one model call. Reserved concurrency **1** | The model key, read the two `CONFIG` rows, write the breaker row, read the photo object. **Nothing else** |
 | The state machine | Runs `assess`, writes the result and the rollup with DynamoDB integrations, no Lambda in between | Invoke `assess`, update assessment and usage rows |
 | One EventBridge rule | On `FAILED`, `TIMED_OUT` or `ABORTED`, invokes `mark-failed`, which writes `failed` on the row | Update one row |
 
@@ -110,4 +111,4 @@ The rules that make it safe:
 > `ProviderUnavailable` and `Lambda.TooManyRequestsException`, with `MaxAttempts: 2`. Keep
 > `maxRetries: 0` in the adapter. Name every execution with the assessment id. Keep `assess` at
 > reserved concurrency 1 until a second user exists. Do not give `assess` any permission beyond the
-> model key, the two `CONFIG` rows and the breaker row.
+> model key, the two `CONFIG` rows, the breaker row and a read of the photo object.

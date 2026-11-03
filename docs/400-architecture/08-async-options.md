@@ -1,15 +1,14 @@
 # Two asynchronous shapes for zamphora, on the free plan
 
-**Written at the owner's request, 2026-09-17. Decided the same day: Option E** (gate 72,
-ADR-0014 to ADR-0016). This file is now the **reference** behind that decision: every link, number
+**Written at the owner's request. The owner chose Option E on 2026-09-17** (gate 72, ADR-0014
+to ADR-0016). How the workflow retries and refunds is ADR-0018 (gate 84). This file is now the **reference** behind that decision: every link, number
 and rejected shape. Nobody needs to re-read it. Read `08-async-options-short.md` instead.
 
-**Reviewed the same day by a fresh session that had none of this session's context.** It found 20
-problems, three of them blockers, and every one is folded into the text below. The three blockers
-were: Option F as first drawn looped forever, because the cleaned photo landed in the bucket that
-starts the workflow; nothing in F tied one upload to one counted attempt; and the retry in both
-shapes could never fire, because the adapter returns a failure as a value and Step Functions only
-retries an error. They are named here so the next reader knows this file was wrong once and how.
+**A fresh session with none of this session's context reviewed this file.** It found 20 problems,
+and every one is folded into the text below. Three were blockers, and each one is the reason for a
+rule here: Option F's cleaned photo must not land where it starts the workflow again; one upload
+must be tied to one counted attempt; and the adapter must throw the three provider errors, because
+Step Functions only sees an error, never a returned value.
 
 **Read next by** the owner. Then, if a shape is chosen, by 400 Architecture and 800 Infra.
 
@@ -69,7 +68,7 @@ The account is on the **free account plan**. It has **Always Free** offers only.
 trial offer is worth nothing here (`../800-infra/02-cost-guardrails.md` §2). When the credit is
 gone, the plan ends and the resources go with it.
 
-**One input changed on 2026-09-17, stated by the owner in chat:** about **$160 of credit remains**,
+**One input from the owner, stated on 2026-09-17:** about **$160 of credit remains**,
 and the free window ends 2026-12-31. So a service that costs cents or a few dollars a month is
 acceptable now. "Always Free only" is the default, not a hard rule. **Every paid line below carries
 its number**, and the account's own protections in `02-cost-guardrails.md` §6 still apply.
@@ -226,13 +225,14 @@ sequenceDiagram
     A-->>W: 202, the assessment id
     W->>U: The waiting screen. Something is on screen, the promise is kept
     W->>X: GET /api/assessments/:id/events, one open connection
-    S->>T: UpdateItem state = running, only if state = queued
+    S->>T: UpdateItem state = running, only if state = queued. callsMade = 0
     S->>M: Task: assess
     M->>T: Re-read the kill-switch and the breaker. Off or open means refuse, no call
     M->>AN: POST /v1/messages, output_config.format
     AN-->>M: An answer, or a timeout, a 429, a 503
     M-->>S: A parsed answer, or a named failure. Three of the failures are thrown as errors
-    Note over S,M: Retry only the three thrown errors. At most 2 more tries, 2 s then 4 s
+    Note over S,M: A thrown error adds 1 to callsMade. Assess runs again while it is under 3, after 2 s then 4 s
+    Note over S,T: A refusal, or a throttle that did not clear, refunds only when callsMade is 0
     S->>T: UpdateItem the result onto the row. UpdateItem the day rollup
     X->>T: GetItem every 500 ms, sends a heartbeat every 5 s
     X-->>W: event: done, with the four fields
@@ -268,38 +268,50 @@ which sits above the model's own 18-second abort, so the model always fails firs
 ```mermaid
 stateDiagram-v2
     [*] --> ClaimRun
-    ClaimRun --> Assess : UpdateItem queued to running, conditional
+    ClaimRun --> Assess : UpdateItem queued to running, conditional. callsMade = 0
     ClaimRun --> [*] : condition failed, another run owns this row, stop
-    Assess --> Assess : Retry only ProviderTimeout, ProviderThrottled, ProviderUnavailable, and Lambda.TooManyRequests. At most 2 more
+    Assess --> Assess : Retry only Lambda.TooManyRequests. Free, the function never ran. At most 2 more
     Assess --> Persist : a parsed answer
-    Assess --> Refund : refused, no call made: feature off or breaker open
-    Assess --> RecordFailure : a named failure, or the retries are used up
+    Assess --> RetryOrStop : Catch ProviderTimeout, ProviderThrottled, ProviderUnavailable. callsMade + 1
+    RetryOrStop --> Backoff : callsMade under 3
+    Backoff --> Assess : wait 2 s, then 4 s
+    RetryOrStop --> RecordFailure : callsMade = 3
+    Assess --> AnyCallMade : refused (feature off or breaker open), or still throttled
+    AnyCallMade --> Refund : callsMade = 0, no call made
+    AnyCallMade --> RecordFailure : callsMade above 0
+    Assess --> RecordFailure : a named failure, or any other error
     Persist --> Rollup : UpdateItem the result onto the row. Retry on DynamoDB errors
     RecordFailure --> Rollup : UpdateItem the failure by its name
     Refund --> RecordFailure : UpdateItem ADD attempts minus one
     Rollup --> [*] : UpdateItem the day rollup. Retry on DynamoDB errors
 ```
 
-- **The retry can only fire on an error, so the adapter throws three.** ADR-0005 says the port
+- **The workflow can only see an error, so the adapter throws three.** ADR-0005 says the port
   returns a value, never a thrown vendor error, and that stays true for the caller. The `assess`
   handler is the caller: it takes the value, and for exactly `provider-timeout`,
   `provider-throttled` and `provider-unavailable` it throws an error with that name. Every other
-  outcome is returned. Step Functions retries a thrown error and never a returned value.
+  outcome is returned. Step Functions catches a thrown error and never a returned value.
 - **The retry list is written once and the CDK default is switched off.** CDK's `LambdaInvoke`
   task adds a hidden retry of six attempts on `Lambda.ServiceException`, `Lambda.AWSLambdaException`
   and `Lambda.SdkClientException` unless `retryOnServiceExceptions: false` is set
   ([LambdaInvokeProps](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_stepfunctions_tasks.LambdaInvokeProps.html),
   checked 2026-09-17). `Lambda.SdkClientException` can arrive *after* the function already called
-  the model, so it must not be retried. The explicit list is the three thrown errors plus
-  `Lambda.TooManyRequestsException`, which is a free refusal from reserved concurrency and never a
-  spent call. `MaxAttempts: 2`, `IntervalSeconds: 2`, `BackoffRate: 2`.
+  the model, so it must not be retried. The one explicit `Retry` is on
+  `Lambda.TooManyRequestsException`, a free refusal from reserved concurrency and never a spent
+  call: `MaxAttempts: 2`, `IntervalSeconds: 2`, `BackoffRate: 2`.
+- **The three thrown errors go to a `Catch`, not a `Retry`** (ADR-0018). The `Catch` adds 1 to
+  `callsMade`, the number of model calls this run has made. `RetryOrStop` runs `Assess` again while
+  `callsMade` is under 3, after 2 seconds and then 4. A `Retry` keeps no record that a call was
+  made, and the refund below needs that record.
 - **The cost cap for one photo is three calls, about $0.012**, and it rests on two lines that
-  must both stay: `MaxAttempts: 2` here and `maxRetries: 0` in the adapter.
+  must both stay: "`callsMade` under 3" in `RetryOrStop` and `maxRetries: 0` in the adapter.
 - **`Refund` exists because two refusals happen after the attempt was counted.** Today the
   kill-switch is read before the counter moves. Here `assess` re-reads it and the breaker just
   before the call, so a switch flipped while a run was queued still stops the call — and because
-  no call was made, the person's attempt is given back with one `ADD attempts -1`. ADR-0008 gains
-  one sentence: an attempt is refunded only on a path where no call was made.
+  no call was made, the person's attempt is given back with one `ADD attempts -1`. A later try
+  cannot see what an earlier try did, so every ending that may mean "no call" — a refusal, or a
+  throttle whose retries ran out — goes through `AnyCallMade`, which refunds only when `callsMade`
+  is 0 (ADR-0018). An attempt is refunded only when the whole run made no call.
 - **`ClaimRun` makes a duplicate harmless.** It moves the row from `queued` to `running` with a
   condition. If the condition fails, the run ends at once, with one transition and no call.
 - **The write steps retry, the paid step is capped.** `Persist` and `Rollup` carry a `Retry` on
@@ -311,9 +323,9 @@ stateDiagram-v2
   saying so ([workflow types](https://docs.aws.amazon.com/step-functions/latest/dg/welcome.html),
   checked 2026-09-17). Express also has no free amount. *"Exactly once" is about starting the
   task, not about the HTTP call inside it; that is why the SDK exception above is excluded.*
-- **Transitions:** `ClaimRun`, `Assess`, `Persist`, `Rollup` — **4 in the normal case, 6 with two
-  retries.** At the daily cap of 10 for one user, that is at most 310 assessments and about 1,250
-  transitions a month in the normal case, about 1,900 in the worst, inside the free 4,000.
+- **Transitions:** `ClaimRun`, `Assess`, `Persist`, `Rollup` — **4 in the normal case.** Each paid
+  retry adds 3: `RetryOrStop`, `Backoff` and `Assess` again. `02-cost-guardrails.md` §2 owns the
+  monthly figure against the free 4,000.
 
 **The circuit breaker moves with the call, and three things about it change.** Today the API
 writes the breaker row after the call. In this shape the API never sees the outcome, so **`assess`
@@ -520,14 +532,19 @@ holds a function copy open.
 ```mermaid
 stateDiagram-v2
     [*] --> ClaimRun
-    ClaimRun --> Decode : UpdateItem queued to running, conditional
+    ClaimRun --> Decode : UpdateItem queued to running, conditional. callsMade = 0
     ClaimRun --> [*] : condition failed, a duplicate event, stop
     Decode --> Assess : clean JPEG under photos/, raw object deleted
     Decode --> Refund : not an image, too small, or the decoder refused it. No call made
-    Assess --> Assess : Retry only the three thrown errors and Lambda.TooManyRequests. At most 2 more
+    Assess --> Assess : Retry only Lambda.TooManyRequests. Free. At most 2 more
     Assess --> Persist : a parsed answer
-    Assess --> Refund : refused, feature off or breaker open
-    Assess --> RecordFailure : a named failure, or the retries are used up
+    Assess --> RetryOrStop : Catch the three thrown errors. callsMade + 1
+    RetryOrStop --> Assess : callsMade under 3, after 2 s, then 4 s
+    RetryOrStop --> RecordFailure : callsMade = 3
+    Assess --> AnyCallMade : refused (feature off or breaker open), or still throttled
+    AnyCallMade --> Refund : callsMade = 0
+    AnyCallMade --> RecordFailure : callsMade above 0
+    Assess --> RecordFailure : a named failure, or any other error
     Refund --> RecordFailure : UpdateItem ADD attempts minus one
     Persist --> Publish : UpdateItem the result onto the row. Retry on DynamoDB errors
     RecordFailure --> Publish : UpdateItem the failure by its name
@@ -761,19 +778,20 @@ runaway loop. Every trap below has a setting, and every setting belongs in CDK a
 **The daily counter is untouched and it still runs first.** It moves in the API before any workflow
 starts, so a person's ten attempts are spent the same way as today. **One thing is new:** a
 refusal after the count, where no call was made — the switch flipped, the breaker opened, the photo
-was not an image — refunds the attempt with one `ADD attempts -1` in the workflow. A retry inside
-the workflow spends money but never an attempt.
+was not an image — refunds the attempt with one `ADD attempts -1` in the workflow, but only when
+the whole run made no call (ADR-0018). A retry inside the workflow spends money but never an
+attempt.
 
 ### The seven guardrails of `02-cost-guardrails.md` §5, re-answered
 
 | Guardrail | Option A | Options E and F |
 | --- | --- | --- |
 | 1 Time budget | Four stacked clocks | Per-task timeouts with a `Catch` on each, the function timeout above, the model abort inside. No platform clock is ever the first to fire |
-| 2 Cost cap | $0.0040 per assessment, one call | **$0.012 per assessment worst case**, three calls, resting on `MaxAttempts: 2` and `maxRetries: 0` together. NFR-10 would be re-stated as a per-photo ceiling with retries |
-| 3 Retry cap | Zero | **Two**, declared once in the state machine, on three thrown errors and one free Lambda refusal. Nothing else retries |
+| 2 Cost cap | $0.0040 per assessment, one call | **$0.012 per assessment worst case**, three calls, resting on the `RetryOrStop` cap ("`callsMade` under 3") and `maxRetries: 0` together. NFR-10 would be re-stated as a per-photo ceiling with retries |
+| 3 Retry cap | Zero | **Two more calls**, counted in `callsMade` and capped once in the state machine, after three thrown errors. One free `Retry` on a throttled start. Nothing else retries |
 | 4 Checkpointing | None; one call cannot be half done | The workflow is the checkpoint, because the write steps retry: a paid answer is never lost to a throttled write |
 | 5 Fallback | A named failure with a screen | Unchanged. No guessed verdict, ever |
-| 6 Circuit breaker | A row, checked and written in the API | Checked in the API before counting, re-checked in `assess` before the call, **written by `assess`**. Retries count toward the five. The half-open test is one call because `assess` runs one at a time |
+| 6 Circuit breaker | A row, checked and written in the API | Checked in the API before counting, re-checked in `assess` before the call, **written by `assess`**. Every failed call counts toward the five. The half-open test is one call because `assess` runs one at a time |
 | 7 Kill-switch | A row, read by the API | Read in the API before counting and again in `assess` before the call, same 30-second cache. A flip stops a queued run and refunds its attempt |
 
 ## 9. What changes in which record if a shape is chosen
@@ -822,7 +840,7 @@ describes it.
 
 ## 11. The two shapes against the planned features
 
-**Added 2026-09-17, after the owner asked which shape serves the later runs better.** The list of
+**The owner asked which shape serves the later runs better.** The list of
 later features is in `factory/feature.md`: six backbone features, one per run, plus the run-2
 story from gate 49 and the market scan's seven ideas in `../200-product/001-photo-assessment/00-prd.md`
 §6.2. This section takes each one and asks: what does it need, does E give it, and does it need

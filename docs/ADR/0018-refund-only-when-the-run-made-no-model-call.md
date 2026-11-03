@@ -36,7 +36,7 @@ This table is a lookup table. Each row is one possible run.
 | --- | --- | --- | --- | --- | --- |
 | throttled | throttled | throttled | 0 | give the try back | counts it. This is finding 58 |
 | model timeout | throttled | throttled | 1 | count it | counts it. An arrow from the throttle to `Refund` would give it back, which is wrong |
-| model timeout | breaker open | — | 1 | count it | **gives it back.** A second fault of the same kind, found in this pass |
+| model timeout | breaker open | — | 1 | count it | **gives it back.** A second fault of the same kind |
 | throttled | kill-switch off | — | 0 | give the try back | gives it back. Correct |
 
 **The third row is not rare.** Every failed call counts toward the breaker's five failures
@@ -53,7 +53,7 @@ next try.
    ([Step Functions variables](https://docs.aws.amazon.com/step-functions/latest/dg/workflow-variables.html),
    checked 2026-10-29).
 2. **Throttling keeps its `Retry`.** `Lambda.TooManyRequestsException` means the function did not
-   run, so a retry costs no money. `MaxAttempts: 2`, 2 seconds then 4, as before.
+   run, so a retry costs no money. `MaxAttempts: 2`, 2 seconds then 4.
 3. **The three provider errors move from `Retry` to `Catch`.** `ProviderTimeout`, `ProviderThrottled`
    and `ProviderUnavailable` each mean the request was sent to the model. Their `Catch` adds 1 to
    `callsMade` and goes to `RetryOrStop`.
@@ -116,7 +116,6 @@ stateDiagram-v2
   sent the request, the try counts although no call was made. The workflow cannot tell this from a
   death after the call. It needs a crash in the first lines of the handler, and counting is the side
   gate 82 chose.
-- **Other files still describe the old retry.** Seam ledger finding 62 names them.
 
 ## Alternatives considered
 
@@ -125,8 +124,8 @@ stateDiagram-v2
 - **`assess` writes "a call was made" on the assessment row before it calls, and `Refund` becomes a
   conditional write.** It also gives the right answer, and it would even catch the crash case.
   Rejected, because it gives the function that holds the model key write access to every assessment
-  row. ADR-0014 limits that function to the key, two `CONFIG` rows and the breaker row on purpose,
-  and a wider role would need 900 Security to look again.
+  row. ADR-0014 limits that function to the key, two `CONFIG` rows, the breaker row and a read of
+  the photo on purpose, and a wider role would need 900 Security to look again.
 - **Remove reserved concurrency 1, so `assess` is never throttled.** Rejected. Concurrency 1 is what
   makes the breaker's half-open test exactly one call. And the account's own concurrency limit can
   still throttle.

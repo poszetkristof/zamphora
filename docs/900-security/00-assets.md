@@ -1,8 +1,6 @@
 # Assets — what this product has that is worth protecting
 
 **Written by** 900 Security, run 1 (`001-photo-assessment`). **Date:** 2026-09-01.
-**Updated 2026-09-17, twice.** First for ADR-0014 to ADR-0016, then by an audit of the whole pack.
-Both sets of corrections are listed in §6, as the rule in "How this file grows" asks.
 **Read next by** 600 QA, and by 900 Security on every later run.
 
 Security work has to start from a list of things. Without one, every review turns into an argument
@@ -25,8 +23,8 @@ The rule for a later run:
 1. Read this whole file first.
 2. Add new assets to the register in §2, with the run that added them in the last column.
 3. Add a new section at the bottom, named for that run's feature.
-4. If a fact in an old row is now wrong, correct that row **and say in the new section that you
-   corrected it, and why**. Do not delete the old fact silently.
+4. If a fact in an old row is now wrong, rewrite that row so it states the current fact. Do not add
+   a note about the change. Git keeps the old version.
 
 ---
 
@@ -66,19 +64,19 @@ in bold are the ones that matter most for that row.
 | A-05 | The session cookie value | The browser (`__Host-session`), and one row `SESSION#<id>` | 30 days (gate G-7) | 1 person. Holding it gives every screen and every photo for up to 30 days | **C** | run 1 |
 | A-06 | The Cognito account: email and password | The Cognito user pool | Until the account is deleted | 1 person. Holding it gives everything A-05 gives, and it does not expire | **C** | run 1 |
 | A-07 | The Cognito app client secret | Parameter Store, `SecureString` | Until it is rotated. **No rotation is planned** | The whole sign-in flow. It makes the API a confidential client (ADR-0003) | **C** | run 1 |
-| A-08 | The Anthropic API key used by the server | Parameter Store, `SecureString`, cached in the memory of **the `assess` function only** (corrected 2026-09-17, §6). The `api` function's role cannot read it | Until it is rotated. **No rotation is planned** | The whole Anthropic balance: **$5**, which is about **1,250 assessments** on Haiku 4.5 | **C** | run 1 |
+| A-08 | The Anthropic API key used by the server | Parameter Store, `SecureString`, cached in the memory of **the `assess` function only**. There are four functions, and the `api` function's role cannot read it (ADR-0014). That keeps the key out of the blast radius of T-19 in `01-threats.md` | Until it is rotated. **No rotation is planned** | The whole Anthropic balance: **$5**, which is about **1,250 assessments** on Haiku 4.5 | **C** | run 1 |
 | A-09 | The Anthropic **admin** API key | The owner's own machine only. Never on a server, never in CI (`03-api-spec.md` §8) | Until it is rotated | The whole Anthropic organisation account, not only this project | **C** | run 1 |
 | A-10 | The Anthropic credit balance | The Anthropic account. Topped up by hand | Until it reaches zero | **$5.** At zero the feature goes dark and stays dark until a person pays | **A** | run 1 |
 | A-11 | The AWS account and its credit | AWS | The free window ends **2026-12-31** (`factory/feature.md`) | **$200 of credit.** When it is gone the account **closes** and takes the table, the bucket and the user pool with it | **A** | run 1 |
 | A-12 | The AWS console sign-in of the owner | The owner | Until it is changed | Everything in A-11, plus the only way to flip the kill-switch (ADR-0009) and the only admin path (`02-containers.mmd`) | **C**, **I**, **A** | run 1 |
-| A-13 | The two GitHub deploy roles | AWS IAM, assumed with OpenID Connect (`00-environments.md` §9) | Until they are deleted | Everything in A-11. A deploy role can create and change every stack | **C**, **I** | run 1 |
-| A-14 | The three `CONFIG` rows: `AI_ENABLED`, `DAILY_LIMIT`, `MODEL_ID` | DynamoDB, `PK = CONFIG` | Until a person edits them | The kill-switch, the daily spend ceiling and which model answers. A wrong value breaks three things at once (ADR-0009) | **I**, **A** | run 1 |
-| A-15 | The daily attempt counter | DynamoDB, `USER#<sub>` / `QUOTA#<date>` | One UTC day, plus a time-to-live for tidying | The spend ceiling for one account: 10 assessments × up to 3 calls × $0.0040 = **$0.12 a day** on Haiku 4.5 (corrected 2026-09-17, §6) | **I** | run 1 |
+| A-13 | The three GitHub OpenID Connect roles. `00-environments.md` §9 names two of them: the deploy role for `prod`, limited to the `main` branch, and `zamphora-github-dev`, limited to pull requests. `04-ci-cd.md` §4 lists all three | AWS IAM, assumed with OpenID Connect (`00-environments.md` §9, §10 step 2) | Until they are deleted | Everything in A-11. A deploy role can create and change every stack | **C**, **I** | run 1 |
+| A-14 | The three `CONFIG` rows: `AI_ENABLED`, `DAILY_LIMIT`, `MODEL_ID` | DynamoDB, `PK = CONFIG` | Until a person edits them | The kill-switch, the daily spend ceiling and which model answers. A person edits them by hand, so a typing mistake is the likely fault (ADR-0009). A missing `AI_ENABLED` row, or an `enabled` value that is not the boolean `true`, turns the feature off (ADR-0019). `MODEL_ID` accepts only the three ids in ADR-0017, and any other value falls back to the default, so a wrong id never reaches the provider. One accepted id, `claude-sonnet-5-5`, costs about twice the default per call (ADR-0017) | **I**, **A** | run 1 |
+| A-15 | The daily attempt counter | DynamoDB, `USER#<sub>` / `QUOTA#<date>` | One UTC day, plus a time-to-live for tidying | The spend ceiling for one account, at $0.0040 a call on Haiku 4.5, the default model. The counter counts assessments started, not calls, and one assessment may make up to three calls (ADR-0014). At the default `DAILY_LIMIT` of 10: **$0.04 a day** when each assessment makes one call, and **$0.12 a day** in the worst case, when each makes three. At the top of the allowed range, 20: **$0.08 a day** with one call each, and **$0.24 a day** with three. `01-threats.md` T-14 gives the figure for a dearer model | **I** | run 1 |
 | A-16 | The day usage rollup: calls and cost | DynamoDB, `PK = USAGE` | No end date set. Numbers only, no photo and no text (US-12 AC-3) | The only record of what was spent. Losing it means US-12 cannot be answered | I | run 1 |
-| A-17 | The specifications in `docs/` | This repository, which is **public** (gate 47) | Forever | None, on purpose. See §5 | — | run 1 |
+| A-17 | The specifications in `docs/` | This repository, which is **public** (gate 47) | Forever | None, on purpose. See §4 | — | run 1 |
 | A-18 | The model's answer, as a value that writes a care task | In flight, then the assessment row | As long as A-03 | 1 person's plant. A wrong verdict said with confidence is the product's own worst outcome | **I** | run 1 |
-| A-19 | The state machine definition and its `Retry` cap | CDK, in git, and the deployed state machine | Until it is changed by a deploy | A changed `MaxAttempts` is a cost control removed in silence: 10 photos a day × more calls each, against the **$5** balance | **I** | 2026-09-17 |
-| A-20 | The `watch` function's URL | AWS, reachable only through CloudFront with origin access control | Until the function is deleted | If it became public, anybody could hold a 55-second stream open against the Lambda allowance, and read an assessment by guessing its id under a stolen session | **C**, **A** | 2026-09-17 |
+| A-19 | The state machine definition: its cap on model calls and its one path into `Refund` | CDK, in git, and the deployed state machine | Until it is changed by a deploy | Two cost controls that can be removed in silence. A raised cap in `RetryOrStop`, or a hidden retry, means more calls per photo against the **$5** balance. A second arrow into `Refund` gives back tries the model was paid for, so the daily limit of ten stops being a limit (ADR-0018). A retry cap is a cost control, and on this account a cost control protects availability | **I** | run 1 |
+| A-20 | The `watch` function's URL | AWS, reachable only through CloudFront with origin access control | Until the function is deleted | If it became public, anybody could hold a 55-second stream open against the Lambda allowance, and read an assessment by guessing its id under a stolen session. A Function URL is a second front door | **C**, **A** | run 1 |
 
 **Two rows are worth reading twice.**
 
@@ -118,8 +116,8 @@ is here too.
 | TB-12 | The AWS console → `table` | Direct reads and writes on any row | Same. No guard, no application log (gate 30) |
 | TB-13 | `api` → email delivery | The 11-month warning | **Not built in run 1** (gate 29). Named so it is not forgotten |
 | TB-14 | `contracts` → `web` and `api` | Every schema, at build time | A build-time border, not a run-time one |
-| TB-15 | GitHub Actions → AWS | A deploy, and a whole preview environment | **The repository is public, so anybody can open a pull request** |
-| TB-16 | `edge` → `watch` (the one stream path → a Lambda Function URL) | A session cookie and an assessment id in. A stream of state events out | Anybody on the internet, signed in or not. **Added 2026-09-17** |
+| TB-15 | GitHub Actions → AWS | A deploy to `prod`, and a deploy to the permanent `dev` environment | **The repository is public, so anybody can open a pull request** |
+| TB-16 | `edge` → `watch` (the one stream path → a Lambda Function URL) | A session cookie and an assessment id in. A stream of state events out | Anybody on the internet, signed in or not |
 | TB-17 | `api` → `workflow` (`StartExecution`) | The assessment key. Nothing from the browser goes into the run's input except that key | The API is trusted here. Its role may start this one machine and nothing else |
 | TB-18 | `workflow` → `assess` | The assessment key. Back: a parsed answer, a named failure, or one of three thrown errors | The workflow is trusted. `assess` has the smallest role in the product and the only model key |
 | TB-19 | `workflow` → `table` | The state, the answer, the rollup, the refund | The workflow's own role, on the assessment, counter and rollup rows only |
@@ -147,6 +145,7 @@ reader adding a control that buys nothing.
 | The `assessmentId` and `careTaskId` values | They are opaque to the browser and only work under the caller's own partition key. Holding somebody else's id gets you the same answer as holding a made-up one (ADR-0004) |
 | The photo object key | The bucket is private and the key contains a Cognito `sub`, which is a UUID. There is no path that reads an object without a signed URL |
 | The account type on a run-1 screen | No run-1 response carries one (`01-contracts.md` §2.2). There is nothing to leak |
+| The dead-letter queue and the EventBridge rule of the background run | The queue holds only the identifiers of failed events, never a photo or a name. The rule carries no data of its own |
 
 ---
 
@@ -165,29 +164,3 @@ was chosen first, and a later run should know that:
 feature 6. It is named in this role's contract as one of this product's assets, and run 1 does not
 have one, because notification delivery is out of scope (`factory/feature.md`). **The run that adds
 notifications adds that row here.**
-
----
-
-## 6. What the 2026-09-17 architecture change added and corrected
-
-On 2026-09-17 the owner moved the assessment into a background workflow (ADR-0014), the result onto
-a stream (ADR-0015), and allowed a refund when no call was made (ADR-0016). Still inside run 1, so
-the rows carry the date instead of a run name.
-
-**Corrected.** A-08 said the model key was cached in "the function's memory", meaning the one API
-function. There are now four functions, and only `assess` can read the key. That is the change
-gate 70 asked for, and it shrinks the blast radius of T-19 in `01-threats.md`.
-
-**Corrected 2026-09-17, second pass.** A-15 said the daily ceiling for one account was
-10 × $0.0040 = $0.040 a day. That arithmetic assumed one model call per assessment, which was true
-until ADR-0014. One assessment may now take three calls, so the ceiling is **$0.12 a day**. The
-counter still counts assessments started, not calls, so the limit of ten has not changed — only what
-ten of them can cost. `02-cost-guardrails.md` §5 and `01-threats.md` T-43 already use $0.12.
-
-**Added.** A-19, the state machine and its retry cap, because a retry cap is a cost control and a
-cost control is an availability asset on this account. A-20, the `watch` function's URL, because a
-Function URL is a second front door and has to be known as one. TB-16 to TB-19, the four new lines
-in `02-containers.mmd`.
-
-**Not an asset, and said so.** The dead-letter queue holds only the identifiers of failed events,
-never a photo or a name. The EventBridge rule carries no data of its own.

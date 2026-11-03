@@ -284,7 +284,7 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   esbuild cannot bundle a native module, and `bundling.nodeModules` stays banned by ADR-0012. A CDK
   `afterBundling` hook copies `node_modules/sharp` and `node_modules/@img` into the asset.
 - **DynamoDB runs in provisioned capacity mode, decided 2026-08-26. The split between tables was
-  set by gate 43 on 2026-08-27: `prod` at 20 read and 20 write units, `preview` at 5 and 5.** The
+  set by gate 43 on 2026-08-27: `prod` at 20 read and 20 write units, `dev` at 5 and 5.** The
   free allowance of 25 and 25 is per Region and per payer account, shared by every table, so the two
   together must never pass it. The always-free amount covers provisioned capacity only; an on demand table spends
   credit on its first read, and this account closes when the credit is gone. AWS's own guidance
@@ -293,9 +293,10 @@ line, on an edited copy of this file. See "This is run 1 of several" at the end.
   asking. A relational store is not an option on this plan at all: RDS was a twelve-month trial,
   Aurora had no free offer, and trials are switched off on the free account plan.
 
-**Four of the six points below were chosen by the assistant on 2026-09-17, on the owner's
-instruction to take the best-practice option in each case. The owner chose the other two: gate 82
-and the list of allowed models.** Gate
+**Four of the eight points below were chosen by the assistant on 2026-09-17, on the owner's
+instruction to take the best-practice option in each case. The owner chose the other four: gate 82,
+the list of allowed models, what the kill-switch does when its row cannot be used (gate 86), and the
+permanent `dev` environment (gate 87).** Gate
 8 is the other decision of this shape on this run. Each one names the option that lost, so a wrong
 choice is one row to find, not a search.
 
@@ -319,6 +320,25 @@ choice is one row to find, not a search.
   circuit breaker would limit a broken model, at up to about 144 calls a day. **The option that
   lost:** give the try back on every failure on our side. It is fairer to the person, but it would
   change ADR-0016 and remove the daily spend limit.
+- **Two AWS environments, both permanent: `prod` and `dev` (gate 87, the owner's answer).** `dev`
+  replaces the `preview` environment that CI created for each pull request and then destroyed. `dev`
+  always exists, uses the stub model provider, and is where `e2e` and `perf-flow` run. Its three
+  `CONFIG` rows are written once by hand, like `prod`'s, so no pipeline writes a `CONFIG` row. The
+  table sizes stay as gate 43 set them, with `dev` taking the 5/5 share. `local` still runs on the
+  developer's machine. **The reason:** two always-there environments are easier to understand and
+  run, and a fresh copy per pull request would need its `CONFIG` rows written by a pipeline on every
+  pull request (ADR-0019). **What it costs:** pull requests share one `dev`, so their test runs wait
+  in a queue and never run at the same time, and test data stays in `dev` between runs. **The option that lost:** keep a fresh `preview`
+  per pull request, and let the pipeline write the rows into each copy.
+- **The kill-switch fails closed (gate 86, the owner's answer).** When the `CONFIG / AI_ENABLED`
+  row has the wrong type, for example the string `"false"` instead of the boolean `false`, or the
+  read succeeds and the row is missing, the feature is treated as **off**. No model call runs until
+  the row is fixed, and the API writes the `config-value-refused` log line. A kill-switch that cannot
+  be read must stop the spending, not continue it. The app already stops when it cannot read the
+  table at all. **The option that lost:** use the compiled-in default, `true`. The feature would
+  keep working, but an attempt to switch it off could fail with nobody noticing. This changes
+  ADR-0009's fallback for this one row. `DAILY_LIMIT` and `MODEL_ID` still fall back to their
+  defaults.
 - **The allowed `MODEL_ID` values are `claude-haiku-4-5-20251001`, `claude-haiku-5-5` and
   `claude-sonnet-5-5` (the owner's answer to finding 56).** Any other value is refused. The default
   stays `claude-haiku-4-5-20251001` until the golden-set run has measured the others, as ADR-0006

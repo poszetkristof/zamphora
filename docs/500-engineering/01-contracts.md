@@ -1,6 +1,6 @@
 # Contracts — `packages/contracts`
 
-**Written by** 500 Engineering, run 1 (`001-photo-assessment`). **Date:** 2026-08-26.
+**Written by** 500 Engineering, run 1 (`001-photo-assessment`).
 **Read next by** 900 Security, 600 QA, and anybody writing `apps/web` or `apps/api`.
 
 This file describes every value that crosses the wire in this feature. Each one is a Zod schema in
@@ -85,13 +85,12 @@ back. **It never takes them apart**, and it never builds one itself — the two 
 **Both must be URL-encoded**, because `#` in a URL starts a fragment and would silently cut the value
 in half. This is the single easiest thing to get wrong in this file.
 
-**One consequence for the photo key, and the owner settled it on 2026-08-26 (gate 38).** The
-stop-and-ask raised here was right: writing a composite `AssessmentId` into ADR-0007's object key
-repeated the pot id and put a `#` inside an S3 key. **ADR-0007 was amended.** The key is now
-`photos/<userId>/<potId>/<createdAt>.jpg` — the timestamp half only. The pot id is already the
-folder above it, so nothing is lost, and the folder sorts by time on its own.
+**The photo key uses the timestamp only. The owner decided this on 2026-08-26 (gate 38).** A
+composite `AssessmentId` inside ADR-0007's object key would repeat the pot id and put a `#` inside an
+S3 key. So the key is `photos/<userId>/<potId>/<createdAt>.jpg` (ADR-0007). The pot id is already
+the folder above it, so nothing is lost, and the folder sorts by time on its own.
 
-**The id on the wire is still composite.** Only the S3 key changed. `AssessmentId` remains
+**The id on the wire stays composite.** Only the S3 key uses the timestamp alone. `AssessmentId` is
 `<potId>#<createdAt>` and must still be URL-encoded wherever it appears in a path or a query
 string.
 
@@ -218,9 +217,8 @@ ours, it is smaller, and it can be tested with no model call.
 
 ### 4.2 `AssessmentRequest` — what `apps/api` hands to `packages/llm`
 
-**Added 2026-08-31.** ADR-0005 names the port as `assess(input: AssessmentRequest)`, and **no file
-defined that type.** It was also missing from §10, the table whose whole job is to catch a type that
-crosses a border with no schema. So nothing said what reaches the model.
+ADR-0005 names the port as `assess(input: AssessmentRequest)`. This is that type, and it says exactly
+what reaches the model. §10 lists it, like every other type that crosses a border.
 
 ```ts
 export const AssessmentRequest = z.strictObject({
@@ -239,12 +237,12 @@ instructions inside it are data, and the reply only becomes a value by passing `
 **`photoJpeg` is the re-encoded image.** Passing the original bytes would send the EXIF — and the
 person's home GPS — to the provider, which is the thing step 5b exists to prevent.
 
-**There is no maximum length on `nextAction` in the parse. There is one in the refinement.**
-**Amended 2026-08-31.** A cap in the parse would turn a long but correct answer into
-`answer-unreadable`, and length is not something the provider can be told to obey — that reasoning
-stands. But this text is **stored and drawn on the result screen**, so an unbounded string is a
-value the model controls with no ceiling at all. So: parse it with no limit, then **truncate it to
-`NEXT_ACTION_MAX` in the refinement**, which is not a failure and costs the person nothing.
+**There is no maximum length on `nextAction` in the parse. There is one in the refinement.** A cap in
+the parse would turn a long but correct answer into `answer-unreadable`, and length is not something
+the provider can be told to obey. But this text is **stored and drawn on the result screen**, so an
+unbounded string is a value the model controls with no ceiling at all. So: parse it with no limit,
+then **truncate it to `NEXT_ACTION_MAX` in the refinement**, which is not a failure and costs the
+person nothing.
 
 ```ts
 export const NEXT_ACTION_MAX = 400;
@@ -283,7 +281,7 @@ failure. `05-patterns.md` §4 says the same: it is the acceptance criterion writ
 
 ```ts
 export const FOLLOW_UP_DAYS_MIN = 1;
-export const FOLLOW_UP_DAYS_MAX = 30;   // provisional — US-02 AC-6 marks the range as the owner's
+export const FOLLOW_UP_DAYS_MAX = 30;   // gate 39. The owner set the range on 2026-08-26
 ```
 
 ## 5. The photo
@@ -302,13 +300,13 @@ The formats come from Anthropic's vision limits (US-01 AC-2). 200 px is Anthropi
 small images (US-01 AC-5). 1000 px keeps one photo at 1296 visual tokens instead of about three times
 that (US-01 AC-4). 2 MB is the API's hard ceiling on the request body (ADR-0007).
 
-**`image/gif` was removed on 2026-09-17** (gate 68, the owner). The July 2026 libvips advisory names
-the GIF loader as one of three holes `sharp` can be reached through
+**`image/gif` is not accepted. The owner decided this on 2026-09-17 (gate 68).** The July 2026
+libvips advisory names the GIF loader as one of three holes `sharp` can be reached through
 ([GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj)), and a phone camera never
 produces a GIF, so nothing real is lost. **Do not put it back.** It is one of the three names the
 `sharp.block()` call at start-up refuses anyway (`../900-security/02-mitigations.md` R-09), so
-accepting the type and blocking the loader would only produce a confusing failure. The list is now
-three, and every message that names the accepted formats names three.
+accepting the type and blocking the loader would only produce a confusing failure. The list has
+three types, and every message that names the accepted formats names three.
 
 ## 6. Pots
 
@@ -346,7 +344,7 @@ rule for the name only. See §11.
 ```ts
 export const PhotoStatus = z.enum(['present', 'removed'] as const);
 
-// Added 2026-09-17 (ADR-0014). The assessment runs in the background, so a row has a state.
+// The assessment runs in the background, so a row has a state (ADR-0014).
 export const ASSESSMENT_STATES = ['queued', 'running', 'done', 'failed'] as const;
 export const AssessmentState = z.enum(ASSESSMENT_STATES);
 
@@ -406,10 +404,11 @@ export const MeResponse = z.object({
 });
 ```
 
-**`state` and `failureCode` were added on 2026-09-17.** The assessment row is written as `queued`
-before the `202`, moves to `running` when the workflow claims it, and ends `done` or `failed`. A
-failure inside the run arrives as `state: failed` with its code on the row and over the stream, not
-as an HTTP status. `band` and the other answer fields are `null` until the state is `done`.
+**`state` and `failureCode` follow the background run** (ADR-0014). The assessment row is written as
+`queued` before the `202`, moves to `running` when the workflow claims it, and ends `done` or
+`failed`. A failure inside the run arrives as `state: failed` with its code on the row and over the
+stream, not as an HTTP status. `band` and the other answer fields are `null` until the state is
+`done`.
 
 **Two stored fields are deliberately not on the wire.** The assessment item also holds the **model
 id** and the **cost** (`05-patterns.md` §1). The browser has no use for either, and a cost is not a
@@ -467,9 +466,8 @@ export const Problem = z.object({
 
 **Why a standard rather than our own three fields.** `application/problem+json` is understood by
 HTTP tooling, by logging services and by anyone who has met an API before. It costs three fields we
-would otherwise not send, and it means nobody has to learn a shape that only exists here. **This was
-the owner's decision on 2026-08-27**, after `Problem` was found claiming the media type without
-matching it.
+would otherwise not send, and it means nobody has to learn a shape that only exists here. **The
+owner decided this on 2026-08-27.**
 
 **`code` stays, and it is still the field the code switches on.** `type` is a URI and URIs invite
 string-matching on a URL, which breaks the day the domain changes. The rule: **branch on `code`,
@@ -479,14 +477,16 @@ never on `type`.**
 occurrence — a request id — and NFR-30 keeps request ids out of response bodies, because the browser
 has no use for one and it is one more thing that can leak.
 
-**`title` and `detail` are not the same thing, and mixing them is the usual mistake.**
+**`title` and `detail` are both for a developer, and they do different jobs.** Both are fixed English
+and both are stable per `code`. Neither is ever shown to the person using the app. The screen draws
+its sentence from the message files in the reader's language, keyed on `code` (§11b).
 
-| Field | Who reads it | Language | Changes between two failures of the same kind? |
+| Field | What it is | Language | Changes between two failures of the same kind? |
 | --- | --- | --- | --- |
-| `title` | a developer, a log | always English | no — it is stable per `code` |
-| `detail` | the person using the app | the reader's language | yes — it may name this photo or this limit |
+| `title` | a short name for the failure | always English | no — it is stable per `code` |
+| `detail` | one sentence that says what happened, from a closed map in the API (§11b) | always English | no — it is stable per `code` |
 
-`detail` is a promise: **it is safe to put on a screen.** No stack, no SQL, no file path, no
+`detail` is a promise: **it is safe for anyone to read.** No stack, no SQL, no file path, no
 provider message copied through. That rule already exists in `.claude/skills/security/SKILL.md`.
 
 `retryHint` is not decoration. US-09 AC-1 says **no failure message may end without exactly one of
@@ -525,15 +525,15 @@ outside the `LlmProvider` port.
 | `answer-truncated` | on the row | will-not-work | `stop_reason` was `max_tokens` | SC-2 state 7 |
 | `answer-unreadable` | on the row | **may-work** | The answer failed the §4.1 refinement | SC-2 state 10 |
 | `deadline-passed` | 503, or on screen | **may-work** | The `api` request reached `REQUEST_DEADLINE_MS`, or the waiting screen reached 60 seconds | SC-2 state 5 |
+| `task-not-possible` | 409 | will-not-work | `followUpDays` is null, the band is `cannot-tell`, or the verdict is `nothing-wrong` | No task button is drawn, so this is a guard, not a screen |
+| `confirmation-required` | 409 | will-not-work | The band is `unsure` and `confirmedUnsure` was not `true` | The web opens SC-6 instead of showing this |
+| `photo-already-removed` | 409 | will-not-work | The photo was already deleted or already expired | SC-7 state 5 |
+| `unknown` | 500 | may-work | An exception reached the top of a request | `FailureNote` |
 
 **"On the row" means the failure happened inside the background run** (ADR-0014). It is written on
 the assessment row as `state: failed` with this code, and it reaches the phone over the stream as an
 `AssessmentEvent`, not as an HTTP status. `retryHint` still decides whether a try-again button is
 drawn.
-| `task-not-possible` | 409 | will-not-work | `followUpDays` is null, the band is `cannot-tell`, or the verdict is `nothing-wrong` | No task button is drawn, so this is a guard, not a screen |
-| `confirmation-required` | 409 | will-not-work | The band is `unsure` and `confirmedUnsure` was not `true` | The web opens SC-6 instead of showing this |
-| `photo-already-removed` | 409 | will-not-work | The photo was already deleted or already expired | SC-7 state 5 |
-| `unknown` | 500 | may-work | An exception reached the top of a request | `FailureNote` |
 
 **`photo-rejected` is three codes here, and that is on purpose.** `05-patterns.md` §8 gives one name
 for a rejected photo. One name cannot carry two required sentences: US-01 AC-2 says the refusal
@@ -667,15 +667,11 @@ answer schema only in `packages/llm`** — it is a wire type, and `packages/llm`
 | What | Why it is not settled | What to do |
 | --- | --- | --- |
 | Whether `room` is required on a pot, and its length | US-15 AC-2 says "two things" and gives a length rule for the name only. `00-prd.md` does not fill it | Ask the owner. This file assumes required, 1 to 60 characters |
-| ~~The 1 to 30 range on `followUpDays`~~ | **Closed 2026-08-26, gate 39.** The owner set it to 1 to 30 — the value this file already used | Nothing to do. US-02 AC-6 no longer says provisional |
-| ~~Whether ADR-0007's photo key should use only the timestamp~~ | **Closed 2026-08-26, gate 38.** The key is `photos/<userId>/<potId>/<createdAt>.jpg` and ADR-0007 was amended to match | Nothing to do |
-| ~~The Zod major version~~ | **Closed.** The catalog pins `zod` to `4.4.3`, and all of §9a is Zod-4-only advice | Nothing to do |
 | The provider's error shape for an empty credit balance | Not in any input | Confirm against the provider's documentation in the first task |
 
 ## 11a. Changing a schema after something has shipped
 
-**Added 2026-08-31. This file had no compatibility story at all, and the shape of this product needs
-one.**
+**The shape of this product needs a compatibility rule.**
 
 `apps/web` is a **static export**, cached in browsers and at CloudFront. `apps/api` is a Lambda.
 They are two artifacts and they deploy separately (ADR-0001 rule 5, ADR-0010). So there is always a
@@ -683,10 +679,9 @@ window where a browser is running an **old** bundle against a **new** API. The b
 answer with the schema in this package and treats a parse failure as a loud error
 (`02-web-spec.md` §3).
 
-**Every response schema used to be `z.strictObject`, which rejects a field it does not know.** So the
-first time the API added a field, every browser holding an old bundle would have shown a failure on
-a perfectly good response. `Problem` was the clearest case: it said in a comment that readers *"must
-ignore what they do not know"* and then forbade exactly that.
+**`z.strictObject` rejects a field it does not know.** If a response schema were strict, then the
+first time the API added a field, every browser holding an old bundle would show a failure on a
+perfectly good response.
 
 **The rule, and it splits by direction:**
 
@@ -706,12 +701,10 @@ ignore what they do not know"* and then forbade exactly that.
 
 ## 11b. `Problem.detail` is fixed English, from a closed map
 
-**Added 2026-08-31, because §1 and §8 could not both be true.**
-
 §1 of this file says: *"The API never sends prose. A failure is a `code`; the sentence is looked up
-in a message file in the reader's language."* §8 then defined `detail` as a required string *"in the
-reader's language"*. The message files live in `apps/web/src/messages/`, not in the API, and only
-`POST /api/assessments` is even told a locale — `GET /api/pots` has no way to know one.
+in a message file in the reader's language."* The message files live in `apps/web/src/messages/`,
+not in the API, and only `POST /api/assessments` is told a locale — `GET /api/pots` has no way to
+know one. So the API cannot write `detail` in the reader's language.
 
 **Something has to fill a required field, and the string always within reach is the exception
 message.** That is the leak the security skill forbids by name: a stack trace, an AWS error, an
@@ -727,10 +720,10 @@ internal class name, handed to whoever made the request.
 - **The reader's own language stays in the browser**, keyed on `code`, where it already works and
   where the message files already are.
 
-**Two places where `05-patterns.md` and an ADR disagree. Nothing here was changed for either.**
+**How this file relates to `05-patterns.md` §8.**
 
-- **§8's retry column** now says which three names the workflow retries, since 2026-09-17, and this
-  file agrees with it. The sentence column of that same table is used as written.
-- **§8 has one name, `photo-rejected`, for three refusals that must produce different sentences**
+- **Its retry column** names the three failures the workflow retries, and this file agrees with it.
+  The sentence column of that same table is used as written.
+- **It has one name, `photo-rejected`, for three refusals that must produce different sentences**
   (US-01 AC-2 and AC-5). Three codes are used here, all with the same `retryHint`. `02-SPEC.md` §6
   already draws them as three separate rows, so the screen side already expects three.

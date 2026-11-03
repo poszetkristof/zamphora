@@ -1,10 +1,6 @@
 # Mitigations — what to do about each threat
 
 **Written by** 900 Security, run 1 (`001-photo-assessment`). **Date:** 2026-09-01.
-**Updated 2026-09-17, twice.** First for ADR-0014 to ADR-0016: R-08 and RR-03 are closed by the new
-structure, R-09 is smaller, R-18 to R-20 are new, and §8 has four more instructions. §10 lists that.
-Then an audit of the whole pack closed four of the gates in §6 and found two things wrong here. §11
-lists that.
 **Read next by** 600 QA. This is the file `factory/handoff-map.yaml` sends to the test role.
 
 `01-threats.md` scores what could go wrong. This file says what to do about it, and what is left over
@@ -28,6 +24,8 @@ failure dressed as a solution. Three is the smallest set that survives one of th
 **This file belongs to the whole product.** A later run reads it whole, then adds its own risks under
 a new heading at the bottom. It does not rewrite an earlier run's controls, and it never marks a
 residual risk as accepted — **only the owner can do that**, and §6 is where the question is asked.
+When a fact in a risk changes, rewrite that risk so it states the current fact. Do not add a note
+about the change. Git keeps the old version.
 
 ---
 
@@ -113,37 +111,37 @@ function sends the warning through SES and deletes at 12 months, in that order a
 SES is **not** on the free plan — it is about $0.10 per 1,000 messages — and one message a year for
 one account is a rounding error, which is why it was never the reason to defer.
 
-### R-05 — CI on a public repository can reach AWS (T-27, score 10 since 2026-09-17)
+---
 
-The repository is public (gate 47). `00-environments.md` §9 says a second role, restricted to pull
-requests, can build the whole `preview` environment. **When this was written the role could not read
-`docs/800-infra/04-ci-cd.md`, so the score was set to 15 because the fact was unknown, not because
-the design was wrong** (seam S-901-1).
+## 2. The high risks — score 10 to 14 — and three lower risks that also get three fixes
 
-**That file was read on 2026-09-17 and two of the three properties below hold as written.** The
-third is still only a sentence, so the risk drops from Critical to High rather than closing.
+### R-05 — CI on a public repository can reach AWS (T-27, score 10)
+
+The repository is public (gate 47). `00-environments.md` §9 says a second role,
+`zamphora-github-dev`, restricted to pull requests, can deploy the `dev` stacks. This role's
+`reads:` block does not include `docs/800-infra/04-ci-cd.md` (seam S-901-1). That file was read on
+2026-09-17, and two of the three properties below hold as written. The third is still only a
+sentence, so the risk is High and not closed.
 
 | Fix | What | Protects |
 | --- | --- | --- |
-| **Preventive** | Three properties have to be true, and each one is a line somebody can read. **First**, no workflow that can assume an AWS role runs on `pull_request_target` or on a fork's `pull_request` without an approval step. **Second**, the preview role's trust policy pins the `sub` claim to this repository **and** to a pull-request context, not to `repo:owner/name:*`. **Third**, the preview role can create the preview stacks and **cannot touch a `Prod` stack** | **C**, **I** |
-| **Detective** | The CDK deploy difference is the record. A preview deploy that names a `Zamphora-Prod-*` stack is the signal, and it is visible in the job output | I |
-| **Responsive** | Delete both OpenID Connect roles in the AWS console. That is one action and it stops every deploy, including a good one. The rebuild is `cdk bootstrap` plus two roles, which `00-environments.md` §10 already documents as a by-hand step | A |
+| **Preventive** | Three properties have to be true, and each one is a line somebody can read. **First**, no workflow that can assume an AWS role runs on `pull_request_target` or on a fork's `pull_request` without an approval step. **Second**, the dev role's trust policy pins the `sub` claim to this repository **and** to a pull-request context, not to `repo:owner/name:*`. **Third**, the dev role can deploy the `dev` stacks, **cannot touch a `Prod` stack**, and cannot write a `CONFIG` row (gate 87) | **C**, **I** |
+| **Detective** | The CDK deploy difference is the record. A `dev` deploy that names a `Zamphora-Prod-*` stack is the signal, and it is visible in the job output | I |
+| **Responsive** | Delete the three OpenID Connect roles in the AWS console. `04-ci-cd.md` §4 lists them. That is one action and it stops every deploy, including a good one. The rebuild is `cdk bootstrap` plus the three roles, which `00-environments.md` §10 step 2 already documents as a by-hand step | A |
 
 **What was found on 2026-09-17, property by property:**
 
 | Property | Verified? | Where |
 | --- | --- | --- |
-| No AWS-capable workflow runs on `pull_request_target`, or on a fork's `pull_request` without approval | **Yes** | `04-ci-cd.md` §4: `pr-preview.yml` carries `if: github.event.pull_request.head.repo.full_name == github.repository`, §11 bans `pull_request_target` by name, and gate 55 holds every outside run for the owner's approval |
-| The preview role's `sub` names the repository **and** a pull-request context | **Yes** | `04-ci-cd.md` §4: the claim is `repo:poszetkristof/zamphora:pull_request`, and the section says plainly that `repo:…:*` would be satisfied by any branch |
-| The preview role cannot touch a `Prod` stack | **Not yet.** The plan says so; the IAM policy does not exist | `04-ci-cd.md` §4 describes it in one sentence. **This is the whole of what is left, and it belongs in the pre-deploy checklist** |
+| No AWS-capable workflow runs on `pull_request_target`, or on a fork's `pull_request` without approval | **Yes** | `04-ci-cd.md` §4: `dev.yml` carries `if: github.event.pull_request.head.repo.full_name == github.repository`, §11 bans `pull_request_target` by name, and gate 55 holds every outside run for the owner's approval |
+| The dev role's `sub` names the repository **and** a pull-request context | **Yes** | `04-ci-cd.md` §4: the claim is `repo:poszetkristof/zamphora:pull_request`, and the section says plainly that `repo:…:*` would be satisfied by any branch |
+| The dev role cannot touch a `Prod` stack, and cannot write a `CONFIG` row | **Not yet.** The plan says so; the IAM policy does not exist | `04-ci-cd.md` §4 describes it. **This is the whole of what is left, and it belongs in the pre-deploy checklist** |
 
-**So the remaining work is one check, not five.** When the two OpenID Connect roles are created by
-hand (`01-iac-plan.md` §10), read the preview role's policy and confirm it names no `Zamphora-Prod-*`
-stack. Until then RR-09 stays open and it is still the owner's to sign.
-
----
-
-## 2. The high risks — score 10 to 14
+**So the remaining work is one check, not five.** When the three OpenID Connect roles are created
+by hand (`00-environments.md` §10 step 2; `04-ci-cd.md` §4 lists them), read the
+`zamphora-github-dev` role's policy and confirm it names no `Zamphora-Prod-*` stack and no write to
+the `CONFIG` partition. `00-environments.md` §10 item 11 carries this check. Until then RR-09 stays
+open and it is still the owner's to sign.
 
 ### R-06 — A strict Content Security Policy is not available on a static export (T-03, score 12)
 
@@ -202,17 +200,17 @@ answer as the first send (`03-api-spec.md` §4a). The risk is that the same prot
 person from trying again after a failure. A failure shows a screen, and the person taps again, so
 that tap is the whole recovery path.
 
-**When this risk was scored, no input said when the browser makes a new id.** Both readings of the
-text broke something:
+**The answer depends on when the browser makes a new id.** Each of the two simple rules breaks
+something:
 
-- If the browser reused the id after a failure, the person got `409 request-in-flight` for ten
-  minutes after every failure.
-- If the browser made a new id on every tap, the protection against a double charge was gone for
-  exactly the case it was written for — a slow upload where the person taps twice.
+- If the browser reused the id after every failure, the person would get `409 request-in-flight`
+  for ten minutes after every failure.
+- If the browser made a new id on every tap, the protection against a double charge would be gone
+  for exactly the case it was written for — a slow upload where the person taps twice.
 
-**That question is answered by gate 76 in `factory/feature.md`**, which says when the browser makes a
-new id and when it sends the same one. `03-api-spec.md` §4a says what the API answers in each case.
-With both in place, no path locks the person out, and one tap is still one charge.
+**Gate 76 in `factory/feature.md` sets the rule**: it says when the browser makes a new id and when
+it sends the same one. `03-api-spec.md` §4a says what the API answers in each case. With both in
+place, no path locks the person out, and one tap is still one charge.
 
 | Fix | What | Protects |
 | --- | --- | --- |
@@ -221,23 +219,24 @@ With both in place, no path locks the person out, and one tap is still one charg
 | **Responsive** | A row with neither field answers `409` only until `IDEM_STALE_MS` (22 seconds) after the claim. After that it answers `unknown` with `retryHint: 'may-work'`, so the worst case ends by itself. The 10-minute time-to-live only tidies the table | A |
 
 **Closed.** The preventive fix is written into `03-api-spec.md` §4a and §4f, and T-16 is Low
-(`01-threats.md` §7). EV-24 in `03-evidence.md` is the check. The detective count stays: it is cheap
-and it would show a regression. **One question stays open, and it is not this role's.** A second try
-with a new id passes the daily limit like any other request, so it spends one of the person's ten.
-Whether a failed run should count is gate 82, and it belongs to the owner.
+(`01-threats.md` T-16). EV-24 in `03-evidence.md` is the check. The detective count stays: it is
+cheap and it would show a regression. A second try with a new id passes the daily limit like any
+other request, so it spends one of the person's ten. **The owner answered gate 82: a try counts
+whenever the model was called, even when the call failed.** A try is given back only when the whole
+run made no model call (ADR-0016, ADR-0018).
 
-### R-09 — A crafted image corrupts memory in the `api` function (T-19, score 8 since 2026-09-17)
+### R-09 — A crafted image corrupts memory in the `api` function (T-19, score 8)
 
-**The title of this risk changed on 2026-09-17.** It used to say "the one function that holds
-everything". Since ADR-0014 the function that decodes the photo cannot read the model key, so a
-compromise of it reaches the table, the bucket and the Cognito secret, and not the $5 balance. The
-four preventive fixes below are unchanged and still needed.
+**The function that decodes the photo cannot read the model key** (ADR-0014). So a compromise of it
+reaches the table, the bucket and the Cognito secret, and not the $5 balance. The four preventive
+fixes below are still needed.
 
 Four CVEs in the libvips loaders `sharp` uses, published 2026-07-17, two rated High
 ([GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj), checked 2026-09-01):
 CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591. **The advisory names the GIF, TIFF
-and VIPS loaders. `image/gif` **was** in `ACCEPTED_PHOTO_TYPES` and was removed on 2026-09-17**
-(gate 68, `01-contracts.md` §5). Preventive fix 4 below is therefore done; the other three are not.
+and VIPS loaders. `image/gif` is not in `ACCEPTED_PHOTO_TYPES`**, by the owner's decision on
+2026-09-17 (gate 68, `01-contracts.md` §5). So preventive fix 4 below is done; the other three are
+not.
 
 ADR-0002 hands this question to this role by name: *"900 Security owns this when that role runs, and
 should look at it with the `sharp` decode path in `01-iac-plan.md` §4.4 in mind."*
@@ -246,11 +245,11 @@ should look at it with the `sharp` decode path in `01-iac-plan.md` §4.4 in mind
 | --- | --- | --- |
 | **Preventive** | Four things, and the first three cost nothing. **1.** Pin `sharp` to **0.35.3 or higher**, which carries libvips 8.18.3 with the fixes. Today's latest is 0.35.4. **2.** Call the advisory's own guard at start-up, even on a fixed version, so a future hole in those loaders is closed before it is published: `sharp.block({ operation: ['VipsForeignLoadNsgif', 'VipsForeignLoadTiff', 'VipsForeignLoadVips'] })`. **3.** Set `limitInputPixels` — this also closes T-20. **4.** **DONE 2026-09-17 (gate 68): `image/gif` is out of `ACCEPTED_PHOTO_TYPES`**, because a plant photograph from a phone camera is never a GIF, and the GIF loader is one of the three the advisory names. Do not put it back | **C**, **I** |
 | **Detective** | Count decode failures by their own name. A rise is either a broken client or somebody probing the decoder. `03-api-spec.md` §11 already records a failure code per assessment, so this is one more code, not a new mechanism | I |
-| **Responsive** | The kill-switch does **not** help here — the decode happens at step 5b, before the kill-switch is read at step 6. So the responsive control is different: **set the `api` function's reserved concurrency to 0 in the AWS console.** That stops every request, including the decode, and it needs no deploy. **Then rotate the Cognito client secret**, because a compromised function could read it. The model key does not need rotating for this risk since 2026-09-17, because the `api` role cannot read it | A |
+| **Responsive** | The kill-switch does **not** help here — the decode happens at step 5b, before the kill-switch is read at step 6. So the responsive control is different: **set the `api` function's reserved concurrency to 0 in the AWS console.** That stops every request, including the decode, and it needs no deploy. **Then rotate the Cognito client secret**, because a compromised function could read it. The model key does not need rotating for this risk, because the `api` role cannot read it | A |
 
-**Point 4 changed a value a person sees**, because US-01 AC-2 requires the refusal to name the
+**Point 4 changes a value a person sees**, because US-01 AC-2 requires the refusal to name the
 accepted formats. So it was gate G-901-5, and **the owner answered it on 2026-09-17: drop GIF.**
-`01-contracts.md` §5, `02-SPEC.md` state 6 and US-01 AC-2 all name three formats now.
+`01-contracts.md` §5, `02-SPEC.md` state 6 and US-01 AC-2 all name three formats.
 
 **Two things about this that are easy to get wrong later.** `sharp.block()` has to run once at module
 load, not per request, or a cold start races it. And **`.withMetadata()` must never be called** on the
@@ -311,12 +310,15 @@ because trust is what is being attacked.
 | Fix | What | Protects |
 | --- | --- | --- |
 | **Preventive** | The design already does most of the work and it should not be traded away: three bands instead of a percentage, `cannot-tell` so the model can refuse, `nothing-wrong` so it is never forced to find a fault, no care task on `unsure` without a confirmation (NFR-31), and an AI notice on every screen showing an assessment | **I** |
-| **Detective** | ADR-0006's measurement is the detective control: **run the 40-photo golden set on all three models, once, for about $1.28**, and then watch the rolling agreement across 20 assessments. A rising share of `other` is the second signal, and it is countable | I |
-| **Responsive** | The `MODEL_ID` row. Changing the model is one edit and no deploy (ADR-0006). If agreement drops below 8 in 10, that row is the lever | A |
+| **Detective** | ADR-0006's measurement is the detective control. **The first golden-set run compares the two Haiku models only, `claude-haiku-4-5-20251001` and `claude-haiku-5-5`, for about $0.18** (ADR-0017, gate 85). Sonnet 5.5 is measured only if neither Haiku reaches 8 in 10, and that needs a new decision by the owner. Then watch the rolling agreement across 20 assessments. A rising share of `other` is the second signal, and it is countable | I |
+| **Responsive** | The `MODEL_ID` row. Changing to another of the three ids in ADR-0017 is one edit and no deploy. Any other id is refused, so a fourth model needs a deploy and a new decision by the owner. If agreement drops below 8 in 10, that row is the lever | A |
 
-**One date to carry forward, and it is close.** `00-environments.md` §10 item 8 records that Claude
-Haiku 4.5 retires on **2026-10-15**, and it is the run-1 default model. A default model reaching end
-of life is otherwise found from an error message.
+**One date to carry forward, and it has passed.** Claude Haiku 4.5, the run-1 default model, can be
+retired any time after **2026-10-15**, with at least 60 days' notice (ADR-0017, from Anthropic's
+deprecations page checked 2026-10-29; `00-environments.md` §10 item 8). **That notice email is the
+trigger to run the golden set and switch the default**, inside the 60 days. Without the measurement,
+the owner would have to choose between a model nobody measured and a feature that goes dark on the
+retirement day.
 
 ### R-15 — An agent decision is treated as the owner's approval (F-03, score 12)
 
@@ -341,6 +343,36 @@ of life is otherwise found from an error message.
 | **Preventive** | The check in `01-threats.md` §5 is the control, and it ran: every package named in a specification was read from the npm registry before it was accepted. **Do it again for every new name in every run** | **I** |
 | **Detective** | The plugin is at a pinned version path (`ai-factory/0.2.4/`). A version change is visible. A role writing a package name that no registry answers for is caught by the check above | I |
 | **Responsive** | Remove the name from the specification. Nothing has been installed yet, so in run 1 this costs one edit | A |
+
+### R-18 — A retry cap is raised or a hidden retry is left on (T-43, score 12)
+
+Four things have to be right at once, and two have a wrong default. The three provider errors go to
+a `Catch` that adds 1 to `callsMade`, never to a `Retry`. `RetryOrStop` runs `Assess` again only
+while `callsMade` is under 3. `retryOnServiceExceptions` is `false` on the CDK task, and
+`maxRetries` is `0` on the Anthropic client. The one `Retry` left, with `MaxAttempts: 2`, is on
+`Lambda.TooManyRequestsException`, and it costs nothing because the function never ran (ADR-0018).
+
+| Fix | What | Protects |
+| --- | --- | --- |
+| **Preventive** | `infra-assert` reads the synthesised state machine (EV-33). It fails unless the `Retry` names only `Lambda.TooManyRequestsException` with `MaxAttempts: 2`, the three provider errors are in the `Catch` that adds 1 to `callsMade`, and `RetryOrStop` compares `callsMade` with 3. The NFR-04 stub test counts calls: three thrown timeouts give exactly 3 | **A** |
+| **Detective** | The retry query in `03-observability.md` §7, and alarm 6 on calls per hour | A |
+| **Responsive** | The kill-switch stops the next `assess` call inside 30 seconds, because `assess` re-reads it. Then fix the setting | A |
+
+### R-19 — The stream's Function URL becomes public (T-42, score 8)
+
+| Fix | What | Protects |
+| --- | --- | --- |
+| **Preventive** | `authType: AWS_IAM` and origin access control on the one CloudFront behaviour that reaches it. `infra-assert` fails on `NONE` (EV-34). The `watch` handler validates the session exactly as the guard does, so even a reached URL answers nothing without a cookie | **C**, **A** |
+| **Detective** | Lambda `Invocations` on `watch` against `api` invocations of the assessment route. They should be about equal | A |
+| **Responsive** | Set the `watch` function's reserved concurrency to 0 in the console. The fallback `GET` still works, so the product degrades to polling rather than stopping | A |
+
+### R-20 — A row is stranded, or an attempt is refunded after a call (T-44, T-45, scores 4 and 6)
+
+| Fix | What | Protects |
+| --- | --- | --- |
+| **Preventive** | No machine-level timeout, a `Catch` on every task, the EventBridge rule to `mark-failed`, and `Refund` reached only through `AnyCallMade` when `callsMade` is 0 (ADR-0018). `infra-assert` checks all four (EV-33, EV-35) | **I**, A |
+| **Detective** | Alarm 12 on the dead-letter queue, and alarm 3 on failed executions | A |
+| **Responsive** | Write `state: failed` on the stranded row by hand in the console, exactly as the kill-switch is flipped | A |
 
 ---
 
@@ -450,12 +482,12 @@ This role's contract asks three things of a kill-switch. Here are all three, ans
 | Property | Answer |
 | --- | --- |
 | **A named, reachable person** | **The owner** — one person, who is also the developer and the only account holder (`02-containers.mmd`, gate 30). **No input this role may read names a real person or a contact.** The alarm email address is deliberately kept out of the repository (gate 58), so a reachable contact exists and is not written anywhere. **That is correct for a public repository and it means the ledger entry cannot be completed here.** See gate G-901-6 |
-| **Independent of the component it kills** | **Partly, and the gap is worth knowing.** It is independent of the code and of a deploy, which is what US-13 AC-2 asks for — no release is needed. **It is not independent of DynamoDB.** The switch is a row in the same table the API reads on every request, and a failed read keeps the last known value, which is `true` (ADR-0009). So a table that cannot be read is a switch that cannot be flipped, while the model calls continue |
-| **A test date** | **There is none.** `00-environments.md` §10 lists eight things to do before the first deploy and none of them is "flip the switch and time it". A switch nobody has flipped is a paragraph, in the same way `01-iac-plan.md` §9 says a rollback nobody has run is a plan |
+| **Independent of the component it kills** | **Partly, and the gap is worth knowing.** It is independent of the code and of a deploy, which is what US-13 AC-2 asks for — no release is needed. **It is not independent of DynamoDB.** The switch is a row in the same table the API reads on every request, and a failed read keeps the last known value, which is `true` (ADR-0009). So a table that cannot be read is a switch that cannot be flipped, while the model calls continue. **A read that succeeds is different:** a missing row, or an `enabled` value that is not the boolean `true`, means off (ADR-0019). So a mistake made while flipping the switch still stops the money |
+| **A test date** | **Planned, not yet run.** `00-environments.md` §10 item 9 says to flip the switch once on purpose before the first deploy, time it, and write the number down. EV-29 in `03-evidence.md` is the command. The day it runs is the test date. Until then the switch is a paragraph, in the same way `01-iac-plan.md` §9 says a rollback nobody has run is a plan |
 
-**Three backup switches exist, cost nothing, and are not written down anywhere.** All three are
-independent of DynamoDB, and all three should be in the runbook. **Since 2026-09-17 there are four
-functions, so the switch has to name one**, and which one depends on what is going wrong:
+**Three backup switches exist and cost nothing.** All three are independent of DynamoDB. This list
+is where they are written down, and the runbook should copy it. **There are four functions, so the
+switch has to name one**, and which one depends on what is going wrong:
 
 1. **Set the `assess` function's reserved concurrency to 0** in the AWS console. **This is the one
    that stops the money.** No model call can run, including a run already queued in the workflow.
@@ -463,17 +495,16 @@ functions, so the switch has to name one**, and which one depends on what is goi
    It is the closest thing to the kill-switch that does not depend on the table being readable.
 2. **Set the `api` function's reserved concurrency to 0.** Every request stops at once, including
    the photo decode. It is blunter — it stops the whole product — and it is the right answer to
-   R-09, where the harm happens at step 5b, before the kill-switch is even read.
+   R-09, where the harm happens at step 5b, before the kill-switch is even read. It does **not**
+   stop a run already queued in the workflow, because the money is spent in `assess`.
 3. **Disable the CloudFront distribution.** This is already the named answer to an edge flood
    (`01-iac-plan.md` §4.4), and it is the outermost stop.
 
-**Two things to add to the pre-deploy checklist in `00-environments.md` §10**, recorded here because
-this role may not write that file:
-
-- **Item 9: flip the kill-switch once on purpose, time it, and write the number down.** The promise
-  is 60 seconds and the cache is 30.
-- **Item 10: run level 3 of the rollback once on purpose.** `01-iac-plan.md` §9 already asks for
-  this and it is not on the checklist.
+**The pre-deploy checklist in `00-environments.md` §10 carries the four checks this review asked
+for.** Item 9 flips the kill-switch once on purpose and times it: the promise is 60 seconds and the
+cache is 30. Item 10 runs level 3 of the rollback once on purpose, as `01-iac-plan.md` §9 asks.
+Item 11 reads the dev role's policy (R-05). Item 12 confirms multi-factor sign-in on the AWS
+account (R-10).
 
 ---
 
@@ -491,7 +522,7 @@ be written into the ledger**.
 | --- | --- | --- | --- | --- | --- |
 | **RR-01** | Every plant photo and nickname is sent to a third party outside the EU. Anthropic says the images are ephemeral and not used for training, and that is their statement, not something this project can verify | The owner | **2026-12-31**, when the free account plan ends and the project is reviewed anyway | **A second person's photos enter the product** — that is the trigger that ends the household-activity reading — or Anthropic changes its data statement | **Accepted by the owner on 2026-09-17 (gate 65)**, for run 1 only, on the reading in R-01. Re-opening it is the owner's too |
 | **RR-02** | A photo can sit in the bucket for a short time after day 180. AWS says *"there may be a delay between the expiration date and the date at which Amazon S3 removes an object"* (ADR-0007). NFR-41 already measures at 182 days | The owner | **2026-12-31** | The number 180 changes, or a person asks how long their photo is really kept | The owner. Gate 27 already exists for this |
-| **RR-03** | ~~The one function holds one IAM execution role over the whole table, the whole bucket and both secrets.~~ **Closed 2026-09-17 by ADR-0014.** The model call and its key are in `assess`, with the smallest role in the product; `watch` is read-only; the `api` role can start one state machine and cannot read the model key. What remains: the `api` function still holds one role over the whole table and bucket for every route, `GET /api/health` included. That remainder is RR-10 | The owner | closed | — | — |
+| **RR-03** | **Closed by ADR-0014.** The model call and its key are in `assess`, with the smallest role in the product; `watch` is read-only; the `api` role can start one state machine and cannot read the model key. What remains is that the `api` function holds one role over the whole table and bucket for every route, `GET /api/health` included. That remainder is RR-10 | The owner | closed | — | — |
 | **RR-10** | The `api` function's one role still covers the whole table, the whole bucket and the Cognito secret, for every route. The blast radius of R-09 is that, and it is still every account's rows | The owner | **2026-12-31** | A second person's data is in the table, or R-09 happens | The owner. A per-route role is not possible on one function, and a function per route is the trigger in ADR-0002 |
 | **RR-04** | A stolen session cookie works for up to 30 days. Nothing detects it, and there is no "sign out everywhere" | The owner | **2026-12-31** | A second person uses the product, or a device is lost | The owner. The 30 days is gate G-7 and is theirs to change |
 | **RR-05** | The photo bucket uses SSE-S3, not a customer-managed key. There is no key policy and no per-decrypt record | The owner | **2026-12-31** | A second person's photos are in the bucket, or the account leaves the free plan | The owner. ADR-0007 asked for exactly this decision |
@@ -499,7 +530,7 @@ be written into the ledger**.
 | **RR-07** | Nobody has measured how often the model is right. NFR-20 asks for 8 in 10 and there is no evidence for any model | The owner | **After the first 20 real assessments**, which `factory/feature.md` already fixes as a review point | The share of `other` verdicts rises, or a plant is lost following the advice | The owner. Accepting an unmeasured accuracy claim is a risk acceptance |
 | **RR-08** | Up to 30 seconds of model calls still go out after the kill-switch is flipped | The owner | **2026-12-31** | The switch is used in a real incident and 30 seconds turns out to be too long | The owner. Gate G-8 already accepted this and the reasoning is good |
 | **RR-11** | **The app tells the person an idle account is deleted after 12 months, and nothing deletes it** (US-10 AC-2, T-31, T-25). Accepted for run 1 with both the deletion and its warning deferred to run 3 | The owner | **Before run 3 ships, and before a second person signs in, whichever comes first** | A second account exists, or the product is offered to anyone else | **Accepted by the owner on 2026-09-17 (gate 66).** A promise nobody keeps is fine while the only person it is made to is the person who made it. It stops being fine on the first outside account |
-| **RR-09** | CI can build a whole AWS environment on a public repository. **Two of the three walls are verified** (R-05, 2026-09-17): fork pull requests cannot run the deploy workflow, and the preview role's trust claim is pinned to a pull-request context. What is left is that the preview role's IAM policy does not exist yet, so nothing proves it cannot touch a `Prod` stack | The owner | **Before the first deploy** | Any change to a workflow trigger | The owner, when the two OpenID Connect roles are created by hand |
+| **RR-09** | CI on a public repository can deploy the `dev` environment. **Two of the three walls are verified** (R-05, 2026-09-17): fork pull requests cannot run the deploy workflow, and the trust claim of the dev role, `zamphora-github-dev`, is pinned to a pull-request context. What is left is that the dev role's IAM policy does not exist yet, so nothing proves it cannot touch a `Prod` stack or write a `CONFIG` row | The owner | **Before the first deploy** | Any change to a workflow trigger | The owner, when the three OpenID Connect roles are created by hand (`00-environments.md` §10 step 2) |
 
 ---
 
@@ -512,6 +543,9 @@ what a person sees.
 **These gates belong in `factory/runs/001-photo-assessment/human-gates.md`**, and this role may not
 write that file. **They have to be copied there.** A gate that fires and is not recorded in the
 ledger is a `missed` gate, which `handoff-map.yaml` weighs the same as a broken seam.
+
+**In that ledger, three gates from this review are still open: 64, 69 and 71.** Gates 69 and 71 are
+hard stops before the first deploy. None of the three blocks writing code.
 
 | # | The question | The options | Status |
 | --- | --- | --- | --- |
@@ -536,12 +570,12 @@ guessing the fact is the failure.
 
 | # | The fact needed | The file that would have carried it | Label | Effect |
 | --- | --- | --- | --- | --- |
-| **S-901-1** | The CI workflow triggers, the two OpenID Connect roles' trust policies, and what each role may deploy | `docs/800-infra/04-ci-cd.md` — **not in this role's `reads:` block** | **under-supply** | **Closed 2026-09-17 by reading the file.** T-27 and R-05 were scored at 15 because the fact was unknown; two of the three properties hold and the score is now 10. The seam itself is real and the fix still belongs in the plugin: `04-ci-cd.md` must be added to `900-security`'s `reads:` (run-record change 23), or the next run scores the same wasted Critical again |
+| **S-901-1** | The CI workflow triggers, the three OpenID Connect roles' trust policies, and what each role may deploy | `docs/800-infra/04-ci-cd.md` — **not in this role's `reads:` block** | **under-supply** | **Closed for this run by reading the file on 2026-09-17:** two of the three properties hold, and T-27 scores 10. The seam itself is real and the fix belongs in the plugin: `04-ci-cd.md` must be added to `900-security`'s `reads:` (run-record change 23). Without it, the next run has to score T-27 without the facts it needs |
 | **S-901-2** | Whether `GET /api/auth/callback` compares the `state` in the query with the `state` in the cookie and refuses on a mismatch | `docs/500-engineering/03-api-spec.md` §3, or ADR-0003 | **under-supply** | R-07. The cookie's contents are written down; the comparison is not |
 | **S-901-3** | Whether the browser reuses `requestId` after a failed assessment | `docs/500-engineering/03-api-spec.md` §4a | **under-supply** | R-08. **Answered 2026-09-17 as gate 76** in `factory/feature.md`. `03-api-spec.md` §4a now carries the rule |
-| **S-901-4** | The valid range for `DAILY_LIMIT`. `03-api-spec.md` §6 said every `CONFIG` value is checked "against a closed list or a range" and named no range | `docs/500-engineering/03-api-spec.md` §6, or ADR-0008 | **under-supply** | T-14. A limit of 10,000 typed by hand would have been $40 a day against a $5 balance. **Answered 2026-09-17 as gate 75** in `factory/feature.md`. `03-api-spec.md` §6 now names the range |
+| **S-901-4** | The valid range for `DAILY_LIMIT`. `03-api-spec.md` §6 said every `CONFIG` value is checked "against a closed list or a range" and named no range | `docs/500-engineering/03-api-spec.md` §6, or ADR-0008 | **under-supply** | T-14. A limit of 10,000 typed by hand would have been $40 a day against a $5 balance, counting one call per assessment on Haiku 4.5. **Answered 2026-09-17 as gate 75** in `factory/feature.md`. `03-api-spec.md` §6 now names the range |
 | **S-901-5** | The Cognito password policy. `01-iac-plan.md` §4.3 says "Cognito's own" and no input says what that is. Nothing anywhere mentions multi-factor sign-in for the product's own users | `docs/800-infra/01-iac-plan.md` §4.3 | **under-supply** | T-21. The account is the strongest key to one person's photos and its strength is unstated |
-| **S-901-6** | What happens when `LLM_PROVIDER` is missing or misspelled | `docs/800-infra/00-environments.md` §4 | **under-supply** | T-30. If the fallback is the real adapter, a pull request can spend the $5 balance |
+| **S-901-6** | What happens when `LLM_PROVIDER` is missing or misspelled | `docs/800-infra/00-environments.md` §4 | **under-supply** | T-30. If the fallback is the real adapter, `dev` still makes no paid call, because it holds no model key (`00-environments.md` §8). The instruction in §8 below still holds, so that the missing key is not the only wall |
 | **S-901-7** | The path of the file the global guard lives in | No input. **No application code exists yet**, so this is a fact that does not exist rather than one that was withheld | **clean, but open** | §3.1. The first task that writes the guard records the path there |
 | **S-901-8** | A real name and a contact for the person who owns a residual risk | `factory/runs/001-photo-assessment/human-gates.md` — **not in this role's `reads:` block**, and deliberately not published | **under-supply** | §5 and G-901-6 |
 
@@ -578,24 +612,38 @@ Everything above, reduced to instructions. Each one has an explicit "do not".
 - **Do not mark any residual risk in §5 as accepted.** Only the owner can, and §6 is where the
   question is asked.
 
-One more, added 2026-09-17 when the owner answered gate 68:
+One more, from the owner's answer to gate 68 on 2026-09-17:
 
 - **Do not put `image/gif` back into `ACCEPTED_PHOTO_TYPES`**, and do not accept any format whose
   loader is on the `sharp.block()` list. Accepting a type and blocking its loader only produces a
   failure nobody can explain.
 
-Four more, added 2026-09-17 for the background run (ADR-0014 to ADR-0016):
+Four more, for the background run (ADR-0014 to ADR-0016, with the retry and refund paths of
+ADR-0018):
 
 - **Do not give the `api` function's role a read on the model key parameter**, and do not import
   `LlmProvider` into any `api` module. Only `assess` calls the model.
 - **Do not create the `watch` Function URL with `authType: NONE`**, and do not add a second
   behaviour that reaches it. One `GET` path, through CloudFront with origin access control, is all.
-- **Do not raise `MaxAttempts` above 2, do not leave `retryOnServiceExceptions` at its default, and
-  do not set `maxRetries` above 0** on the Anthropic client. Do not add a retry in code anywhere.
-  Do not add a `Retry` on a name that is not one of the three thrown ones.
-- **Do not put a timeout on the state machine**, and do not make `Refund` reachable from any state
-  after `Assess` has made a call. Do not let the browser's `EventSource` reconnect without the
-  session cookie: the stream route is guarded exactly as every other route.
+- **Do not put `ProviderTimeout`, `ProviderThrottled` or `ProviderUnavailable` in a `Retry`.** They
+  go to the `Catch` that adds 1 to `callsMade`, because a `Retry` cannot record that a call was
+  made. Do not let `RetryOrStop` run `Assess` again once `callsMade` is 3. The only `Retry` is on
+  `Lambda.TooManyRequestsException`: do not raise its `MaxAttempts` above 2, and do not add a
+  `Retry` on any other name. Do not leave `retryOnServiceExceptions` at its default, do not set
+  `maxRetries` above 0 on the Anthropic client, and do not add a retry in code anywhere.
+- **Do not put a timeout on the state machine.** Do not draw any arrow into `Refund` except from
+  `AnyCallMade` when `callsMade` is 0, and do not give `assess` write access to the assessment row
+  to record calls (ADR-0018). A try counts whenever the model was called, even when the call failed
+  (gate 82). Do not let the browser's `EventSource` reconnect without the session cookie: the
+  stream route is guarded exactly as every other route.
+
+One more, from ADR-0017 (gate 83, the owner):
+
+- **Do not accept a `MODEL_ID` outside the three in ADR-0017**: `claude-haiku-4-5-20251001`,
+  `claude-haiku-5-5` and `claude-sonnet-5-5`. That includes the alias `claude-haiku-4-5`, any Opus
+  id and any `-latest` alias: refuse it and use the default. Do not change the default without
+  running the 40-photo golden set, and do not add an id to the list without a new decision by the
+  owner.
 
 ---
 
@@ -606,83 +654,3 @@ was chosen first and a later run inherits them rather than re-deciding them: **t
 guards in R-09**, and **the whole LLM section**. The rest — the sign-in check, the guard, the
 secrets, the deploy path, the kill-switch — belong to the product and apply to every feature after
 this one.
-
----
-
-## 10. What the 2026-09-17 architecture change added and corrected
-
-The owner moved the assessment into a Step Functions workflow (ADR-0014), the result onto a stream
-(ADR-0015), and allowed a refund when no call was made (ADR-0016). `01-threats.md` §7 scores the
-four threats that came with it. This section says what to do about them.
-
-**Closed.** R-08, because the id is on the `IDEM#` row before the `202` and gate 76 says when the
-browser makes a new id (see R-08). RR-03 and gate G-901-7, because the model call has its own
-function and its own role. What RR-03 left behind is RR-10.
-
-**Smaller.** R-09, because the decoding function cannot read the model key.
-
-### R-18 — A retry cap is raised or a hidden retry is left on (T-43, score 12)
-
-Three settings have to be right at once, and two have a wrong default: `MaxAttempts: 2` on the
-`Assess` task, `retryOnServiceExceptions: false` on the CDK task, and `maxRetries: 0` on the
-Anthropic client.
-
-| Fix | What | Protects |
-| --- | --- | --- |
-| **Preventive** | `infra-assert` reads the retry list off the synthesised state machine and fails on anything but the four named errors with `MaxAttempts: 2` (EV-33). The NFR-04 stub test counts calls: three thrown timeouts give exactly 3 | **A** |
-| **Detective** | The retry query in `03-observability.md` §7, and alarm 6 on calls per hour | A |
-| **Responsive** | The kill-switch stops the next `assess` call inside 30 seconds, because `assess` re-reads it. Then fix the setting | A |
-
-### R-19 — The stream's Function URL becomes public (T-42, score 8)
-
-| Fix | What | Protects |
-| --- | --- | --- |
-| **Preventive** | `authType: AWS_IAM` and origin access control on the one CloudFront behaviour that reaches it. `infra-assert` fails on `NONE` (EV-34). The `watch` handler validates the session exactly as the guard does, so even a reached URL answers nothing without a cookie | **C**, **A** |
-| **Detective** | Lambda `Invocations` on `watch` against `api` invocations of the assessment route. They should be about equal | A |
-| **Responsive** | Set the `watch` function's reserved concurrency to 0 in the console. The fallback `GET` still works, so the product degrades to polling rather than stopping | A |
-
-### R-20 — A row is stranded, or an attempt is refunded after a call (T-44, T-45, scores 4 and 6)
-
-| Fix | What | Protects |
-| --- | --- | --- |
-| **Preventive** | No machine-level timeout, a `Catch` on every task, the EventBridge rule to `mark-failed`, and `Refund` reachable only from the refusal choice. `infra-assert` checks all four (EV-33, EV-35) | **I**, A |
-| **Detective** | Alarm 12 on the dead-letter queue, and alarm 3 on failed executions | A |
-| **Responsive** | Write `state: failed` on the stranded row by hand in the console, exactly as the kill-switch is flipped | A |
-
----
-
-## 11. What the 2026-09-17 audit closed and corrected
-
-An audit read this pack against every other document and against the owner. It changed four risks
-and it found two things in this file that were wrong rather than out of date.
-
-**Closed by an owner's answer.**
-
-- **R-01 / gate 65.** The transfer of a photo outside the EU is accepted for run 1, on the
-  household-activity reading in R-01, with the re-open trigger written into RR-01. **The hard stop
-  on the photo path is lifted.**
-- **R-02 and R-04 / gate 66.** Nothing is deleted automatically in run 1. The warning and the
-  deletion ship together in run 3's monthly `sweep`. The gap is accepted as RR-11.
-- **R-09's fourth preventive fix / gate 68.** `image/gif` is out of `ACCEPTED_PHOTO_TYPES`.
-
-**Lowered by reading a file this role was not given.**
-
-- **R-05 / T-27** fell from 15 to 10. `04-ci-cd.md` §4 answers two of the three properties. Seam
-  S-901-1 is closed for this run, and the fix to the handoff map is still owed in the plugin.
-
-**Two things here were wrong, not stale, and that is the difference worth noticing.**
-
-1. **R-02's preventive fix would not have worked.** It proposed a DynamoDB `ttl` on the profile item
-   as "the closest match" to the S3 lifecycle rule. **A TTL deletes one item.** It would have
-   removed the profile row and left the pots, the assessments, the photo objects and the Cognito
-   user behind, owned by an id that no longer resolves. The shape was borrowed from ADR-0007 because
-   it reads the same — *let the store do the deleting* — and the two stores do not have the same
-   power. **A control copied for its shape rather than its behaviour is the failure this row
-   records.**
-2. **§4's backup switch said "the function" when there are four functions.** Since ADR-0014 the
-   money is spent in `assess`, not in `api`, so setting the `api` function's concurrency to 0 stops
-   new requests and does **not** stop a run already queued in the workflow. §4 now names three
-   switches and says which one each is for.
-
-**The remaining open gates are 64, 69 and 71.** Gates 69 and 71 are hard stops before the first
-deploy. Neither blocks writing code.

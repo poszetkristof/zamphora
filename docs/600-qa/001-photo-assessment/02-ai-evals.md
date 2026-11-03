@@ -1,7 +1,7 @@
 # AI evaluation — measuring whether the model is right
 
-**Written by** 600 QA, run 1 (`001-photo-assessment`), 2026-09-17. **Read next by** whoever writes
-the `ai-eval` job, and by 600 QA on every later run.
+**Written by** 600 QA, run 1 (`001-photo-assessment`). **Read next by** whoever writes the
+`ai-eval` job, and by 600 QA on every later run.
 
 ---
 
@@ -50,8 +50,9 @@ who accept and follow the advice, over 8 weeks of real use.
 
 ## 2. The 40 photos
 
-**40 is not QA's number.** NFR-11 prices one run at 40 × $0.0040 = $0.16 and refuses a set larger
-than 50. ADR-0006 prices one run on all three models at $1.28. Changing 40 changes both.
+**40 is not QA's number.** NFR-11 limits one run to $0.20 and refuses a set larger than 50. The
+first run measures the two Haiku models on the same 40 photos: 40 × ($0.0040 + $0.0004), about
+$0.18 (gate 85, `04-ci-cd.md` §8). Changing 40 changes both.
 
 | Group | Count | What the photo is | What it measures |
 | --- | --- | --- | --- |
@@ -193,7 +194,8 @@ The judge is a model call, so it follows the same rules as the product's call (`
   instructions (EV-07).
 - It does not know which model wrote the text, which band was given, or older scores. It sees only
   the verdict (for rule 2) and the language (for rule 6).
-- It uses a dated model id, never an alias (gate 53).
+- Its model id names one fixed version, never a moving alias such as `claude-haiku-4-5` or a
+  `-latest` alias (gate 53, ADR-0017).
 
 **Known weakness:** the judge is from the same model family as the model it judges. This project
 has one provider and no budget for a second. §6.3 is what makes the judge usable anyway.
@@ -220,8 +222,8 @@ whenever its model id changes, and at least once for each golden-set run on a ne
 
 ## 7. Cost, and why it never runs on a push
 
-`ai-eval.yml` runs only on a button press (`04-ci-cd.md` §8). One run is $0.16, so running it every
-night would cost about $4.80 a month. That is the whole Anthropic balance.
+`ai-eval.yml` runs only on a button press (`04-ci-cd.md` §8). One run on Haiku 4.5 is $0.16, so
+running it every night would cost about $4.80 a month. That is the whole Anthropic balance.
 
 - The script prints the total before it starts, and refuses a set larger than 50 photos (NFR-11).
 - The Anthropic key is in a GitHub environment with required reviewers. A second person click is
@@ -229,8 +231,9 @@ night would cost about $4.80 a month. That is the whole Anthropic balance.
 
 | Run | Calls | Cost | Source |
 | --- | --- | --- | --- |
-| The golden set on one model | 40 | $0.16 | NFR-11 |
-| The golden set on all three models, to choose one | 120 | $1.28 | ADR-0006, EV-32 |
+| The golden set on `claude-haiku-4-5-20251001` | 40 | $0.16 | NFR-11 |
+| The first run: both Haiku models, `claude-haiku-4-5-20251001` and `claude-haiku-5-5`, to choose one | 80 | about $0.18 | Gate 85, EV-32, `04-ci-cd.md` §8 |
+| The golden set on `claude-sonnet-5-5`, only if neither Haiku model meets NFR-20 and NFR-21 | 40 | about $0.32, over NFR-11's $0.20 | Gate 85. Needs a new decision by the owner |
 | EV-25: two injection inputs, three times each | 6 | about $0.008 | `03-evidence.md` §4 |
 | The judge on 40 texts | 40 | **Unknown** | The prices were not an input (finding 45) |
 
@@ -244,7 +247,7 @@ Every run writes one row here and one file of per-photo results.
 | Field | Why |
 | --- | --- |
 | Run date | |
-| Model id, with its date | For example `claude-haiku-4-5-20251001`, never an alias. An alias can change with no warning |
+| Model id | One of the three ids in ADR-0017, for example `claude-haiku-4-5-20251001`, never an alias. An alias can change with no warning. `claude-haiku-5-5` has no date and is already one fixed version |
 | Golden set version | Runs on different sets cannot be compared |
 | Photos run, and cost | Against NFR-11 |
 | `likely` agreement, with its denominator | NFR-20 |
@@ -264,9 +267,9 @@ changed. A total can stay at 8 in 10 while six photos turn wrong and six others 
 
 | What changes | Why it is a risk | The check |
 | --- | --- | --- |
-| The model id becomes an alias | An alias moves to a new version with no deploy (gate 53) | A unit test that `MODEL_ID` is a dated id. Runs in `test` on every push |
-| The model id is changed on purpose | It is one row edit, no deploy (R-14). Easy to change and forget | Run the golden set again before `prod` uses the new id. Compare photo by photo |
-| The default model retires | Gate 62 recorded "Haiku 4.5 retires no sooner than 2026-10-15". **That date has passed.** | Check the model's status before the first eval run, and re-run on its replacement |
+| The model id is set to an alias, or to an id not on the list | An alias moves to a new version with no deploy (gate 53). An id outside the list was never chosen by the owner (ADR-0017) | TC-13-7 and TC-13-8: any id outside the three in ADR-0017 is refused and the default is used, and the three listed ids are accepted. Runs in `test` on every push |
+| The model id is changed on purpose | It is one row edit, no deploy, between the three listed ids (R-14). Easy to change and forget | Run the golden set again before `prod` uses the new id. Compare photo by photo |
+| The default model retires | Haiku 4.5 can be retired any time after 2026-10-15, with at least 60 days' notice (R-14, from Anthropic's deprecations page, checked 2026-10-29) | The notice email is the trigger. Inside the 60 days, run the golden set and switch the default to the measured model (R-14) |
 | Answers drift with nothing changed | The same id can behave differently over time | Three runtime numbers from the stored rows: share of `other`, share of `cannot-tell` (NFR-22), and the unreadable rate (NFR-23) |
 
 The runtime numbers are the only drift check between golden-set runs, because the golden set costs
@@ -287,8 +290,9 @@ rising share of `other` is also the signal for the gate 6 review of the ten verd
 
 **The owner's options:**
 
-- **Change the model.** One `MODEL_ID` edit, no deploy. ADR-0006 already pays for a comparison run
-  on all three models ($1.28).
+- **Change the model.** One `MODEL_ID` edit, no deploy, to another of the three ids in ADR-0017.
+  The first run already measures both Haiku models. Measuring `claude-sonnet-5-5` costs about $0.32,
+  over NFR-11, and needs a new decision by the owner (gate 85).
 - **Replace the provisional bar with the measured figure.** Both bars are provisional and "replaced
   by the measurement" (`factory/feature.md`). That is not lowering a bar. The owner writes the new
   number with its date and denominator.
