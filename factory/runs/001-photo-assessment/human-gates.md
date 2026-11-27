@@ -237,6 +237,40 @@ not its to decide?
     If 500 Engineering writes conventions against Radix without noticing, that is the exact break
     finding 21 predicted, and it is a `missed` gate at that point rather than this one.
 
+### 500, 800, 900, 600 and the repair passes — checked at the close, 2026-11-04
+
+14. **The re-check from row 13 is answered: no.** No file in `docs/500-engineering/` and no line in
+    `docs/context/stack.md` names Radix. 500 wrote against ADR-0011. The skills were brought in
+    line by hand on 2026-08-26 and audited on 2026-08-27 (findings 37 to 40).
+
+15. **500-engineering — two things to watch, not `missed` gates.** It kept three failure names
+    where `05-patterns.md` gave one, because two acceptance criteria need two different sentences
+    (finding 36). `05-patterns.md` is not an ADR, so no gate policy covers it. The role wrote down
+    why and handed the change to 400. In a repair pass, it chose "the same `requestId`" for the
+    `deadline-passed` case that gate 76 did not name (finding 55). That is a reading of an answered
+    gate, not a new decision, and the role labelled it.
+
+16. **800-infra — checked, none found.** Five gates, six open questions. It priced services and
+    spent nothing. It marked six free-tier numbers as not checked against a first-party source,
+    instead of presenting them as facts. Its one limit was its contract: it was not allowed to check
+    a service feature that an ADR relies on (finding 64, change 30).
+
+17. **900-security — a gate was closed on a wrong belief.** Gate 67 (G-901-4) was closed "by
+    structure" on 2026-09-17. The belief was that ADR-0014 made the ten-minute lockout impossible.
+    Finding 41 showed the same day that it did not. This is not `missed`, because the gate fired.
+    **The lesson:** closing a gate by structure needs the same check as an answer. Quote the line
+    in the spec that makes it true. Nobody did, and the two lines that mattered were in two
+    different files.
+
+18. **600-qa — checked, none found.** It refused four decisions rather than guess them: gates 74,
+    77, 78 and 81. Gates 75 to 78 were then closed by the assistant on the owner's standing
+    instruction to take the best-practice option, and each answer names the option that lost.
+
+19. **The repair passes — checked, none found.** Each time the policy fired as written. 400 wrote
+    ADR-0018 as Proposed and raised gate 84, because it changes an accepted ADR. 500 raised gate 86
+    instead of choosing what the kill-switch does when its row cannot be used. 800 raised gates 87
+    and 88 instead of letting a pipeline write or delete data.
+
 ## Standing human-owned decisions on this project
 
 Recorded here so a `missed` is easy to spot. None of these is ever a subagent's call.

@@ -1,36 +1,34 @@
 # Monorepo architecture
 
 **What this note is.** One repository holds the web app, the API, the shared code and the
-infrastructure. This note explains how that is arranged, which tools do which job, and why each
+infrastructure. This note explains how that is arranged, which tool does which job, and why each
 choice was made. It assumes you know React and TypeScript. It assumes nothing about workspaces.
 
-**Every version number below was read from the npm registry on 2026-08-26.** Versions go stale, so
-re-check them before trusting one.
+**Every version number below was read from the npm registry on 2026-08-26.** Versions go out of date,
+so check them again before you trust one.
 
-**The concepts underneath this note are explained on their own** in `backend-concepts.md`: **63**
-monorepo and polyrepo, with the measured cost of the alternative · **60** clean architecture, ports
-and adapters · **61** dependency injection · **62** monolith against microservices · **66** the
-testing pyramid · **73** RAG, for section 13. This note says what *this repository* does; that one
-says what the *idea* is and how else it is done.
+The ideas underneath this note are explained on their own in `backend-concepts.md`: **63** monorepo
+and polyrepo, **60** clean architecture, **61** dependency injection, **62** monolith and
+microservices, **66** the testing pyramid, and **73** RAG.
 
 ---
 
 ## Contents
 
 1. [The problem a monorepo solves](#1-the-problem-a-monorepo-solves)
-2. [Two slots, not one choice](#2-two-slots-not-one-choice)
-3. [What a workspace actually is](#3-what-a-workspace-actually-is)
+2. [Two jobs, two tools](#2-two-jobs-two-tools)
+3. [What a workspace is](#3-what-a-workspace-is)
 4. [Why pnpm and not npm](#4-why-pnpm-and-not-npm)
 5. [The catalog: one place for versions](#5-the-catalog-one-place-for-versions)
 6. [allowBuilds: why pnpm asks permission](#6-allowbuilds-why-pnpm-asks-permission)
 7. [Turborepo and Nx: what a task runner does](#7-turborepo-and-nx-what-a-task-runner-does)
-8. [Who really uses what](#8-who-really-uses-what)
+8. [What real projects use](#8-what-real-projects-use)
 9. [The layout](#9-the-layout)
 10. [Inside the API: clean architecture](#10-inside-the-api-clean-architecture)
-11. [Inside the web: how Next.js wants it](#11-inside-the-web-how-nextjs-wants-it)
+11. [Inside the web app: how Next.js wants it](#11-inside-the-web-app-how-nextjs-wants-it)
 12. [Sharing code, and the React Native question](#12-sharing-code-and-the-react-native-question)
-13. [Why the model call gets its own package](#13-why-the-model-call-gets-its-own-package)
-14. [The TypeScript 7 situation](#14-the-typescript-7-situation)
+13. [Why the model call has its own package](#13-why-the-model-call-has-its-own-package)
+14. [Why TypeScript 6 and not 7](#14-why-typescript-6-and-not-7)
 15. [How this deploys](#15-how-this-deploys)
 16. [Every trigger on one screen](#16-every-trigger-on-one-screen)
 
@@ -38,27 +36,27 @@ says what the *idea* is and how else it is done.
 
 ## 1. The problem a monorepo solves
 
-zamphora has a web app and an API that talk to each other. When the assessment answer grows a new
-field, three things change together: the Zod schema, the API that fills it, and the screen that shows
-it.
+zamphora has a web app and an API that talk to each other. When the assessment answer gets a new
+field, three things change together: the Zod schema, the API that fills the field, and the screen that
+shows it.
 
-If those live in three repositories, that one change is **three pull requests in a fixed order**, and
-nothing is testable until all three are merged. Cloudflare published four pull requests per change
-before they automated it down to one.
+If those three live in three repositories, that one change is **three pull requests in a fixed
+order**, and you cannot test anything until all three are merged. Cloudflare reported four pull
+requests per change before they automated it down to one.
 
-A monorepo makes it **one commit**. That is the whole idea. Everything below is machinery to make one
-repository stay tidy as it grows.
+**A monorepo makes it one commit.** That is the whole idea. Everything else in this note is the tooling
+that keeps one repository tidy as it grows.
 
-The cost is real and worth naming: one repository can turn into one tangle, where every file imports
-every other file. The rest of this note is about stopping that.
+The cost is real: one repository can turn into one big tangle, where every file imports every other
+file. Most of this note is about preventing that.
 
 ---
 
-## 2. Two slots, not one choice
+## 2. Two jobs, two tools
 
-This is the idea that makes everything else make sense, and it is easy to miss.
+This is the idea that makes the rest of the note make sense.
 
-**There are two separate jobs, and you pick a tool for each.**
+**There are two separate jobs, and you choose a tool for each one.**
 
 ```mermaid
 flowchart LR
@@ -76,21 +74,20 @@ flowchart LR
 | | Package manager | Task runner |
 | --- | --- | --- |
 | Answers | "Where do the files come from?" | "What do I run, and in what order?" |
-| You always need one | Yes | **No.** You can start with none |
+| Do you always need one? | Yes | **No.** You can start without one |
 | Options | npm, **pnpm**, yarn, bun | none, **Turborepo**, Nx |
 
-**pnpm does not compete with Turborepo.** They compete with npm and with Nx respectively. A project
-using Turborepo still needs a package manager underneath it, and most of them use pnpm.
+**pnpm does not compete with Turborepo.** pnpm competes with npm, and Turborepo competes with Nx. A
+project that uses Turborepo still needs a package manager underneath, and most of them use pnpm.
 
-zamphora picks **pnpm** for slot 1 and **Turborepo** for slot 2, both recorded in ADR-0012.
-Section 7 explains why Turborepo was added at the start and not later.
+zamphora uses **pnpm** for the first job and **Turborepo** for the second. ADR-0012 records both.
 
 ---
 
-## 3. What a workspace actually is
+## 3. What a workspace is
 
-A **workspace** is one repository holding several `package.json` files, where the package manager
-links them together as if they were published on npm — but they are not.
+A **workspace** is one repository with several `package.json` files. The package manager links them
+together as if they were published on npm, but they are not published.
 
 Without a workspace, `apps/web` would import shared code like this:
 
@@ -98,43 +95,43 @@ Without a workspace, `apps/web` would import shared code like this:
 import { AssessmentSchema } from "../../../packages/contracts/src/assessment"
 ```
 
-That path breaks the moment a file moves. With a workspace it becomes:
+That path breaks as soon as a file moves. With a workspace, it becomes:
 
 ```ts
 import { AssessmentSchema } from "@zamphora/contracts"
 ```
 
-The way that works is one line in `apps/web/package.json`:
+This works because of one line in `apps/web/package.json`:
 
 ```json
 { "dependencies": { "@zamphora/contracts": "workspace:*" } }
 ```
 
-`workspace:*` means **"the copy in this repository, whatever version it says"**. The package manager
-makes a link from `apps/web/node_modules/@zamphora/contracts` to `packages/contracts`. Edit the
-shared file and the web app sees the change immediately. There is no publish step and no build step
-between them.
+`workspace:*` means **"the copy in this repository, whatever version it has"**. The package manager
+creates a link from `apps/web/node_modules/@zamphora/contracts` to `packages/contracts`. When you edit
+the shared file, the web app sees the change at once. There is no publish step and no build step in
+between.
 
-**The three files that make a workspace:**
+**Three files make a workspace:**
 
 | File | Job |
 | --- | --- |
 | `pnpm-workspace.yaml` | Lists which folders are packages. Also holds every pnpm setting |
-| One `package.json` per package | Each package declares its own real dependencies |
+| One `package.json` per package | Each package lists its own real dependencies |
 | One `pnpm-lock.yaml` at the root | One lock file for the whole repository |
 
-**There is no one huge `package.json`.** That is the thing being avoided. The root `package.json`
-holds scripts and repo-wide dev tools only — never an application dependency.
+**There is no single huge `package.json`.** That is exactly what a workspace avoids. The root
+`package.json` holds only scripts and tools for the whole repo, never a dependency of an app.
 
 ---
 
 ## 4. Why pnpm and not npm
 
-Both do the job. pnpm is chosen for one reason that matters more than speed.
+Both can do the job. pnpm is chosen for one reason, and that reason matters more than speed.
 
-### The flat folder problem
+### The problem with one flat folder
 
-npm puts everything in one flat pile at the root:
+npm puts all packages into one flat folder at the root:
 
 ```
 node_modules/
@@ -144,16 +141,16 @@ node_modules/
 └── … 900 more
 ```
 
-Node looks for an import by walking up the folders. So **`apps/web` can import `date-fns` without
-ever declaring it**, because `apps/api` declared it and it landed in the shared pile. It works. Tests
-pass. CI is green.
+Node finds an import by walking up the folders. So **`apps/web` can import `date-fns` without listing
+it**, because `apps/api` listed it and it landed in the shared folder. It works. Tests pass. CI is
+green.
 
-Then somebody removes `date-fns` from `apps/api`, and the web app breaks — for a reason nothing in
-its own `package.json` explains. This is called a **phantom dependency**.
+Then someone removes `date-fns` from `apps/api`, and the web app breaks. Nothing in the web app's own
+`package.json` explains why. This is called a **phantom dependency**.
 
 ### What pnpm does instead
 
-pnpm gives each package a folder containing only what that package declared:
+pnpm gives each package a folder that contains only what that package listed:
 
 ```
 apps/web/node_modules/
@@ -162,35 +159,35 @@ apps/web/node_modules/
         (date-fns is NOT here, so importing it fails at once)
 ```
 
-An undeclared import **fails immediately**, on the first run, with a clear error.
+An import that is not listed **fails at once**, on the first run, with a clear error.
 
-### Why that matters here specifically
+### Why that matters here
 
-`docs/ADR/0001` writes six split-readiness rules. Rule 3 is:
+`docs/ADR/0001` has six rules that keep a later split of the repository cheap. Rule 3 is:
 
 > "Each app owns its `package.json` with its real dependencies listed. **Never rely on hoisting.**"
 
-**npm cannot enforce that rule. pnpm enforces it by default.** The rule stops being something to
-remember and becomes something the tool checks. That is the argument, and speed is a bonus.
+**npm cannot enforce that rule. pnpm enforces it by default.** The rule is no longer something to
+remember. The tool checks it. Speed is a bonus.
 
-Two smaller wins: `pnpm --filter <name> build` runs a command in one package, which is what makes
-path-filtered CI cheap. And pnpm stores one copy of each package version on the whole machine and
-links to it, so ten projects using React store React once.
+Two smaller benefits:
 
-**Current version: pnpm 11.24.0.** It needs Node 22 or newer. This project runs **Node 24** in CI
-and in Lambda (`docs/800-infra/04-ci-cd.md`).
+- `pnpm --filter <name> build` runs a command in one package only. This makes CI that runs only for
+  changed paths cheap.
+- pnpm stores one copy of each package version on your machine and links to it. Ten projects that use
+  React store React once.
+
+**Version: pnpm 11.24.0.** It needs Node 22 or newer. This project runs **Node 24** in CI and in Lambda.
 
 ---
 
 ## 5. The catalog: one place for versions
 
-This is pnpm's direct answer to "I do not want to edit ten `package.json` files to bump one version".
+**The problem.** Six packages depend on `zod`, so six places name a version. Over time they drift
+apart. One package ends up on `zod@3` and another on `zod@4`, and the types stop matching across the
+network. That is exactly the bug `packages/contracts` exists to prevent.
 
-**The problem.** Six packages each depend on `zod`. Six places name a version. They drift. One
-package ends up on `zod@3` while another is on `zod@4`, and the types stop matching across the wire —
-which is exactly the bug `packages/contracts` exists to prevent.
-
-**The catalog.** Name the version once, in `pnpm-workspace.yaml`:
+**The catalog.** You name the version once, in `pnpm-workspace.yaml`:
 
 ```yaml
 packages:
@@ -203,33 +200,31 @@ catalog:
   vitest: 4.1.11
 ```
 
-Then every package refers to the catalog instead of a version:
+Then every package points to the catalog instead of a version:
 
 ```json
 { "dependencies": { "zod": "catalog:" } }
 ```
 
-**One place to change. Every package moves together, or none does.** A version mismatch across
-packages becomes impossible rather than unlikely.
+**There is one place to change, so every package moves together, or none does.** Two different versions
+of the same package become impossible, not just unlikely. Before catalogs, people used a tool called
+`syncpack` to check that versions agreed. Making the mistake impossible is better than checking for
+it.
 
-This replaces a tool called `syncpack`, which existed only to check that the versions in different
-`package.json` files agreed. The catalog makes disagreement unrepresentable, which is better than
-checking for it.
-
-**The rule for this repo:** any dependency used by two or more packages goes in the catalog.
+**The rule for this repo:** every dependency that two or more packages use goes into the catalog.
 
 ---
 
 ## 6. allowBuilds: why pnpm asks permission
 
-Some npm packages run a script **on your machine at install time** — usually to compile a piece of
-C++ for your operating system. `esbuild`, `sharp` and `better-sqlite3` all do this.
+Some npm packages run a script **on your machine during install**, usually to compile some C++ for
+your operating system. `esbuild`, `sharp` and `better-sqlite3` do this.
 
-That is also the easiest way to attack a developer machine. A stolen npm account publishes a version
-whose install script reads your `~/.aws/credentials` and posts it somewhere. You never ran the
-package. Installing it was enough.
+This is also the easiest way to attack a developer's machine. An attacker steals an npm account and
+publishes a version whose install script reads your `~/.aws/credentials` and sends it somewhere. You
+never ran the package. Installing it was enough.
 
-**So pnpm 11 blocks install scripts by default, and you list the ones you allow:**
+**So pnpm 11 blocks install scripts by default, and you list the packages you allow:**
 
 ```yaml
 allowBuilds:
@@ -238,35 +233,36 @@ allowBuilds:
 ```
 
 If a package needs a script and is not on the list, the install stops and tells you which package
-asked. You then decide.
+asked. Then you decide.
 
-**Two things that will confuse a search result:**
+**Two things that confuse search results:**
 
-- pnpm 11 **removed** the older setting, `onlyBuiltDependencies`. Advice written before April 2026
-  names a setting that no longer exists.
-- **`.npmrc` is now for registry and login only.** Every other pnpm setting moved into
-  `pnpm-workspace.yaml`. Older guides put them in `.npmrc`, where they are now ignored in silence.
+- pnpm 11 **removed** the older setting `onlyBuiltDependencies`. Advice written before April 2026 names
+  a setting that no longer exists.
+- **`.npmrc` is now only for the registry and login.** Every other pnpm setting moved into
+  `pnpm-workspace.yaml`. Older guides put settings in `.npmrc`, where pnpm now ignores them without a
+  warning.
 
-One related default worth knowing: `minimumReleaseAge` waits 1440 minutes — one day — before
-installing a newly published version. It exists so that a compromised release is usually pulled
-before it reaches you. It will occasionally delay a security patch you actually want.
+**One related default:** `minimumReleaseAge` waits 1,440 minutes (one day) before it installs a newly
+published version. Usually a bad release is removed within that time, before it reaches you. The cost:
+it can also delay a security fix you want.
 
 ---
 
 ## 7. Turborepo and Nx: what a task runner does
 
-A task runner solves a problem that only appears once the repository is big.
+A task runner solves a problem that only appears when the repository is big.
 
-**Without one**, `pnpm -r build` builds every package, every time, in dependency order. Fine at four
-packages. At twenty, most of that work rebuilds things that did not change.
+**Without one**, `pnpm -r build` builds every package, every time, in dependency order. That is fine
+with four packages. With twenty, most of the work rebuilds things that did not change.
 
 **A task runner adds two things:**
 
-1. **A task graph.** It knows `apps/web` needs `packages/contracts` built first, and builds them in
-   the right order, in parallel where it can.
-2. **Caching.** It fingerprints the inputs of a task. Same inputs as last time means it does not run
-   the task — it replays the stored output. On CI, shared caching means a colleague's build can be
-   reused instead of repeated.
+1. **A task graph.** It knows that `apps/web` needs `packages/contracts` to be built first. It builds
+   them in the right order, and in parallel where it can.
+2. **Caching.** It calculates a fingerprint of a task's inputs. If the inputs are the same as last
+   time, it does not run the task. It replays the saved output instead. In CI, a shared cache means
+   one machine can reuse another machine's build.
 
 ```mermaid
 flowchart TD
@@ -277,49 +273,43 @@ flowchart TD
     A --> D
 ```
 
-That picture is what a task runner reads. It is also what `pnpm -r` works out on its own — the
-difference is the caching, not the ordering.
+**How to read it.** An arrow means "must be built before". A task runner reads this graph. `pnpm -r`
+also works out the order by itself. The real difference is the caching.
 
-### Turborepo against Nx, plainly
+### Turborepo and Nx, side by side
 
 | | Turborepo | Nx |
 | --- | --- | --- |
-| What it is | A task runner. One job | A build platform. Task running, code generators, a plugin system, project graphs, its own workspace model |
+| What it is | A task runner. One job | A build platform: task running, code generators, plugins, its own workspace model |
 | Config | One `turbo.json` | `nx.json`, project files, plugins per framework |
-| Learning cost | Low. Read one page | Real. It is a system to learn, not a setting |
-| Made by | Vercel — same company as Next.js | Nrwl |
-| Current version | 2.10.12 | 23.1.1 |
+| Learning cost | Low. One page to read | Real. It is a system to learn |
+| Made by | Vercel, the company behind Next.js | Nrwl |
+| Version | 2.10.12 | 23.1.1 |
 
-**Nx is not being used here, and that is settled.** It brings a plugin system and a workspace model
-that would be a third new thing to learn on a project already learning Nest.js and AWS. Nx also sells
-a product whose job is to hide repository borders from coding agents — which is a tool to undo a
-border this project is not creating.
+**Nx is not used here, and that is decided.** It would be a third new system to learn, next to Nest.js
+and AWS.
 
-### Why Turborepo is in from the start
+### Why Turborepo is there from the start
 
-ADR-0012 put Turborepo in slot 2 on day one. That looks early, because Turborepo earns its keep
-through caching and **there is nothing to cache yet** — four packages, a build measured in seconds.
-Three reasons make it the right call anyway.
+ADR-0012 added Turborepo on day one. That looks early, because Turborepo is useful through caching, and
+**there is nothing to cache yet**: four packages, and a build that takes seconds. Three reasons make it
+the right choice anyway:
 
-- **The owner already used Turborepo on a previous project.** ADR-0001 first rejected it as a third
-  new tool to learn next to Nest.js and AWS. That reason does not apply, because Turborepo is not
-  new to the person building this.
-- **Adding it later is a small migration, not a free switch.** It is one `turbo.json`, one changed
-  script line, and a change to how CI stores its cache. Doing it before any code exists means that
-  migration never has to happen.
-- **Earning nothing for six months is an accepted outcome.** ADR-0012 says this in writing. If the
-  cache stays empty because every build is already fast, that is fine, and it is not a reason to
-  remove Turborepo.
+- **The owner has used Turborepo before**, so it is not a new tool to learn.
+- **Adding it later is a small migration, not free.** It needs one `turbo.json`, one changed script
+  line, and a change to how CI stores its cache. Doing it before any code exists means that migration
+  never has to happen.
+- **If it gives no benefit for six months, that is accepted.** ADR-0012 writes this down. An empty
+  cache because every build is already fast is not a reason to remove it.
 
-**One caution for later.** Turborepo's own documentation discourages TypeScript project references,
-while Nx recommends them. So "use Turborepo" and "add project references" are two directions, not two
-steps.
+**One caution for later.** Turborepo's own documentation advises against TypeScript project references,
+and Nx recommends them. So "use Turborepo" and "add project references" go in two different directions.
 
 ---
 
-## 8. Who really uses what
+## 8. What real projects use
 
-Read from the actual repositories on 2026-08-26, not from blog posts.
+These were read from the real repositories on 2026-08-26, not from blog posts.
 
 | Project | Stack | Package manager | Task runner |
 | --- | --- | --- | --- |
@@ -328,20 +318,18 @@ Read from the actual repositories on 2026-08-26, not from blog posts.
 | **Twenty** | React + Nest.js | Yarn | Nx |
 | **Turborepo's own `with-nestjs` example** | Next.js + Nest.js | **pnpm** | Turborepo |
 
-**Every combination appears.** There is no single industry standard pairing. What *is* consistent is
-the shape: `apps/` for things that deploy, `packages/` for things that are imported.
+**Every combination appears.** There is no single industry standard. But the shape is always the same:
+`apps/` for things that are deployed, and `packages/` for things that are imported.
 
-Two ideas worth stealing from them:
+Two ideas worth copying:
 
-**cal.com puts configuration in its own packages.** It has `packages/tsconfig` and `packages/config`
-separate from the code packages. Turborepo's own example does the same with
-`@repo/typescript-config`, `@repo/eslint-config` and `@repo/jest-config` — **three of its five
-packages are configuration.** That is the pattern, once there is enough duplication to justify it.
-
-**Novu splits `libs/` from `packages/`.** The rule is one question: *can an outsider install this?*
-If yes it goes in `packages/`, and pays for that with versioning, a changelog and a stable public
-API. If no it goes in `libs/` and can be changed freely. zamphora has nothing published, so this
-split earns nothing today. The trigger is the first package published to npm.
+- **cal.com keeps configuration in its own packages**, such as `packages/tsconfig` and
+  `packages/config`. Turborepo's own example does the same: **three of its five packages are
+  configuration.** Do this once there is enough copying to justify it.
+- **Novu separates `libs/` from `packages/`.** The rule is one question: *can an outsider install
+  this?* If yes, it goes into `packages/`, and it needs versions, a changelog and a stable public API.
+  If no, it goes into `libs/`, and you can change it freely. zamphora publishes nothing, so this split
+  gives nothing today. The trigger is the first package published to npm.
 
 ---
 
@@ -355,9 +343,9 @@ zamphora/
 ├── tsconfig.base.json        one base config, extended by every package
 ├── eslint.config.mjs         one flat config, rules scoped by file path
 │
-├── apps/                     things that deploy. One CDK stack each
+├── apps/                     things that deploy
 │   ├── web/                  Next.js 16.3.3
-│   └── api/                  Nest.js 11.2.3, three Lambda entry points from one codebase
+│   └── api/                  Nest.js 11.2.3, four Lambda entry points from one codebase
 │
 ├── packages/                 things that are imported, never deployed
 │   ├── contracts/            Zod schemas for everything crossing the wire
@@ -367,50 +355,51 @@ zamphora/
 └── docs/  factory/  TASKS.md
 ```
 
-**The two-folder rule is universal across every repository in section 8.** `apps/` deploys.
-`packages/` is imported. If a thing is both, it is two things.
+**Every repository in section 8 follows the same two-folder rule.** `apps/` is deployed. `packages/` is
+imported. If something is both, it is really two things.
 
-### What is deliberately not there yet
+### What is not there yet, on purpose
 
-| Package | What it would hold | Trigger to add it |
+| Package | What it would hold | When to add it |
 | --- | --- | --- |
-| `config-typescript` | tsconfig presets | 4 or more packages copying the base |
-| `config-eslint` | shared lint rules | 4 or more packages, or one needing different rules |
-| `ui` | shared React components | **A second app that renders React** |
-| `core` | business rules | **A second runtime that needs the same rule** |
-| `testing` | shared test setup | 3 or more packages copying it |
+| `config-typescript` | tsconfig presets | 4 or more packages copy the base config |
+| `config-eslint` | Shared lint rules | 4 or more packages, or one package that needs different rules |
+| `ui` | Shared React components | **A second app that renders React** |
+| `core` | Business rules | **A second runtime that needs the same rule** |
+| `testing` | Shared test setup | 3 or more packages copy it |
 
-**A `ui` package with one consumer is a folder with extra publishing steps.** Every repository in
-section 8 has one, and every one of them has two or more apps rendering React. That is the trigger,
-not the calendar.
+**A `ui` package with only one user is a folder with extra publishing work.** Every repository in
+section 8 has a `ui` package, and every one of them has two or more apps that render React. That is the
+trigger, not the calendar.
 
 ### Five things to set up on day one
 
 These are cheap now and painful later:
 
-1. **`exports` in every `package.json`.** Node enforces it — an import of any path not listed throws
-   `ERR_PACKAGE_PATH_NOT_EXPORTED`. It stops other packages reaching into your internals. The
-   cheapest border there is, and hard to add after fifty deep imports exist.
+1. **`exports` in every `package.json`.** Node enforces it: importing a path that is not listed throws
+   `ERR_PACKAGE_PATH_NOT_EXPORTED`. It stops other packages from reaching into your internal files. It
+   is the cheapest border there is, and hard to add after fifty deep imports exist.
 2. **`workspace:*` for every internal dependency.** Never a version range, never a relative path.
 3. **A `catalog:` entry for every shared dependency.**
-4. **Lint rules for the borders, starting at deny-all.** Allowing what is needed is easy at zero
-   files and miserable at ten thousand.
-5. **The layer folders inside `apps/api`**, even with one feature.
+4. **Lint rules for the borders, starting with "deny everything".** Allowing what you need is easy with
+   zero files, and very hard with ten thousand.
+5. **The layer folders inside `apps/api`**, even with only one feature.
 
 ---
 
 ## 10. Inside the API: clean architecture
 
-Package borders keep the repository tidy. They do nothing for the inside of `apps/api`, which is
-where most of the code will live. That needs its own shape.
+Package borders keep the repository tidy. They do nothing for the inside of `apps/api`, where most of
+the code will live. That needs its own shape.
 
-**One folder per feature, and four layers inside each one:**
+**One folder per feature, and four layers inside each feature:**
 
 ```
 apps/api/src/
 ├── main.ts                     the Lambda handler for every route, and the Nest bootstrap
-├── assess.ts                   the handler the workflow invokes: the one model call (ADR-0014)
-├── watch.ts                    the handler behind the Function URL: streams the result (ADR-0015)
+├── assess.ts                   the handler the workflow calls: the one model call
+├── watch.ts                    the handler behind the Function URL: streams the result
+├── mark-failed.ts              the handler the EventBridge rule calls: writes failed on a stuck run
 ├── app.module.ts
 ├── shared/                     guards, filters, interceptors, config
 └── modules/
@@ -424,7 +413,7 @@ apps/api/src/
 
 ### The one rule that makes it work
 
-**Dependencies only point inwards.** Nothing in an inner circle knows about an outer one.
+**Dependencies point inwards only.** Nothing in an inner layer knows about an outer layer.
 
 ```mermaid
 flowchart LR
@@ -433,40 +422,37 @@ flowchart LR
     A["application<br/>use cases<br/><i>knows the steps</i>"] --> D["domain<br/>rules and types<br/><i>knows nothing else</i>"]
 ```
 
-**How to read it.** It is a **flowchart**, and the only thing it shows is direction. Read the arrows
-as "is allowed to import". The domain imports nothing. Infrastructure and
-presentation both point inwards and never at each other.
+**How to read it.** Read each arrow as "may import". The domain imports nothing. Infrastructure and
+presentation both point inwards, and never at each other.
 
 ### What each layer holds
 
 | Layer | Holds | Never holds |
 | --- | --- | --- |
-| **domain** | The rules and the types. A verdict, a confidence band, "an `unsure` result may not write a task" | Any import at all. No Nest decorator, no AWS SDK, no HTTP |
-| **application** | The use case, step by step: check the limit, store the photo, call the model, save the result | Which database. It names a **port**, not DynamoDB |
-| **infrastructure** | The adapters that make those ports real. The DynamoDB repository, the S3 client, the Anthropic adapter | Business rules |
+| **domain** | The rules and the types. A verdict, a confidence level, "an `unsure` result may not create a task" | Any import at all. No Nest decorator, no AWS SDK, no HTTP |
+| **application** | The use case, step by step: check the limit, store the photo, call the model, save the result | Which database is used. It names a **port**, not DynamoDB |
+| **infrastructure** | The adapters behind those ports: the DynamoDB repository, the S3 client, the Anthropic adapter | Business rules |
 | **presentation** | Controllers, and DTOs that turn HTTP into domain types | Anything worth testing on its own |
 
-### Why go to the trouble
+### Why it is worth the effort
 
-**The rules become testable with no mocks.** The domain has no dependencies, so a test of "an
-`unsure` result never writes a task" is a plain function call with no database and no network.
+- **You can test the rules without mocks.** The domain has no dependencies, so the test "an `unsure`
+  result never creates a task" is a plain function call, with no database and no network.
+- **Replacing DynamoDB touches one folder.** The use case names a port. Only `infrastructure/` knows
+  what is behind it.
+- **You cannot add it later cheaply.** With one feature, it costs a few folders. With thirty features,
+  it is a rewrite.
 
-**Swapping DynamoDB touches one folder.** The use case names a port. Only `infrastructure/` knows
-what is behind it.
-
-**It cannot be retrofitted.** At one feature this costs a few folders. At thirty features it is a
-rewrite. That is the only reason to do it before it hurts.
-
-**A DTO is not a domain type**, and keeping them apart is the habit that holds the whole thing up. A
-DTO is the shape on the wire — it is validated, it can be wrong, it comes from outside. A domain type
-is already known to be correct. The controller turns one into the other, and that is the only place
-that conversion happens.
+**A DTO is not a domain type, and keeping them apart is the most important habit.** A DTO is the shape
+on the network: it is checked, it can be wrong, and it comes from outside. A domain type is already
+known to be correct. The controller turns one into the other, and that is the only place where that
+happens.
 
 ---
 
-## 11. Inside the web: how Next.js wants it
+## 11. Inside the web app: how Next.js wants it
 
-Next.js's own guidance: **`app/` is for routing, and almost nothing else.**
+Next.js's own advice: **`app/` is for routing, and almost nothing else.**
 
 ```
 apps/web/src/
@@ -485,56 +471,53 @@ apps/web/src/
 └── lib/                        fetch client, i18n, formatting
 ```
 
-The trap is putting real code in `app/`. Every file there is tied to a URL. Move the URL and the code
-moves with it, whether or not it belongs to that page. Keeping `app/` thin means a route change is a
-route change.
+**The trap is putting real code into `app/`.** Every file there is tied to a URL. If the URL moves, the
+code moves with it, whether or not it belongs to that page. If `app/` stays thin, changing a route only
+changes a route.
 
-**`components/` versus `features/`:** a component moves out of a feature the second time a different
-feature needs it. Not the first time — the second.
+**`components/` or `features/`?** A component moves out of a feature the second time another feature
+needs it. Not the first time. The second.
 
 ---
 
 ## 12. Sharing code, and the React Native question
 
-A React Native app is a real possibility, so the question of what would be shared is worth answering
-now — even though nothing is being built for it.
+A React Native app is a real possibility later. So it is worth knowing now what could be shared, even
+though nothing is built for it yet.
 
-**What would survive a move to React Native:**
-
-| Shareable | Not shareable |
+| Can be shared | Cannot be shared |
 | --- | --- |
-| `packages/contracts` — Zod schemas. Already right | React DOM components. `<div>` does not exist there |
-| `packages/llm` — the port. Already right | CSS and Tailwind classes |
-| Business rules, if they move to `packages/core` | Anything reading `window` or `document` |
+| `packages/contracts`: the Zod schemas. Already right | React DOM components. `<div>` does not exist there |
+| `packages/llm`: the port. Already right | CSS and Tailwind classes |
+| Business rules, if they move to `packages/core` | Anything that reads `window` or `document` |
 | Translation strings | Next.js routing |
 | The design tokens, as plain values | |
 
-**The rule for moving code into a package**, and it is worth following strictly:
+**The rule for moving code into a package:**
 
-> Move a business rule out of `apps/api` when a **second runtime** needs it. Not when it feels
+> Move a business rule out of `apps/api` when a **second runtime** needs it. Not when it only feels
 > shared.
 
-Both cal.com and Novu have a package like this. **Both arrived at it by pulling code out later, not
-by planning it up front.** That is the evidence for waiting: the people who did it at scale did not
-predict it either.
+cal.com and Novu both have a package like this. **Both created it by moving code out later, not by
+planning it at the start.** Even teams at a large scale did not predict it, which is a good reason to
+wait.
 
-**What to do now instead of guessing:** keep the layers in section 10 clean. A domain layer with no
-imports is already portable — moving it into a package later is a folder move plus a
-`package.json`. A domain layer with a Nest decorator in it is not, and no package border will fix
-that afterwards.
+**What to do now instead:** keep the layers from section 10 clean. A domain layer with no imports can
+already move. Moving it into a package later is a folder move plus a `package.json`. A domain layer
+with a Nest decorator in it cannot move, and no package border fixes that later.
 
-So the preparation for React Native is not a package. It is the discipline of keeping the domain
-free of framework imports.
+So the preparation for React Native is not a package. It is keeping the domain free of framework
+imports.
 
 ---
 
-## 13. Why the model call gets its own package
+## 13. Why the model call has its own package
 
 `packages/llm` holds two things:
 
-- **The port** — a plain TypeScript type, `LlmProvider`, that says what the rest of the code may ask
-  for. Not what Anthropic offers. What zamphora needs.
-- **The adapter** — the one file in the entire repository allowed to `import` the Anthropic SDK.
+- **The port:** a plain TypeScript type, `LlmProvider`, that says what the rest of the code may ask
+  for. Not what Anthropic offers, but what zamphora needs.
+- **The adapter:** the only file in the whole repository that may `import` the Anthropic SDK.
 
 ```mermaid
 flowchart LR
@@ -544,107 +527,98 @@ flowchart LR
     AD --> API["Anthropic Messages API"]
 ```
 
-**How to read it.** A solid arrow is "uses". A **dotted arrow means "is one of these"** — it points
-from an implementation to the interface it satisfies. The use case never learns which one it got. That
-is the whole of what "a port and two adapters" means, drawn.
+**How to read it.** A solid arrow means "uses". A **dotted arrow means "is one of these"**: it connects
+an implementation with the interface it implements. The use case never knows which one it got. That is
+what "a port and two adapters" means.
 
-**Four reasons this is a package and not a folder:**
+**Four reasons this is a package and not just a folder:**
 
-**The rule can be enforced.** `CLAUDE.md` says every model call goes through `LlmProvider` and no SDK
-import exists outside its adapter. As a package, a lint rule checks that. As a folder, it is a note.
-
-**Tests cost nothing.** Every test that is not about the model swaps in a fake provider. No network,
-no key, no spend. On a project where a test run can empty the credit balance, this is a money
-decision.
-
-**The model can be replaced.** `docs/ADR/0006` says the model is chosen by measuring it. That
-measurement only stays cheap if changing the model touches one file.
-
-**Failures get names inside it.** The adapter turns a timeout, a 429, a refusal and a truncation into
-named values the rest of the code can branch on. Only this package knows what an Anthropic error
-looks like.
+- **The rule can be enforced.** `CLAUDE.md` says every model call goes through `LlmProvider`, and no
+  SDK import exists outside its adapter. With a package, a lint rule checks this. With a folder, it is
+  only a note.
+- **Tests cost nothing.** Every test that is not about the model uses a fake provider: no network, no
+  key, no money. A test run could otherwise empty the balance, so this is a money decision.
+- **The model can be replaced.** ADR-0006 says the model is chosen by measuring. Measuring stays cheap
+  only if changing the model touches one file.
+- **Failures get names here.** The adapter turns a timeout, a 429, a refusal and a cut-off answer into
+  named values that the rest of the code can check. Only this package knows what an Anthropic error
+  looks like.
 
 ### What RAG is, and where it would go
 
-Today the model gets two things: the photo and the plant name. It answers from what it learned
-during training. It does not know two things that zamphora could look up:
+Today the model gets two things: the photo and the plant name. It answers from what it learned in
+training. It does not know two things that zamphora could look up:
 
-- the plant care notes the team writes and keeps in a database
+- plant care notes, kept in a database
 - what this same plant looked like in an earlier assessment
 
-**RAG is how you give the model those facts.** The name stands for **Retrieval-Augmented
-Generation**. It is three steps in this order:
+**RAG is how you give the model those facts.** The name means **Retrieval-Augmented Generation**. It is
+three steps, in this order:
 
-- **Retrieval** — before the model call, read something. The care notes for `Rhaphidophora` from
-  the database. This user's last assessment for this plant.
-- **Augmented** — put that text into the prompt. The prompt now carries the photo, the care notes,
-  the earlier verdict, and the question.
-- **Generation** — call the model once. It answers using the photo and the looked-up text together.
+- **Retrieval:** before the model call, read something. For example, the care notes for
+  `Rhaphidophora`, and this user's last assessment of this plant.
+- **Augmented:** put that text into the prompt. The prompt now has the photo, the care notes, the
+  earlier verdict and the question.
+- **Generation:** call the model once. It answers using the photo and the extra text together.
 
-**RAG is not a new model and not an agent.** It is a database read, then building a longer prompt
-string, then the one model call that already exists.
+**RAG is not a new model and not an agent.** It is a database read, then a longer prompt, then the same
+single model call.
 
-**One walk through it**, for a user sending a photo of their Rhaphidophora:
+**One example, step by step**, for a user who sends a photo of their Rhaphidophora:
 
-1. The photo arrives and the pot is picked. Same as today.
-2. The adapter reads the care notes for `Rhaphidophora`: bright indirect light, water when the top
-   3 cm are dry, harmed by cold.
-3. The adapter reads this user's last assessment for this plant: four weeks ago the verdict was
+1. The photo arrives and the pot is chosen. Same as today.
+2. The adapter reads the care notes for `Rhaphidophora`: bright indirect light, water when the top 3 cm
+   of soil are dry, harmed by cold.
+3. The adapter reads this user's last assessment of this plant: four weeks ago, the verdict was
    `under-watered`.
-4. The adapter builds the prompt from the photo, those two pieces of text, and the question.
+4. The adapter builds the prompt from the photo, those two texts and the question.
 5. One model call. The same call as today.
-6. The answer can now say more: "still under-watered, and the brown leaf edges fit cold damage —
-   move it off the windowsill."
+6. The answer can now say more: "still under-watered, and the brown leaf edges fit cold damage — move it
+   away from the windowsill."
 
-**It goes in `packages/llm`, inside the adapter.** The port stays `assess(photo, plantName,
-locale)`. The use case asks the same question and never learns that a lookup happened. If the port
-ever does need a new argument, that is one file changed, and every caller becomes a compile error
-the type system makes you fix. Nothing changes in silence.
+**It would go inside the adapter, in `packages/llm`.** The port stays `assess(photo, plantName,
+locale)`. The use case asks the same question and never learns that a lookup happened. If the port ever
+needs a new argument, that is one file, and every caller becomes a compile error that you must fix.
+Nothing changes without you noticing.
 
-### The ladder, and the rung to stay on
+### The ladder, and the step to stay on
 
-`docs/400-architecture/00-options.md` §8 has a four-rung ladder for how much AI machinery a feature
-uses:
+`docs/400-architecture/00-options.md` §8 has a ladder with four steps, for how much AI machinery a
+feature uses:
 
-1. **Plain code** — no model. The file-type check, turning an interval into a date.
-2. **One model call** — where photo assessment sits today.
-3. **A fixed chain** — call the model, then call it again with the first answer. This doubles the
-   cost of every assessment, against a balance of a few hundred calls.
-4. **An agent** — the model decides which tools to run, in a loop. There are no tools to run here.
+1. **Plain code:** no model. For example, the file-type check, or turning an interval into a date.
+2. **One model call:** where photo assessment is today.
+3. **A fixed chain:** call the model, then call it again with the first answer. This doubles the cost
+   of every assessment.
+4. **An agent:** the model decides which tools to run, in a loop. There are no tools to run here.
 
-The rule is to pick the lowest rung that works. **RAG does not move zamphora up this ladder.** It
-is still rung 2, one call, with more text in the prompt.
-
-**Reaching for an agent by default is the common mistake in this area.** An agent is the hardest
-thing to test, to debug, and to predict the cost of, because the model, not the code, decides how
-many calls it makes.
+The rule is to choose the lowest step that works. **RAG does not move zamphora up this ladder.** It is
+still step 2: one call, with more text in the prompt.
 
 ---
 
-## 14. The TypeScript 7 situation
+## 14. Why TypeScript 6 and not 7
 
-**The short version: install `typescript@6.0.3`, not 7. It is one line, and it is normal.**
+**In short: install `typescript@6.0.3`, not 7. It is one line, and it is normal.**
 
 ### What happened
 
-TypeScript 7.0 was released on 8 July 2026. It is **a rewrite of the compiler in Go** — a different
-language from the TypeScript the old compiler was written in. It type-checks roughly 8 to 12 times
-faster. Type-checking the VS Code codebase went from 125.7 seconds to 10.6 seconds.
-
-That is a genuinely large improvement and it is worth having, later.
+TypeScript 7.0 came out on 8 July 2026. It is **a rewrite of the compiler in Go**. It checks types
+about 8 to 12 times faster. For example, type-checking the VS Code codebase went from 125.7 seconds to
+10.6 seconds. That is a big improvement, and it is worth having later.
 
 ### Why not yet
 
-The rewrite does not yet ship a stable **programmatic API** — the way other tools ask the compiler
-questions about your code. That is expected in 7.1.
+The rewrite does not yet have a stable **programmatic API**: the way other tools ask the compiler
+questions about your code. That is expected in version 7.1.
 
-Everything that inspects types needs that API. So on TypeScript 7 today, these do not run:
+Every tool that inspects types needs that API. So on TypeScript 7 today, these do not work:
 
-- **typescript-eslint** — every lint rule that reads types
-- **ts-jest**, **ts-morph**
+- **typescript-eslint**: every lint rule that reads types
+- **ts-jest** and **ts-morph**
 - the type-checkers behind **Vue**, **Svelte** and **Astro**
 
-I checked this directly rather than trusting a summary:
+The npm registry shows it directly:
 
 ```
 npm view typescript version           → 7.0.2
@@ -652,109 +626,97 @@ npm view typescript-eslint version    → 8.68.0
 npm view typescript-eslint peerDeps   → typescript: '>=4.8.4 <6.1.0'
 ```
 
-The supported range stops below 7. And typescript-eslint's issue for supporting 7 is closed as not
-planned, so the fix is version 7.1 of the compiler, not a patch to the linter.
+The supported range stops below 7. typescript-eslint closed its issue about supporting 7 as "not
+planned", so the fix will come from version 7.1 of the compiler, not from the linter.
 
-### Why this is not a workaround
+### Why this is normal
 
-Three things worth keeping in proportion:
+- **Pinning a version is normal. It is what a lock file is for.** Serious projects pin their tools. The
+  catalog makes it one line for every package.
+- **TypeScript 6 is not old.** It came out this year and is fully supported.
+- **What installing 7 now would cost:** every lint rule that reads types would stop working. Those
+  rules do most of the border checks in section 9. So you would get a faster compiler and lose the
+  checks that keep the architecture clean.
 
-**Pinning a version is not a workaround. It is what a lock file is for.** Every serious project pins
-its toolchain. The catalog makes it one line that every package follows.
-
-**TypeScript 6 is not old.** It shipped this year and is fully supported.
-
-**This is what a compiler rewrite looks like from the outside.** The plugin API is the last part to
-stabilise, because it is the widest surface. The alternative was for the team to hold the whole
-rewrite back for another year.
-
-**What it would actually cost to install 7 anyway:** every type-aware lint rule stops working. Those
-rules are most of the border enforcement in section 9. So the ten-times-faster compiler would be paid
-for with the checks that keep the architecture honest.
-
-**The watch condition**, better than a date: revisit when typescript-eslint's peer range accepts
-TypeScript 7.
+**When to look again:** when typescript-eslint's supported range includes TypeScript 7. That is a
+better trigger than a date.
 
 ---
 
 ## 15. How this deploys
 
-Two parts deploy, and each has one trap that is already known.
+Two parts are deployed, and each has one known trap.
 
-### The Lambda side — bundle, never copy
+### The Lambda side: bundle, never copy
 
-`apps/api` imports `packages/contracts` and `packages/llm`. In a pnpm workspace those are **links**,
-not real folders full of files. Zipping `node_modules` would copy links that point nowhere.
+`apps/api` imports `packages/contracts` and `packages/llm`. In a pnpm workspace, those are **links**,
+not real folders with files. If you zip `node_modules`, you copy links that point nowhere.
 
 **The answer is to bundle.** esbuild follows every import and writes one JavaScript file with
-everything inlined. The links stop mattering, because nothing is left to resolve at run time. This
-is also faster: NFR-06 allows 2,000 ms for a cold start, and a bundled function starts quicker than
-one that unpacks a large `node_modules`. The same build produces three bundles
-from three entry files — `main.js`, `assess.js`, `watch.js` — and each becomes its own function.
-The shared modules are bundled into each one, so a rule written once ships three times.
+everything inside. Then the links do not matter, because nothing is left to find when the code runs.
+It is also faster: a bundled function starts more quickly than one with a large `node_modules`.
 
-**Do not use `bundling.nodeModules` in AWS CDK's `NodejsFunction`.** That option asks CDK to install
-some packages instead of bundling them, and it is broken with pnpm 11 today — aws-cdk issue 37898,
-open since 2026-05-16. CDK writes an empty `pnpm-workspace.yaml` into its build folder, which erases
-the `allowBuilds` list pnpm 11 needs, and the escape hatch runs too early to put it back. Bundle
-everything, and re-check the issue before the first deploy.
+- One build makes four bundles from four entry files: `main.js`, `assess.js`, `watch.js` and `mark-failed.js`. Each
+  bundle becomes its own Lambda function.
+- The shared modules are inside each bundle, so a rule written once ships three times.
 
-### The web side — a static export, decided in ADR-0010
+**Do not use `bundling.nodeModules` in CDK's `NodejsFunction`.** That option tells CDK to install some
+packages instead of bundling them, and it is broken with pnpm 11 today (aws-cdk issue 37898, open since
+2026-05-16). CDK writes an empty `pnpm-workspace.yaml` into its build folder, and that removes the
+`allowBuilds` list that pnpm 11 needs. Bundle everything, and check the issue again before the first
+deploy.
 
-`apps/web` is built with Next.js `output: 'export'` into a folder of plain files, put in a private S3
-bucket, and served through the same CloudFront distribution as the API. **There is no Node server
-for the web.** ADR-0010 settled this, and it follows from an earlier rule: a web app
-that holds no credentials, never reads the session, and always paints a skeleton first is a static
-site already.
+### The web side: a static export
 
-This removes a build problem before it starts. Next.js has a `standalone` mode that traces which
-files a server needs, and that tracing has a known open bug with pnpm workspace links. With no
-server there is nothing to trace, so `standalone` is not used.
+`apps/web` is built with Next.js `output: 'export'` into a folder of plain files. They go into a
+private S3 bucket and are served through the same CloudFront distribution as the API. **There is no
+Node server for the web app.** ADR-0010 decided this. It follows from an earlier rule: a web app that
+holds no credentials, never reads the session, and always shows a skeleton first is already a static
+site.
 
-**The two costs are named in ADR-0010, and neither is still open:**
+This also removes a build problem. Next.js has a `standalone` mode that works out which files a server
+needs, and it has a known bug with pnpm workspace links. With no server, `standalone` is not needed.
 
-- **`next/image` with the default loader does not run in a static export.** It does not matter here,
-  because plant photos are served from the product's own bucket through CloudFront, signed by the
-  API — they never went through Next.js image optimisation. A custom loader stays available for
-  anything else.
-- **Choosing Hungarian or English on the first visit needs a place to decide**, because a static
-  export cannot read `Accept-Language` on the server. Both languages are prerendered as separate
-  routes; the redirect from `/` is a small CloudFront function or one line of client-side
-  JavaScript. That is a task for 500 Engineering, not an open decision.
+**ADR-0010 names two costs, and both are solved:**
 
-### The layout does not move
+- **`next/image` with its default loader does not work in a static export.** It does not matter here,
+  because plant photos come from the product's own bucket through a signed link. They never went
+  through Next.js image optimisation.
+- **Choosing Hungarian or English on the first visit needs a decision somewhere**, because a static site
+  cannot read the `Accept-Language` header on a server. Both languages are built as separate routes, and
+  a small CloudFront Function sends `/` to `/hu` or `/en` (`aws-and-the-pipeline.md` §3).
 
-Static export or bundled Lambda, the `apps/` and `packages/` folders are unchanged. Deployment
-pressure changes how a thing is built, never where it lives.
+### The layout stays the same
+
+Static export or bundled Lambda, the `apps/` and `packages/` folders do not change. How a thing is
+deployed changes how it is built, never where it lives.
 
 ---
 
 ## 16. Every trigger on one screen
 
-Nothing here is decided by feeling. Each row is a condition that can be checked.
+Nothing here is decided by feeling. Each row is a condition you can check.
 
 | Add this | When |
 | --- | --- |
-| Turborepo's remote cache (a paid service) | The GitHub Actions cache is measurably too slow and the same build repeats across machines. Turborepo itself is already in, from ADR-0012 |
-| `packages/config-typescript`, `config-eslint` | 4 or more packages copying the same base |
+| Turborepo's remote cache (a paid service) | The GitHub Actions cache is clearly too slow, and the same build repeats on several machines. Turborepo itself is already in |
+| `packages/config-typescript`, `config-eslint` | 4 or more packages copy the same base |
 | `packages/ui` | A second app renders React |
 | `packages/core` | A second runtime needs the same business rule |
-| `packages/testing` | 3 or more packages copying the same test setup |
-| `libs/` separate from `packages/` | The first package published to npm |
+| `packages/testing` | 3 or more packages copy the same test setup |
+| `libs/` separate from `packages/` | The first package is published to npm |
 | dependency-cruiser | The first import cycle, or more than 8 packages |
-| TypeScript 7 | typescript-eslint's peer range accepts it |
-| Split into several repositories | A second person owns one side · a service is written in another language · CI on a pull request passes 15 minutes |
+| TypeScript 7 | typescript-eslint's supported range includes it |
+| Splitting into several repositories | A second person owns one side · a service is written in another language · CI on a pull request takes more than 15 minutes |
 
-**And the rule under all of them:** adding one of these later is cheap, and each was checked to be
-so. Adding all of them now would be carrying nine tools to build four packages.
+**The rule under all of them:** adding any one of these later is cheap, and each one was checked to be
+cheap. Adding all of them now would mean nine tools to build four packages.
 
 ---
 
-## Where the evidence is
+## Where the facts come from
 
 Version numbers were read from the npm registry on 2026-08-26: pnpm 11.24.0 · Turborepo 2.10.12 ·
 Nx 23.1.1 · Next.js 16.3.3 · Nest.js 11.2.3 · TypeScript 7.0.2 and 6.0.3 · typescript-eslint 8.68.0.
 
 The repository layouts in section 8 were read from the repositories themselves, not from articles.
-The full research, with every source and the date each was checked, is the note this file was written
-from.

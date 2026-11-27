@@ -27,7 +27,7 @@ Three things ship, and only three.
 
 | Unit | What it actually is | How it is built |
 | --- | --- | --- |
-| **The API** | Three JavaScript files, bundled by esbuild from one codebase, in three Lambda functions: `api`, `assess` and `watch` | `NodejsFunction` three times, each pointed at one compiled entry of `apps/api` |
+| **The API** | Four JavaScript files, bundled by esbuild from one codebase, in four Lambda functions: `api`, `assess`, `watch` and `mark-failed` | `NodejsFunction` four times, each pointed at one compiled entry of `apps/api` |
 | **The web** | One folder of plain files: HTML, CSS, JavaScript, images | `next build` with `output: 'export'` (ADR-0010) |
 | **The infrastructure** | One CloudFormation change set per stack | `cdk deploy` |
 

@@ -93,6 +93,8 @@ See [[factory-as-plugin]].
   first deploy.
 - Four QA gates: 74 (must the golden-set run pass before the first deploy), 79 (how US-15 counts
   screens), 80 and 81 (two bars QA proposed). None blocks code.
+- Gate 88: may the `dev` pipeline delete the test account's daily counter row before `e2e` and
+  `perf-flow`? The owner chose not to decide it yet. It does not block code.
 - Whether notifications use Web Push (the current assumption) or something else.
 
 **Answered for QA on 2026-09-17 (gates 75 to 78), in `factory/feature.md`:** `DAILY_LIMIT` is 1 to
@@ -104,6 +106,19 @@ none of a real home in the public repository. Every group A label comes from a n
 call failed (gate 82). The allowed `MODEL_ID` values are `claude-haiku-4-5-20251001`,
 `claude-haiku-5-5` and `claude-sonnet-5-5`, with Haiku 4.5 as the default until the golden-set run
 (gate 83). Both are in `factory/feature.md`.
+
+**Also answered on 2026-10-29 (gates 84 to 87):**
+
+- ADR-0018 is accepted. The workflow counts its own model calls in `callsMade`, and `Refund` runs
+  only when no call was made (gate 84).
+- The first golden-set comparison runs on the two Haiku models only. Sonnet 5.5 is measured only if
+  neither Haiku passes, and that needs a new decision (gate 85).
+- **A kill-switch row that cannot be used means "off".** A wrong type or a missing row stops every
+  model call until the row is fixed (gate 86, ADR-0019).
+- **One permanent `dev` environment replaces the per-pull-request `preview`.** Under ADR-0019 an
+  empty table means "off", so a new preview table per pull request could never run the tests. The
+  `dev` `CONFIG` rows are written by hand, like `prod`'s, and no pipeline ever writes a `CONFIG` row
+  (gate 87).
 
 *(The photo retention period is decided: 180 days, 2026-08-24.)*
 

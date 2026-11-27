@@ -13,7 +13,7 @@ schema and the failure names.** Where this file and that one disagree, that one 
 
 ## 1. What `apps/api` is
 
-One Nest.js application, built into **three** Lambda functions from three entry points in one
+One Nest.js application, built into **four** Lambda functions from four entry points in one
 codebase (ADR-0002, ADR-0014, ADR-0015):
 
 | Entry point | Function | Behind | How it is invoked |
@@ -21,8 +21,9 @@ codebase (ADR-0002, ADR-0014, ADR-0015):
 | `src/main.ts` | `api` | API Gateway HTTP API, through the Express adapter | Every route below except the stream |
 | `src/assess.ts` | `assess` | The Step Functions workflow | One plain handler that makes the model call |
 | `src/watch.ts` | `watch` | A Lambda Function URL, reached only through CloudFront | Native response streaming, no bridge library |
+| `src/mark-failed.ts` | `mark-failed` | An EventBridge rule on the workflow's `FAILED`, `TIMED_OUT` or `ABORTED` status | One plain handler that writes `failed` on the row, for a run that ended outside its own `Catch` |
 
-All three share the same modules, the same repository layer and the same session code, so a rule
+All four share the same modules, the same repository layer and the same session code, so a rule
 is written once. The `api` function is the only one behind the gateway, and the rest of this
 section is about it.
 
@@ -857,7 +858,7 @@ later runs (US-03, note on the border).
 800 Infra decides where the logs go and which alarms read them. This section says what the API must
 put in them, because two requirements depend on it.
 
-**Always recorded, on every assessment, in all three functions:** the assessment id, the pot id,
+**Always recorded, on every assessment, in the `api`, `assess` and `watch` functions:** the assessment id, the pot id,
 the failure code if there was one, the model id, the input and output token counts, the computed
 cost, and the duration of each step in §4. The assessment id is the key that joins the `api`,
 `assess` and `watch` lines of one run.

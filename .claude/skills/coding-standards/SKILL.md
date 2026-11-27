@@ -35,11 +35,14 @@ apps/web/src/
 - **A component leaves `features/` for `components/` the *second* time another feature needs it.**
   Not the first time.
 
-### `apps/api` — Nest.js, one Lambda, clean architecture
+### `apps/api` — Nest.js, four Lambda entry points, clean architecture
 
 ```
 apps/api/src/
-├── main.ts                 the Lambda handler and bootstrap
+├── main.ts                 the api Lambda: every route, and the Nest bootstrap
+├── assess.ts               the assess Lambda: the one model call, started by the workflow
+├── watch.ts                the watch Lambda: streams the result over server-sent events
+├── mark-failed.ts          the mark-failed Lambda: writes failed when a run ends outside its Catch
 ├── app.module.ts
 ├── shared/                 guards, filters, interceptors, config
 └── modules/<feature>/
@@ -184,9 +187,11 @@ server" advice does not apply.
 Every call goes through the `LlmProvider` port. A feature importing the Anthropic SDK breaks the swap
 this project is built around (ADR-0005).
 
-**One call per assessment, and nothing retries it.** The client is built with `maxRetries: 0` —
-the SDK retries twice by default, which would make three paid calls and turn an 18,000 ms timeout
-into 54,000 ms, past the deadline and past the gateway's hard cut-off.
+**One call per `assess` invocation. Only the workflow may call the model again.** The Step Functions
+workflow allows another call while `callsMade` is under 3, and only after a timeout, a 429 or a 503
+(NFR-04, NFR-05, ADR-0018). So the client is built with `maxRetries: 0`, and no app code wraps
+`LlmProvider` in a wait-and-try-again loop. The SDK retries twice by default, which would hide extra
+paid calls under every call the workflow counts.
 
 `max_tokens: 1024` · `timeout: 18_000` (**milliseconds**) · `maxRetries: 0`.
 

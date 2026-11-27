@@ -43,7 +43,7 @@ trigger as gate 5 and as the admin route in ADR-0009, and all three should be an
 - the model id
 - the input and output token counts
 - the computed cost
-- the duration of each step in `03-api-spec.md` §4, from whichever of the three functions ran it.
+- the duration of each step in `03-api-spec.md` §4, from whichever of `api`, `assess` and `watch` ran it.
   The assessment id joins the `api`, `assess` and `watch` lines of one run
 
 **Recorded by their own names, never merged.** The person sees one screen for several failures. The

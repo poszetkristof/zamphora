@@ -1,27 +1,17 @@
 # AWS and the pipeline
 
-**How this project runs on AWS, and how the build reaches AWS without any password existing.**
+**How zamphora runs on AWS, and how the build reaches AWS without any stored password.**
 
-This note is one of four. `backend-concepts.md` explains **the ideas on their own**, away from this
-project. `ai-native-delivery.md` is about the **process**. `monorepo-architecture.md` is about the
-**shape of the code**. This one is about the **running system** — what is in the cloud, who is
-allowed to change it, and what stops it costing money.
+This note is one of four. `backend-concepts.md` explains the ideas on their own.
+`ai-native-delivery.md` explains the process. `monorepo-architecture.md` explains the shape of the
+code. This note explains **the running system**: what is in the cloud, who may change it, and what
+stops it from costing money.
 
-**If a term here is unfamiliar, it is defined in `backend-concepts.md`**, which is a dictionary
-rather than a walkthrough. This note says what *this system* does; that one says what the *idea* is,
-how else it is done, and the trap. The concepts this note leans on hardest are **46** servers,
-containers and serverless · **47** cold starts · **50** the CDN and the edge · **39** least privilege
-and IAM · **45** infrastructure as code · **55** observability · **59** cost as a correctness
-property · **43** defence in depth · **64** CI and CD.
+If a word is new to you, look it up in `backend-concepts.md`.
 
-**Part A is the system.** Read it in order, once. It is the part worth understanding six months from
-now, because the shape of the running system is what you have to hold in your head before you can
-change anything.
-
-**Part B is the pipeline** — how code gets from your machine to AWS safely. Read it once too. After
-that, it mostly looks after itself.
-
-**Part C is lookup.** Come back to it when you need a number.
+- **Part A** is the running system. Read it once, in order.
+- **Part B** is the pipeline: how code gets from your machine to AWS safely. Read it once too.
+- **Part C** is a lookup table. Come back to it when you need it.
 
 ---
 
@@ -29,22 +19,22 @@ that, it mostly looks after itself.
 
 **Part A — the running system**
 
-1. [The account, and why that changes everything](#1-the-account-and-why-that-changes-everything)
-2. [The nine stacks, and the picture they make](#2-the-nine-stacks-and-the-picture-they-make)
+1. [The account, and why it changes everything](#1-the-account-and-why-it-changes-everything)
+2. [The nine stacks](#2-the-nine-stacks)
 3. [The path of one request](#3-the-path-of-one-request)
-4. [Four clocks, stacked — and then taken apart](#4-four-clocks-stacked--and-then-taken-apart)
-5. [One table, and the "wrong" choice made on purpose](#5-one-table-and-the-wrong-choice-made-on-purpose)
+4. [Why the model call runs in the background](#4-why-the-model-call-runs-in-the-background)
+5. [One table, and a choice AWS does not recommend](#5-one-table-and-a-choice-aws-does-not-recommend)
 6. [The photo path](#6-the-photo-path)
-7. [The function itself, and the build that nearly did not work](#7-the-function-itself-and-the-build-that-nearly-did-not-work)
-8. [What stops it costing money](#8-what-stops-it-costing-money)
-9. [What you can see when it breaks](#9-what-you-can-see-when-it-breaks)
+7. [The function itself](#7-the-function-itself)
+8. [What stops it from costing money](#8-what-stops-it-from-costing-money)
+9. [What you can see when it breaks — observability](#9-what-you-can-see-when-it-breaks--observability)
 10. [Two switches that look the same and are not](#10-two-switches-that-look-the-same-and-are-not)
 
 **Part B — the pipeline**
 
 11. [How the build signs in to AWS with no password](#11-how-the-build-signs-in-to-aws-with-no-password)
 12. [A public repository, and the two walls](#12-a-public-repository-and-the-two-walls)
-13. [What has to be green before a merge](#13-what-has-to-be-green-before-a-merge)
+13. [What must be green before a merge](#13-what-must-be-green-before-a-merge)
 
 **Part C**
 
@@ -54,60 +44,69 @@ that, it mostly looks after itself.
 
 # Part A — the running system
 
-## 1. The account, and why that changes everything
+## 1. The account, and why it changes everything
 
-This runs on the **AWS free account plan**. That plan does not send a bill. When you go past what is
-free, it **closes the account** and takes the resources with it.
+zamphora runs on the **AWS free account plan**. This plan never sends you a bill. When you use more
+than the free amount, AWS **closes the account**, and all the resources go with it.
 
-So a runaway loop is not an accounting problem. It is the product disappearing. That is why every
-resource is written in CDK and kept in git: a lost account is one deploy away from coming back.
+So a bug that loops and calls AWS again and again is not a money problem. It is the whole product
+disappearing. This is why every resource is written in CDK and kept in git: if the account is lost,
+one deploy brings everything back.
 
-**Two facts that surprise most people.**
+**AWS has two kinds of free offer, and this plan has only one of them.**
 
-**First, AWS has two kinds of free offer, and this plan only has one of them switched on:**
+- **Always Free** is free forever. Lambda, DynamoDB, CloudFront and Cognito are in it.
+- **The twelve-month trial** is free for one year, but only on a paid plan. This account gets none of
+  it.
 
-- **Always Free** — free forever. Lambda, DynamoDB, CloudFront, Cognito.
-- **Twelve-month trial** — free for a year on a *paid* plan. **This account gets none of it.**
+So **API Gateway, S3 and Route 53 cost money from the very first request.** With one user it is less
+than one cent a month. But "the whole stack is free" is not true.
 
-So **API Gateway, S3 and Route 53 bill from the very first request.** The amounts are tiny at one
-user — under a cent a month — but "the whole stack is free" was never true, and the plan says so.
+S3 is on that list because of a date. AWS changed the S3 free offer in July 2025. This account was
+opened after that, so it has no free S3 amount at all. If you read "S3 gives you 5 GB free"
+somewhere, check when the account was opened.
 
-**S3 is on that list because of a date, and this is worth remembering rather than re-deriving.**
-AWS replaced the old S3 free tier on **2025-07-15**. Accounts opened after that date get the
-one-time credit instead. This account was opened 2026-07-01, so it gets no S3 allowance at all. An
-account opened before that date would still have one. So if you ever read "S3 gives you 5 GB free"
-somewhere, check when the account was created before believing it.
+**The DynamoDB free amount is counted in hours.** A **capacity unit** is room for one request a
+second. The free amount is 25 units held for a whole month, which is about **18,250 unit-hours a
+month**. It is not a limit on how fast one table can be.
 
-**Second, the DynamoDB free amount is measured in hours, not in a ceiling.** This is the fact that
-is easiest to get wrong, and it changed a decision here. The free amount is not "25 capacity units,
-at every moment". It is 25 units held for a whole month, which is about **18,250 capacity-unit-hours
-a month, per Region**. A capacity unit is room held open for one request a second.
-
-That difference matters because it changes what a mistake costs:
-
-| If you think it is a ceiling | What is actually true |
-| --- | --- |
-| A second table steals capacity from the first | A second table spends unit-hours. The first table keeps its own speed |
-| A second table that runs all month breaks production | It only spends unit-hours. If the total stays inside the free amount, it costs nothing |
-
-So this project runs two tables all month, every month: `prod` at 20/20 and `dev` at 5/5. Together
-they use exactly the free 25/25. There is no room left for a third table, which is one reason there
-is no `staging`.
+- So two tables can run all month, as long as their units add up to 25 or less.
+- zamphora has two tables: `prod` with 20 read and 20 write units, and `dev` with 5 and 5. Together
+  they use exactly the free 25.
+- There is no room for a third table. This is one reason there is no `staging` environment.
 
 ---
 
-## 2. The nine stacks, and the picture they make
+## 2. The nine stacks
 
-Everything is CDK. A **stack** is one group of AWS resources that is created, updated and deleted
-together. There are nine, and each is a separate deployable unit — so one can be replaced without
-touching the others. **Eight of them are in one Region and one is not.**
+### The problem they solve
 
-That one Region is **eu-central-1**, Frankfurt, because a photo of the inside of a home is personal
-data and it should stay under EU rules. The exception is explained at the end of this section, and
-it holds no data at all.
+zamphora runs on many AWS resources: two buckets, four functions, a table, a sign-in service and
+some alarms. If all of them were one group, a small change to one alarm would also redeploy the
+database.
 
-The newest of the eight is **`ZamphoraWorkflowStack`**, which arrived when the assessment moved
-into the background.
+So the resources are split into **stacks**. A **stack** is one group of AWS resources that CDK
+creates, updates and deletes together. It is close to one package in a monorepo: it has one job,
+and it can change without touching the others.
+
+- zamphora has **nine** stacks.
+- Eight are in **eu-central-1** (Frankfurt). A photo of the inside of a home is personal data, so it
+  stays under EU rules.
+- One is in **us-east-1**. It holds only two alarms and no data. The end of this section says why.
+
+### What each stack holds
+
+| Stack | What is inside | Its job |
+| --- | --- | --- |
+| `ZamphoraEdgeStack` | a CloudFront distribution | The one front door. Every request arrives here first |
+| `ZamphoraWebStack` | an S3 bucket | The web pages, built ahead of time by `next build` |
+| `ZamphoraApiStack` | API Gateway and the `api` Lambda | Every API route. It answers in about one second |
+| `ZamphoraWorkflowStack` | Step Functions, the `assess`, `watch` and `mark-failed` Lambdas | The photo assessment, in the background. `mark-failed` writes `failed` on the row when a run ends in a way no `Catch` sees |
+| `ZamphoraDataStack` | one DynamoDB table | All the app data |
+| `ZamphoraPhotosStack` | a private S3 bucket | The photos |
+| `ZamphoraAuthStack` | Cognito | Sign-in |
+| `ZamphoraOpsStack` | alarms, a dashboard, a notification topic | Watches the other stacks |
+| `ZamphoraCloudFrontAlarmsStack` | two alarms, in us-east-1 | Watches CloudFront |
 
 ```mermaid
 flowchart TD
@@ -161,69 +160,70 @@ flowchart TD
     style PH fill:#e8f4ea
 ```
 
-**How to read it.** It is a **flowchart**: boxes are things that exist, arrows are calls, and each
-dashed outline is one CDK stack — one group of resources created and destroyed together. Start at the
-top left with the phone and follow the arrows down. **The two things worth noticing are absences:**
-the `web` box has **no arrow to the table or the bucket**, because the pages hold no credentials and
-reach nothing; and only `assess` has an arrow to Anthropic, because it is the only function that can
-read the model key.
+**How to read it.** Boxes are things that run or store data. Arrows are calls. Each outline is one
+stack. Start at the phone and follow the arrows down. Look at the `web` box: no arrow goes from it to
+the table or the photos. The web pages hold no passwords and cannot reach any data. The two alarm
+stacks are not in the picture, because they only watch.
 
-One of the eight is **`ZamphoraOpsStack`** — the alarms, the dashboard and the notification topic.
-It is not part of the product. It watches it, and it is not in the picture above for that reason.
-Section 9 covers what it can see.
+### One assessment, step by step
 
-**Why there are three functions and not one.** The `api` function used to make the model call
-itself, while the phone waited. Now the `api` function does the checks, writes the assessment row
-as `queued`, starts a **Step Functions** workflow and answers `202` — "accepted" — in about a second.
-Step Functions is the AWS service that runs a list of steps with retries and error handling written
-as configuration. It runs a small second function, `assess`, which makes the one model call, and it
-writes the result straight into the table. A third function, `watch`, holds one open connection to
-the phone and pushes the result when it lands. Section 4 has the clocks and section 7 has why.
+The best way to see how the stacks work together is to follow one request.
 
-**Four things to notice, because each one is a decision and not an accident.**
+1. A person takes a photo of their monstera on the phone and taps **Assess**.
+2. The request goes to **CloudFront**. The path starts with `/api/`, so CloudFront sends it on to
+   **API Gateway**, and API Gateway calls the **`api` Lambda**.
+3. The `api` Lambda checks the session and the photo. It saves the photo in the **photos bucket**. It
+   writes a row in **DynamoDB** with the status `queued`. It starts **Step Functions**. Then it
+   answers `202 Accepted`. All of this takes about one second.
+4. **Step Functions** is an AWS service that runs a list of steps for you, with retries. It runs the
+   **`assess` Lambda**, which sends the photo to the **Anthropic API**. It tries at most three times.
+5. Step Functions writes the result into the same DynamoDB row.
+6. While this happens, the phone keeps one connection open to the **`watch` Lambda**. When the row
+   changes, `watch` sends the result to the phone. In the browser, this is the same thing as an
+   `EventSource` that listens for server-sent events.
 
-- **The web pages hold no credentials and reach no database.** They are plain files, built ahead of
-  time and put in a bucket. Every piece of data goes through the API. That is why the browser only
-  ever has one cookie, and why a bug in the web app cannot read or write anything.
-- **There is one Lambda for every route, not one per route.** One deployable unit is easier to
-  reason about, one cold start is paid instead of many, and the free amount is a million requests a
-  month. The two other functions are split by **job**, not by route: one makes the paid call, one
-  streams the answer. The honest price is in section 7.
-- **There is no VPC.** A VPC is a private network inside AWS. It would need a NAT Gateway to reach
-  Anthropic, and a NAT Gateway is charged by the hour with no free offer. It would be the largest
-  line in the whole product.
-- **The web holds no credentials, and the model key is in exactly one function.** The `api`
-  function holds the Cognito client secret and the permissions on the table and the bucket. Only
-  `assess` can read the Anthropic key, and `assess` never decodes a photo. That split is what
-  closed the biggest open security question of run 1 (gate 70).
+### Four decisions in this picture
 
-**The ninth stack, and the one thing outside eu-central-1.** CloudFront publishes its measurements
-only to **us-east-1**, and there is no way to change that. An alarm has to be created in the same
-Region as the metric it watches, so the two alarms on the front door live in
-**`ZamphoraCloudFrontAlarmsStack`**, a small stack in that Region that holds alarms and nothing else
-— no function, no table, no bucket, and nothing a person's data ever passes through. The rule "one
-Region for everything that serves a request" still holds.
+Each of these was a choice. Each one had another option that lost.
 
-**This is worth remembering as a shape, not as a CloudFront fact.** Some AWS services report from
-one fixed Region whatever you do. When that happens, the thing that *watches* moves and the thing
-that *runs* stays. An alarm written in the wrong Region does not fail — it deploys, and then never
-fires. That is how this one was nearly missed.
+- **The web pages are only static files.** They hold no credentials, so a bug in the web app cannot
+  read or change any data. All data goes through the API. The other option was a Next.js server. A
+  Next.js server can hold secrets, but then it is one more thing that can leak them.
+- **One Lambda handles every API route.** One function is easier to understand, and you pay for one
+  cold start instead of many. The other option was one function per route. That keeps the routes
+  more separate, but there are many more pieces to deploy. Section 7 says more.
+- **There is no VPC.** A **VPC** is a private network inside AWS. To reach the Anthropic API from a
+  VPC, you need a **NAT Gateway**. AWS charges for it every hour, and there is no free offer. It
+  would be the biggest cost in the whole product.
+- **Only the `assess` Lambda can read the Anthropic key.** If someone breaks into the `api` Lambda,
+  they still cannot use the key. This is the reason `assess` is its own function. And `assess` never
+  decodes a photo, so a bad image cannot attack the function that holds the key.
 
-**The host name is CloudFront's own**, like `d111111abcdef8.cloudfront.net`. A bought domain needs a
-Route 53 hosted zone at **$0.50 every month**, which at this size would cost more than the compute,
-the storage and the gateway put together. A hosted zone is the DNS record set for a domain name.
+There is also no domain name of our own. The app uses the CloudFront address, for example
+`d111111abcdef8.cloudfront.net`. A domain in Route 53 costs $0.50 every month. At this size, that is
+more than all the other costs together.
+
+### Why one stack is in us-east-1
+
+CloudFront sends its **metrics** (its numbers, such as the error rate) only to **us-east-1**. You
+cannot change this. An alarm must be in the same Region as the metric it watches. So the two
+CloudFront alarms live in their own small stack in us-east-1.
+
+- No person's data ever goes through that stack. The rule "everything that serves a request is in
+  Frankfurt" still holds.
+- **The trap:** an alarm in the wrong Region does not fail. It deploys without an error, and then it
+  never fires.
 
 ---
 
 ## 3. The path of one request
 
-Everything arrives at one CloudFront distribution, on one host name. CloudFront then looks at the
-path and sends the request to one of three places. That single routing rule is the whole reason the
-product has no CORS configuration anywhere.
+Every request arrives at one CloudFront distribution, on one host name. CloudFront looks at the path
+and sends the request to one of three places.
 
-**CORS** is the set of browser rules for talking to a different host than the page came from. Every
-one of those rules is a place where a wrong value either breaks the app or opens it. Because
-everything here is one host, none of them exists.
+Because everything is on one host name, the app needs **no CORS** at all. **CORS** is the set of
+browser rules for calling a different host than the one the page came from. Each of those rules is a
+place where a wrong value either breaks the app or opens it. With one host, none of them exist.
 
 ```mermaid
 flowchart LR
@@ -240,65 +240,46 @@ flowchart LR
     style B2 fill:#e8f4ea
 ```
 
-**How to read it.** This is a **routing** flowchart, and **the order of the branches is the
-meaning**, not decoration. CloudFront tries each rule from the top and takes the first that matches,
-so a rule written lower can be unreachable. Every arrow label is a URL pattern: that is the whole
-public surface of the product in four lines.
+**How to read it.** CloudFront tries the rules from the top and takes the first one that matches. So
+the order is part of the meaning. Each arrow label is a URL pattern, and together they are the whole
+public surface of the product.
 
-**The stream path's position in that list is not decoration.** CloudFront tries behaviours in
-order and takes the first match, so the events path has to be listed before `/api/*` or it never
-matches. It goes to a **Lambda Function URL** — an HTTPS address a function can have on its own,
-with no gateway — because the API Gateway HTTP API cannot stream a response, and the older REST API
-that can would corrupt the photo upload. The URL only accepts requests signed by this distribution.
-That signing needs a hash of the body on a `POST`, which a browser cannot supply through CloudFront,
-so this path is `GET` only and every `POST` stays on the gateway.
+**Why the stream path is listed first.** `/api/assessments/42/events` also matches `/api/*`. If
+`/api/*` were first, the stream rule would never be used. The stream goes to a **Lambda Function
+URL**, which is an HTTPS address that a function can have on its own, without API Gateway. It is
+needed because the API Gateway HTTP API cannot stream a response. This path accepts only `GET`.
+Every `POST` goes through API Gateway.
 
-**Three traps live in that small picture, and all three are silent.**
+**Three traps in this small picture. All three fail without an error.**
 
-**Caching must be OFF for `/api/*`.** A cached `GET /api/me` would hand one person another person's
-answer. Nothing would report an error. It would simply be wrong, for whoever asked second.
+- **Caching must be OFF for `/api/*`.** If `GET /api/me` were cached, one person could get another
+  person's answer. Nothing would report an error.
+- **The `Host` header must not be forwarded.** API Gateway refuses a request with someone else's
+  `Host`, and the error is a 403 that looks like a permission problem. Everything else must be
+  forwarded, including cookies, or the session never reaches the API. The CDK setting that does both
+  is `ALL_VIEWER_EXCEPT_HOST_HEADER`.
+- **The static pages need a small path fix.** Next.js writes the Hungarian home page as
+  `/hu/index.html`, but the browser asks for `/hu`. The bucket answers that with a 403, not a 404, so
+  the error tells you nothing. A small **CloudFront Function** adds `index.html` to the path. It also
+  sends `/` to `/hu` or `/en`, because a static site has no server to read the browser's language.
 
-**The `Host` header must not be forwarded.** API Gateway refuses a request that arrives carrying
-somebody else's `Host`. Forwarding the viewer's `Host` is the usual first mistake, and it produces a
-403 that looks exactly like a permission problem — so you spend an afternoon in IAM. Everything else
-*must* be forwarded, including cookies and the query string, or the session cookie never reaches the
-API. The CDK setting that does both is `ALL_VIEWER_EXCEPT_HOST_HEADER`.
-
-**A static export needs the path fixed before it reaches the bucket.** Next.js with
-`output: 'export'` writes `/hu/index.html`. A browser asks for `/hu`. A bucket reached through
-origin access control answers **403** for `/hu`, not 404 — so the error tells you nothing. A small
-**CloudFront Function** adds `index.html` to any path that names a folder. It does one more job at
-the same time: it sends `/` to `/hu` or `/en`, because a static site has no server to read the
-browser's language.
-
-**Where the session lives, on this path.** The browser holds one cookie, `__Host-session`, and it is
-an opaque id — a string that means nothing on its own. No access token, ID token or refresh token
-ever reaches the browser. The API swaps the code for tokens, reads what it needs, throws the tokens
-away, and writes a session row in the table. That shape has a name: **backend for frontend**. It is
-why signing out is a row delete rather than a token to revoke.
-
-The `__Host-` prefix is a browser rule that only works if the cookie has no `Domain` attribute — so
-it is sent to exactly one host and no other, not even a sibling subdomain. **One host name is what
-makes that prefix usable at all.** The domain shape was never a deployment detail; it decided which
-cookie protections were available.
+**Where the session lives.** The browser holds one cookie, `__Host-session`. Its value is a random
+id that means nothing on its own. The Cognito tokens never reach the browser: the API reads them,
+throws them away, and writes a session row in the table. This shape is called **backend for
+frontend** (BFF). Signing out is simply deleting that row.
 
 ---
 
-## 4. Four clocks, stacked — and then taken apart
+## 4. Why the model call runs in the background
 
-This is the most useful thing in the note for any project, not only this one. **The first half is
-the shape this project started with**, kept because the lesson holds whatever the shape. The second
-half says what the clocks look like now.
+### The problem
 
-The product promises **30 seconds** from the tap that takes the photo to something on screen. The
-slowest part is a call to a model, which takes several seconds and has no fixed length. So the
-question is: when the model is slow, **who answers first — your application, or the platform?**
+The product promises **30 seconds** from the tap to something on the screen. The slowest part is the
+model call. It takes several seconds, and nobody can say exactly how long.
 
-If the platform answers first, the person gets a **504** with a body nobody in the product wrote. It
-has no explanation, no next step, and none of the two sentences every failure message here must end
-with.
-
-So the application must fail **before** the platform does. Four clocks, in this order:
+At first, the phone waited while the model answered. Then the model call sat under four clocks. Each
+layer between the phone and the code had its own **timeout**, which is the longest time it waits
+before it gives up:
 
 ```mermaid
 flowchart TD
@@ -315,38 +296,25 @@ flowchart TD
     style E fill:#fde8e8
 ```
 
-**Only the green one should ever fire.** It is the one where the application writes its own answer:
-a failure message that says whether trying again will help. The two red ones must never be reached.
+**The rule behind this picture works in any project: your application must give up before the
+platform does.**
 
-**Three things about this that are easy to get wrong.**
+- If the app gives up first (the green box), it writes its own error message. The message can say
+  whether trying again will help.
+- If a platform gives up first (the red boxes), the person gets a **504** with a body nobody in the
+  product wrote. It has no explanation and no next step.
+- The **cold start** comes before all these clocks. The code that starts the clock cannot run until
+  the function has started. So you plan the start-up time separately, outside the deadline.
+- **Once the model has answered, the app must always finish writing the result.** The call is
+  already paid for, and one of the person's ten daily attempts is already used.
 
-**The cold start sits outside the deadline.** The code that starts the clock cannot run until the
-function has started. So the start-up time is spent before the app knows a request exists. It has to
-be budgeted separately, not subtracted from the app's own number. Most people subtract it and are
-wrong.
+This shape worked, but it left the model only about 16 seconds, and a retry was not possible. A
+second try would use the same clock.
 
-**CloudFront has its own clock, and it is easy to forget.** A CloudFront custom origin times out at
-**30 seconds by default and 60 seconds at most**. This project never set it, so CloudFront — not API
-Gateway — was quietly the outermost clock, and it was the last open path to a 504 the app did not
-write. It is now 25 seconds, which puts it between the app and the gateway.
+### What it looks like now
 
-That 60-second ceiling is also worth remembering for later: it means "escape the 30-second limit"
-is bounded by CloudFront, not only by API Gateway.
-
-**Reserve time for the work after the answer.** The model can answer at 19,900 ms. Then the app still
-has to check the answer, validate it, work out the cost and write two rows. If there is no budget
-left for that, the call was **already paid for**, one of the person's ten attempts was **already
-spent**, and the result is thrown away.
-
-So there was a constant, `WRITE_BUDGET_MS = 1500`, and the model's abort fired at
-`min(18,000, time left − 1,500)`. The rule behind it is still the rule: **once the model has
-answered, the write always finishes, because the money is already spent.**
-
-### What the clocks look like now
-
-The model call left the request. The `api` function now answers `202` in about a second, and the
-call runs inside a Step Functions workflow where **every step has its own clock and the platform
-has none**. That is the whole gain: the two red boxes above are no longer on the paid path.
+Now the `api` function answers `202` in about one second, and the model call runs inside a Step
+Functions workflow. **Every step has its own clock, and no platform limit sits above them.**
 
 ```mermaid
 flowchart TD
@@ -363,30 +331,27 @@ flowchart TD
     style D fill:#fde8e8
 ```
 
-**Three things this changed, and one it did not.**
+- **The 30-second promise is kept by the waiting screen.** The screen confirms within 30 seconds
+  that the run has started. The result then arrives within 60 seconds.
+- **A retry is possible again, with a limit.** The workflow retries a timeout, a 429 or a 503 at most
+  twice, after 2 and then 4 seconds. Every retry is a paid call, so this limit is a cost control. The
+  workflow counts its own model calls in a variable, `callsMade`, and stops at three. A test reads
+  this rule from the deployed workflow.
+- **The trap of this shape: no timeout on the whole state machine.** If the whole machine timed out,
+  it would stop without running any error handler, and the row would stay `running` forever. So each
+  step has a timeout and a **`Catch`** (an error handler), and the machine itself has none.
 
-- **The 30-second promise is kept by the waiting screen.** The screen confirms the run started
-  inside 30 seconds, and the result arrives on its own inside 60. Two client timers, not one.
-- **A retry is allowed again, with a cap.** While the phone waited, a second call ate the same
-  clock. Now the workflow retries a timeout, a 429 or a 503 at most twice, after 2 and 4 seconds.
-  The cap is one line in CDK and a test reads it back. Every retry is a paid call, so the cap is a
-  cost control.
-- **Nothing on the machine as a whole.** A timeout on the whole state machine ends the run without
-  running any error handler, so the row would stay `running` for ever. Each task has a timeout and
-  a `Catch`; the machine has none. This is the trap of the new shape, the way the CloudFront clock
-  was the trap of the old one.
-- **The cold start still sits outside every deadline**, only now it sits in front of the `202`
-  instead of in front of the answer.
+Section 7 says how this shape was chosen, and what the container version would look like.
 
 ---
 
-## 5. One table, and the "wrong" choice made on purpose
+## 5. One table, and a choice AWS does not recommend
 
-All the data is in **one DynamoDB table**. DynamoDB is a key-value store: you reach an item by its
-key, and there is no join and no search.
+All the data is in **one DynamoDB table**. DynamoDB is a key-value store: you find an item by its
+key. There are no joins and no free search.
 
-Everything a person owns has the **same partition key** — their user id. The sort key says what kind
-of thing it is, using a readable prefix:
+Everything a person owns has the **same partition key**: their user id. The **sort key** says what
+kind of thing the item is, with a readable prefix:
 
 ```
 PK = USER#<sub>          SK = PROFILE                      the account
@@ -399,62 +364,55 @@ PK = SESSION#<opaque id> SK = SESSION                      one sign-in
 PK = CONFIG              SK = AI_ENABLED | BREAKER | ...   settings
 ```
 
-**This removes the most common access-control bug by construction, not by a check.** If the owner id
-*is* the key, a query with no owner cannot be written. The repository layer takes a branded `UserId`
-type, and that type can only be created where the session is read — so a query without an owner does
-not compile. Nobody can forget the check, because there is no check to forget.
+**This key design removes the most common access bug.** The most common bug is a query that forgets
+to check who owns the data. Here the owner id *is* the key, so you cannot write a query without an
+owner.
 
-**And the API never answers 403.** A row belonging to somebody else answers exactly like a row that
-does not exist. A 403 tells an attacker "this exists, you just cannot have it". A 404 tells them
-nothing.
+- The repository code takes a special `UserId` type. That type can only be created where the session
+  is read. So a query without an owner does not even compile.
+- **The API never answers 403.** Another person's row gets the same answer as a row that does not
+  exist: 404. A 403 tells an attacker "this exists, but you cannot have it". A 404 tells them
+  nothing.
 
-### The choice that AWS itself recommends against
+### The choice AWS does not recommend
 
-DynamoDB has two ways to pay: **on demand** (you pay per request) and **provisioned** (you reserve a
-fixed rate and pay for holding it). AWS's own documentation says on demand is *"the default and
-recommended throughput option for most DynamoDB workloads"*.
+DynamoDB has two ways to pay. **On demand**: you pay for each request. **Provisioned**: you reserve a
+fixed number of capacity units and pay for holding them. AWS's own documentation calls on demand
+*"the default and recommended throughput option for most DynamoDB workloads"*.
 
-**This project uses provisioned, fixed, with auto scaling switched off.** Two reasons, and the
-second one is the interesting one.
+**zamphora uses provisioned, with fixed numbers and auto scaling switched off.** There are two
+reasons.
 
-**First: the free amount only covers provisioned.** An on-demand table spends credit on its first
-read. That alone settles it here.
+1. **The free amount only covers provisioned.** An on-demand table costs money from its first read.
+2. **It fails in the better direction.** This reason works in other projects too:
 
-**Second, and this is the part worth carrying to other projects: it fails in the better direction.**
-
-| | A runaway loop hits the table |
+| | A bug sends far too many requests to the table |
 | --- | --- |
-| **Provisioned, fixed** | DynamoDB **refuses** the extra requests. Things break loudly. An alarm fires. Somebody notices |
-| **On demand** | DynamoDB **serves** every one of them, perfectly, and eats the credit that keeps the account open |
+| **Provisioned, fixed** | DynamoDB **refuses** the extra requests. The app breaks loudly, an alarm fires, and someone notices |
+| **On demand** | DynamoDB **serves** every request, perfectly, and spends the money that keeps the account open |
 
-Auto scaling is off for the same reason. It would quietly raise the numbers past the free line
-without asking anybody.
-
-**When you write down a choice like this, write down that it is the worse engineering choice and
-why.** ADR-0002 does exactly that — it quotes AWS recommending the opposite, and then explains why
-the constraint here outranks the recommendation. On a paid account, on demand would be the answer.
+Auto scaling is off for the same reason: it would raise the numbers past the free amount without
+asking anyone. On a paid account, on demand would be the right answer. ADR-0002 writes this down,
+including the AWS quote that recommends the opposite.
 
 ### Changing the shape of an item
 
-DynamoDB has no schema and no migration tool. And an assessment row has **no clock** — the text is
-kept as long as the pot exists. So an item written today can still be read in three years.
+DynamoDB has no schema and no migration tool. An assessment row is kept as long as the pot exists,
+so an item written today may still be read in three years.
 
-Every item carries **`v`**, a whole number, `1` today. Three rules go with it:
+Every item has a field **`v`**, a whole number. Today it is `1`. Three rules go with it:
 
 1. **A reader ignores a field it does not know.** So adding a field is always safe.
-2. **Never rename a field and never change what one means.** Write a new field, stop writing the old
-   one, leave the old one alone.
-3. **Raise `v` only when a reader must behave differently**, and keep the code that reads the older
-   version until nothing on disk uses it.
-
-Three sentences now. A hand-written scan-and-rewrite later.
+2. **Never rename a field, and never change what a field means.** Write a new field instead.
+3. **Raise `v` only when a reader must behave differently.** Keep the code that reads the older
+   version until no item uses it.
 
 ---
 
 ## 6. The photo path
 
-Photos are the only large thing this product stores, and the only thing in it that is clearly
-personal data. One object per photo, in one private S3 bucket, at
+Photos are the only large thing zamphora stores. They are also the only thing in it that is clearly
+personal data. Each photo is one object in one private S3 bucket, at
 `photos/<userId>/<potId>/<timestamp>.jpg`.
 
 ```mermaid
@@ -470,193 +428,117 @@ flowchart LR
     style X fill:#fde8e8
 ```
 
-**How to read it.** Follow one photo from left to right: it arrives at the API, is re-encoded, is
-written to the bucket, and is read back later through a signed link. **The arrow that is not there is
-the point:** nothing goes from the browser to the bucket directly, and nothing reads the bucket
-through a cache.
+**How to read it.** Follow one photo from left to right. It arrives at the API, it is re-encoded, it
+is saved in the bucket, and later it is read back through a signed link. Notice what is missing:
+nothing goes from the browser straight to the bucket.
 
-**Four decisions in that picture.**
+**Four decisions in this picture.**
 
-**The photo goes through the API, not straight from the browser to S3.** The usual pattern is a
-*presigned PUT* — the server hands the browser a short-lived link and the browser uploads directly.
-It was rejected here, and the reason is worth remembering: **a presigned PUT validates nothing.**
-Whatever bytes the browser sends land in the bucket. Nothing checks the size, the type or the
-contents. Going through the function costs a little time and buys every check.
+- **The photo goes through the API.** The usual pattern is a **presigned PUT**: the server gives the
+  browser a short-lived link, and the browser uploads straight to S3. It lost here because **a
+  presigned PUT checks nothing.** Any bytes the browser sends land in the bucket, with no check of
+  size, type or content.
+- **The API decodes the photo and writes a fresh JPEG.** This one step does three jobs:
+  - It removes **EXIF**, the hidden data in a phone photo. EXIF holds the GPS position where the
+    photo was taken. For a plant on a windowsill, that is the person's home.
+  - It proves the file is really an image. A file name or a declared type proves nothing. A file
+    that cannot be decoded is not an image.
+  - It turns the photo the right way up. The rotation is stored in the EXIF, so it must be applied
+    before the EXIF is removed.
+- **The bucket is never behind CloudFront.** Photos are read through a **signed URL**: a link that
+  carries its own permission and works for at most five minutes. A cache would make a copy, and then
+  "delete my photo" would have to find that copy too.
+- **Photos are deleted after 180 days by an S3 lifecycle rule**, not by app code. The rule lives
+  inside S3, so it keeps working even when the app is broken. The general rule: if a promise must
+  work when the app is broken, do not put it in the app.
 
-**The API re-encodes the photo before doing anything else with it.** It decodes the image and writes
-a fresh JPEG. That single step does three jobs:
-
-- **It strips EXIF.** A phone photo carries the GPS position where it was taken. For a plant on a
-  windowsill, that is the person's home. Without this step it would sit in the bucket for 180 days
-  *and* be sent to a third party.
-- **It makes the type check real.** Checking the declared type is not a check — an extension is not
-  evidence. A file that will not decode is not an image.
-- **It fixes rotation.** Orientation is stored in the EXIF that is being removed, so it has to be
-  applied first or the photo arrives sideways.
-
-**The bucket is never a CloudFront origin.** Photos are read back through a **signed URL** — a link
-that carries its own permission and lasts at most five minutes. A cache in front of it would make a
-copy, and a copy is something the delete-my-photo promise would then have to find and delete too.
-
-**Deletion at 180 days is a lifecycle rule in S3, not application code.** A rule inside the storage
-service keeps working when the application is broken, stopped, or has a bug in its delete path. This
-is the general shape: *if a promise must survive the application, do not put it in the
-application.*
-
-**One number to keep in mind.** S3 lifecycle expiry is late by up to a day, and DynamoDB's
-time-to-live deletion is late by *"typically a few days"*. So no rule may depend on either firing on
-time. The retention audit checks at day **182**, not 180. And session expiry is checked **in code**,
-never by trusting that the row is gone.
+S3 lifecycle deletion can be up to a day late, and DynamoDB's time-to-live deletion can be a few
+days late. So no rule may depend on either one being on time. The retention check looks at day 182,
+not 180.
 
 ---
 
-## 7. The function itself, and the build that nearly did not work
+## 7. The function itself
 
-One Lambda function, `api`, holds the entire Nest.js API. Two more functions are
-built from the same codebase, each with one job.
+The `api` Lambda holds the whole Nest.js API. Two more functions are built from the same code, and
+each has one job.
 
 | Setting | `api` | `assess` | `watch` | Why |
 | --- | --- | --- | --- | --- |
-| Runtime | `nodejs24.x` | same | same | Patched until 2028-04-30. Node 22 stops a year earlier |
-| Architecture | `ARM_64` | same | same | Cheaper per second of compute |
-| Memory | 1024 MB | 1024 MB | 512 MB | Lambda gives CPU in proportion to memory. Starting values, to be measured |
-| Timeout | 22 seconds | 30 seconds | 60 seconds | Each is the net under its own smaller clock (section 4) |
-| Reserved concurrency | **10** in prod, 2 in dev | **1** | 5 | A cost guard, not a performance setting |
-| Holds the model key | no | **yes** | no | The key is in the function with no route |
+| Runtime | `nodejs24.x` | same | same | Supported until April 2028. Node 22 stops a year earlier |
+| Architecture | `ARM_64` | same | same | Cheaper per second |
+| Memory | 1024 MB | 1024 MB | 512 MB | Lambda gives more CPU with more memory. To be measured |
+| Timeout | 22 s | 30 s | 60 s | The last safety limit under each function's own clocks |
+| Reserved concurrency | **10** in prod, 2 in dev | **1** | 5 | A cost guard |
+| Holds the model key | no | **yes** | no | The key is in the function that has no route |
 
-**Reserved concurrency is the one worth understanding.** It is the largest number of copies of the
-function that may run at the same time. Set `assess` to 1 and a runaway loop cannot start a
-thousand copies that each wait 18 seconds on a **paid** model call. One at a time is all one user
-needs, and it also makes the circuit breaker's test call exactly one call.
+**Reserved concurrency** is the largest number of copies of a function that may run at the same
+time. `assess` is set to 1. So a bug cannot start a thousand copies that each make a paid model call.
+One user only ever needs one at a time.
 
-### The pattern has a name: Lambdalith
+### One function for every route: the Lambdalith
 
-One function holding a whole framework is called a **Lambdalith**. It is a recognised pattern, not a
-mistake. The alternative — one function per route — was rejected here because it multiplies cold
-starts across a flow that already has a 30-second budget, and gives one developer many small things
-to look at instead of one.
+One Lambda that holds a whole framework is called a **Lambdalith**. It is a known pattern, not a
+mistake.
 
-**It also scales, and this is worth knowing before you worry about it.** Lambda answers more
-requests by starting more copies of the function. AWS states the limit **per function**, not per
-account: *"for each function, your concurrency scaling rate is 1,000 execution environment
-instances every 10 seconds"*
-([Lambda scaling behavior](https://docs.aws.amazon.com/lambda/latest/dg/scaling-behavior.html),
-checked 2026-09-01). The account starts at **1,000 copies at the same time**, and that number is
-raised by asking AWS, at no cost
-([Understanding Lambda function scaling](https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html),
-checked 2026-09-01).
+- **It scales as well as many small functions.** Lambda scales by starting more copies. It does not
+  care how many routes are inside one copy. The account starts with a limit of 1,000 copies at the
+  same time, and AWS raises it for free when you ask.
+- **In zamphora, the table reaches its limit long before the function does.** 20 read units is about
+  20 reads a second. So the things that break first are the money and the table, not the shape of the
+  function.
+- **Its real weak point is the noisy neighbour.** All routes share one reserved concurrency number.
+  If one slow route fills all the copies, the fast routes must wait or are refused. In zamphora the
+  slow model call runs in its own function, `assess`, so it cannot fill the `api` copies.
+- **Its price is IAM.** One function has one **execution role**, which is the set of permissions the
+  code runs with. So `GET /api/health` has the same table and bucket permissions as every other
+  route. One function per route would let each route have only what it needs. If the API is ever
+  split, split the role too.
 
-So one function holding twelve routes scales exactly as well as twelve small functions would.
-Lambda adds copies. It does not care how many routes live inside one copy.
+The key design in section 5 does not fix this. It stops a route from reading another person's data
+by mistake. But if an attacker makes code run inside the function, that code has the whole role.
 
-**The table gives up first, and it gives up long before the function does.** 20 read units is about
-20 reads a second (section 5). The default Lambda limit already allows roughly 125 assessment
-requests a second. **DynamoDB throttles at about one sixth of a limit AWS has not even raised yet.**
-That is not a fault. It is the free-plan choice from section 5, and ADR-0002 records that
-provisioned can be switched to on demand in minutes, with no downtime and no data touched.
+### Two build traps with the same shape
 
-**So "will the Lambdalith scale" is the wrong thing to watch.** In order, the things that break
-first are: the $200 credit, the Anthropic balance, the table's 20 units, the account's 1,000 copies,
-and only then anything about the shape of the function.
-
-**Where it really does hurt, and it needs eleven users, not ten thousand.** Every route shares one
-function and one reserved concurrency number. Reserved concurrency is **10**. An assessment holds
-its copy for six to eight seconds. So ten assessments at the same time fill all ten slots, and for
-those seconds every other route — the plant list, the health check — is refused with a 429. The
-fast routes queue behind the slow one. This is called the **noisy neighbour** problem, and it is the
-first real reason to split, well before scale is.
-
-**The honest price is IAM.** One function means **one execution role**. `GET /api/health` runs with
-the same DynamoDB and S3 permissions as the route that spends money. One function per route would
-let each carry only what it needs, which is what least privilege asks for.
-
-That is given up on purpose. **Two different problems are being talked about here, and it is worth
-keeping them apart.** The key design in section 5 answers the first one: a route that forgot to
-check ownership still cannot read another person's data, because the owner id comes from the session
-and the key builder will not compile without it. It does **not** answer the second one. If code
-inside the function is ever made to run something it should not — a poisoned dependency, a bad image
-fed to the decoder — that code holds the whole role, over every row and every object. At that point
-there is no "route" any more. The trade is accepted because this is one developer, one function and
-plant photos, not because the key design covers it. **If the API is ever split, split the role with
-it.**
-
-**The first split to make, when the time comes, is the assessment route.** It is the slow one, the
-paid one, and the one that needs the most memory. Moving it to its own function fixes the noisy
-neighbour, stops every health check paying for image-sized memory, and gives the paid route its own
-smaller role — three problems with one change. Splitting the small read routes buys almost nothing.
-
-### The build trap that fails silently
-
-This one cost nothing to fix and would have cost an afternoon to find.
-
-Nest.js works out what to inject into a constructor by reading **decorator metadata** — extra
-information TypeScript writes into the compiled output when `emitDecoratorMetadata` is on.
-
-**esbuild does not support `emitDecoratorMetadata`, and it never will.** CDK's `NodejsFunction`
-bundles with esbuild. So pointing it at the TypeScript source produces a function that builds
-cleanly, deploys cleanly, and then throws `Nest can't resolve dependencies` on its very first
+Both traps build without an error, deploy without an error, and then break on the first real
 request.
+
+**Trap 1: decorator metadata.** Nest.js finds what to inject into a constructor by reading
+**decorator metadata**, which TypeScript writes into the output when `emitDecoratorMetadata` is on.
+**esbuild cannot write it.** CDK's `NodejsFunction` uses esbuild. So if you point it at the
+TypeScript source, the function fails with `Nest can't resolve dependencies`.
 
 ```
 Wrong:  NodejsFunction  ->  apps/api/src/main.ts     (esbuild only)
 Right:  nest build      ->  apps/api/dist/main.js  ->  NodejsFunction
 ```
 
-`nest build` is `tsc`, which writes the metadata correctly. esbuild then bundles the compiled
-JavaScript, which needs no decorator support at all.
+`nest build` uses `tsc`, which writes the metadata. esbuild then only bundles the finished
+JavaScript.
 
-**The general lesson:** when a tool works by reading extra information the compiler emits, check
-that every build path in the project emits it. This project already knew the failure sentence — it
-had switched the same setting on for the test runner — and still missed it on the deploy path,
-because those are two different builds and nobody compared them.
+**Trap 2: a native module.** `sharp` is the library that decodes and re-encodes the photo. Most of
+the real work is in a compiled binary file, not in JavaScript. **A bundler cannot put a binary into a
+bundle.** So the function fails with `Cannot find module 'sharp'` on the first photo.
 
-### The second build trap, and it is the same shape
+- The fix: mark `sharp` as external, so esbuild leaves it alone. Then copy the real folder into the
+  function after the bundle step. The code is in `docs/800-infra/01-iac-plan.md` §4.4.
+- `sharp` keeps its binaries in separate packages under `node_modules/@img`. The package manager
+  installs only the one for the current machine. So the build must run on a **Linux arm64** machine,
+  the same kind as Lambda. That is why CI uses `ubuntu-24.04-arm`.
 
-**This one was found by reading the plan, not by a failed deploy**, which is the only reason it is
-not a story about an afternoon lost. The first trap above is about information the compiler has to
-emit. This one is about code the bundler cannot touch at all.
-
-`sharp` is the library that decodes and re-encodes the photo. It is a **native module**: most of it
-is JavaScript, but the real work happens in a compiled binary, a `.node` file, that the JavaScript
-loads at run time. **A bundler cannot inline a binary.** esbuild will happily produce a bundle that
-mentions `sharp` and contains none of it, and the function then deploys cleanly and throws
-`Cannot find module 'sharp'` on the first photo somebody sends. That is the same failure shape as
-the decorator trap: green build, green deploy, broken on first real use.
-
-There are three normal ways out and this project takes the third:
-
-- **`bundling.nodeModules: ['sharp']`** tells CDK to install the module beside the bundle instead of
-  inlining it. It is the documented answer and it is **banned here** (ADR-0012), because CDK writes
-  an empty `pnpm-workspace.yaml` into its build folder, which erases the settings pnpm 11 needs.
-- **A Lambda layer** is a separate zip of dependencies that several functions can share. It works.
-  It was rejected because it is a second resource with its own version, and with one developer a
-  second version is a second thing that drifts.
-- **Mark it external and copy it in after the bundle.** `externalModules: ['sharp']` keeps esbuild
-  away from it, and a `commandHooks.afterBundling` step copies the real folder into the asset. The
-  code is in `docs/800-infra/01-iac-plan.md` §4.4.
-
-**The half that is easy to miss is `@img`.** Since version 0.33, `sharp` does not ship its binaries
-inside its own folder. It declares a set of **optional dependencies** — `@img/sharp-linux-arm64`,
-`@img/sharp-darwin-arm64` and so on — and your package manager installs only the one that matches
-the machine. So copying `node_modules/sharp` on its own gives you a loader with nothing to load.
-`node_modules/@img` has to travel with it, and it has to be the **Linux arm64** one, which is why
-the build runs on `ubuntu-24.04-arm` and not on the default runner.
-
-**The general lesson, and it is the same sentence as the first trap:** when something in the build
-depends on a step other than compiling — emitted metadata, a native binary, a platform-specific
-package — check every build path separately. A bundler's job is to read JavaScript. Anything that is
-not JavaScript is your problem, and it will not tell you.
+**The lesson for any project:** a bundler only understands JavaScript. If your build depends on
+anything else, such as metadata from the compiler or a binary file, check every build path
+separately.
 
 ### If money were no object: the same product as a container
 
-Everything above is shaped by one rule: the account closes instead of billing, so nothing may run while nobody is using the app. This part answers a different question.
-**If cost were not a constraint at all, what is the better system?** It is written down because the
-answer is not "the same thing, bigger". It is a different shape, and knowing the shape tells you
-what you are giving up today and what would have to change to get it.
+The whole design follows one rule: nothing may cost money while nobody uses the app. So it is useful
+to ask: **without that rule, what would the better system look like?** The answer is not the same
+thing but bigger. It is a different shape.
 
-**The service is Amazon ECS on Fargate.** ECS is the service that runs containers. Fargate is the
-mode where AWS runs the machine for you, so there is no server to patch. Your Nest.js app becomes a
-normal long-running HTTP server in a container, exactly like it is on your laptop.
+The service would be **Amazon ECS on Fargate**. ECS runs containers. Fargate means AWS runs the
+machine for you, so you have no server to patch. Your Nest.js app becomes a normal HTTP server that
+runs all the time, the same as on your laptop.
 
 ```mermaid
 flowchart TD
@@ -685,41 +567,27 @@ flowchart TD
     style WEB fill:#e8f4ea
 ```
 
-**The one change that matters most is the queue, and it is not about scale.** Originally the
-phone waited while the model thought. That is why section 4 had four stacked clocks and why the
-whole product was bounded by a 30-second ceiling it did not control. In the container version,
-`POST /api/assessments` writes a message to **SQS** — a queue, a list of jobs waiting to be picked
-up — and answers `202` straight away with an id. A separate worker picks the job up and does the
-slow call. The phone is told over an open connection.
+**The most important piece is the queue.** `POST /api/assessments` writes a message to **SQS**, a
+queue of jobs waiting to be done, and answers `202` at once. A separate worker takes the job and
+makes the slow call. zamphora gets the same result for free: Step Functions plays the part of the
+queue and the worker.
 
-**All four clocks disappear.** There is no 30-second gateway cut-off, no 20-second app deadline, no
-CloudFront read timeout to sit under. The model may take two minutes if it needs to. A retry becomes
-safe again, because a retry no longer eats a deadline. **This is exactly the gain the project took,
-without the container**: Step Functions plays the part of the queue and the worker, and it is free at
-this size. The subsection below says how.
-
-**What each piece replaces, and what it buys.**
-
-| Today | If money were no object | What that buys |
+| Today | If money were no object | What that gives you |
 | --- | --- | --- |
-| One Lambda function | ECS Fargate, 2+ copies always running | No cold start ever. One long-lived process, so a database connection pool works normally |
-| API Gateway HTTP API | Application Load Balancer | No 30-second ceiling |
-| The phone waits for the model | SQS + a worker service | The slow work leaves the request. Retries become safe |
-| DynamoDB, one table, owner-keyed | Aurora Serverless v2 PostgreSQL | Joins, reports and ad-hoc questions. Section 5's "no report over a large set" stops being a limit |
-| A value in the function's memory | ElastiCache Redis | A cache shared by every copy, so sessions and counters agree across them |
-| No VPC | A VPC with a NAT Gateway | The database and the cache are unreachable from the internet |
-| Reserved concurrency 10, and an alarm | AWS WAF rate rules | A flood is turned away at the edge, not counted after the fact |
-| One log line per request | X-Ray or OpenTelemetry tracing | Now there are three hops — API, queue, worker — so a trace finally draws something worth looking at |
+| One Lambda function | ECS Fargate, 2+ copies always running | No cold start. A database connection pool works normally |
+| API Gateway HTTP API | Application Load Balancer | No 30-second limit |
+| Step Functions | SQS and a worker service | The same: slow work leaves the request |
+| DynamoDB, one table | Aurora Serverless v2 PostgreSQL | Joins, reports and free questions over the data |
+| A value in the function's memory | ElastiCache Redis | One cache that every copy shares |
+| No VPC | A VPC with a NAT Gateway | The database and the cache cannot be reached from the internet |
+| Reserved concurrency and an alarm | AWS WAF rate rules | A flood is stopped at the front door |
 
-**What does not change, and this is the payoff of the borders already in the code.** The Zod
-contracts, every screen, the domain rules, and the `LlmProvider` port all stay exactly as they are.
-Only two things get rewritten: the repository layer, because DynamoDB keys become SQL, and the
-handler, because a Lambda event becomes an HTTP request. ADR-0002 already predicted the first one
-and accepted it.
+**What does not change:** the Zod contracts, every screen, the domain rules and the `LlmProvider`
+port. Only two parts are rewritten: the repository layer, because DynamoDB keys become SQL, and the
+handler, because a Lambda event becomes an HTTP request.
 
-**Now the number, because it is the whole reason this is not the design.** Rough monthly cost with
-nobody at all using the app, and these are **order-of-magnitude estimates, not checked against AWS's
-own pages** — the shape of the number is the point, not the number:
+**The cost is why this is not the design.** These are rough estimates, per month, with nobody using
+the app:
 
 | Piece | Roughly, per month, idle |
 | --- | --- |
@@ -731,72 +599,34 @@ own pages** — the shape of the number is the point, not the number:
 | AWS WAF | ~$6 |
 | **Total, before a single request** | **~$150** |
 
-Today the same product costs about **two cents** a month, and most of that is API Gateway. So the
-container version is roughly **7,000 times more expensive while nobody is using it**. On an account
-with $200 that closes when the credit runs out, it would take the account down in about six weeks of
-doing nothing. That is why `00-options.md` scored this shape at 12 against 16 and it lost.
+Today the product costs about **two cents** a month. With $200 of credit, the container version
+would close the account in about six weeks, with nobody using it.
 
-**But it wins later, and there is a real crossing point.** Lambda charges per request; a container
-charges per hour whether or not anyone calls it. Below a certain steady traffic level Lambda is
-cheaper, and above it the container is cheaper **and** faster, because there is no cold start and
-the connection pool stays warm. The move is right when two things are both true: the account is off
-the free plan, and traffic is steady rather than a few requests a day.
+**It wins later.** Lambda charges for each request. A container charges for each hour, even when
+nobody calls it. With steady, high traffic, the container becomes cheaper and also faster. The move
+is right when two things are both true: the account is on a paid plan, and the traffic is steady.
 
-**One cheap thing makes that move easier later, and it is worth knowing the name.** The
-**AWS Lambda Web Adapter** is a small extension you copy into the function image. It turns the
-Lambda event into a real HTTP request and passes it to your app listening on a port — so the app is
-a plain HTTP server with no Lambda-shaped code in it, and the **same container image also runs on
-Fargate unchanged**:
+### How the background shape was chosen
 
-```
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
-ENV PORT=3000
-```
+Two shapes were scored, in `docs/400-architecture/00-options.md` §11 and `08-async-options.md`.
 
-**It is not used here, and that is on purpose.** A container image cold-starts more slowly than a
-zip bundle, and it needs ECR, whose private-repository free offer is a 12-month trial and so worth
-nothing on this plan (checked 2026-09-17). It is written down as the escape hatch, not as a plan.
-The point is that "we picked wrong" would become "we change where the image runs", which is a much
-smaller sentence.
+- **Option E, chosen.** Only the model call moves. The API answers `202`, Step Functions runs the
+  call in its own small function with its own role, and the phone listens over server-sent events.
+  Step Functions gives 4,000 free steps a month, forever. zamphora uses about 200.
+- **Option F, not chosen.** The phone uploads straight to S3, and every change in the table becomes
+  an event that other small functions react to. Nothing the project plans to build needs this.
 
-### The free asynchronous shape, and how it was chosen
-
-The container shape above is the answer when money is no object. There is a different question, and it has a different answer: **what does the same product look like if the
-phone stops waiting, and the account stays free?** Two shapes answered it, drawn and scored in
-`docs/400-architecture/00-options.md` §11, with the long reasoning in `08-async-options.md`. **The
-owner chose Option E the same day** (gate 72, ADR-0014 to ADR-0016), and section 2 now draws it.
-
-- **Option E, chosen.** It keeps everything else and moves only the model call: the API answers
-  `202` at once, an **AWS Step Functions** workflow runs the call in its own small function with its
-  own role, and the phone holds one open connection — server-sent events, the same mechanism the
-  model provider uses to stream — until the result is pushed to it. The four stacked clocks became
-  one clock per step, and the "no retry" rule became a retry with a cap written in one place. Step
-  Functions gives 4,000 free workflow steps a month, forever; this product uses about 200.
-- **Option F, not taken.** It went further: the phone uploads straight to S3 with a short-lived
-  permission for one exact object, S3 announcing the new object starts the workflow, and every
-  write to the table becomes an event that other small functions react to. It lost because nothing
-  the project plans to build needs it. Every later feature — the 12-month sweep, reminders, open
-  sign-up — is served by E plus two timer rules, and E keeps every upload check on the API where
-  ADR-0007 put it.
-- **On the four constraints the project scores on, the old design was still ahead by one point.**
-  Only a fifth constraint, what a shape gives later runs, put E in front. That is why the choice was
-  the owner's and not a role's, and why it is recorded as a gate.
-
-Two lessons worth carrying from that file into any project. **An asynchronous shape moves the
-runaway risk from "a loop in my code" to "a retry a service does on its own".** Lambda retries an
-async call twice by default, EventBridge and its Scheduler retry a target for 24 hours, a stream
-consumer retries a bad batch for a day, and Step Functions bills every retry as a step. Each has a
-setting, and §8 of that file lists all thirteen. And **a review by a session with no context found
-three blockers in the first draft** — a workflow that started itself from its own output, an upload
-permission that let one attempt become many, and a retry that could never fire. The file says so
-at the top, on purpose.
+**The lesson for any project:** a background shape moves the risk of a runaway loop from your code
+to the services' own retries. Lambda, EventBridge and Step Functions each retry on their own by
+default, and each retry can cost money. Each one has a setting, and `08-async-options.md` §8 lists
+all thirteen.
 
 ---
 
-## 8. What stops it costing money
+## 8. What stops it from costing money
 
-On an account that closes instead of billing, cost is a correctness property. So the defences are
-layered, and each layer catches something the others cannot.
+On an account that closes instead of sending a bill, cost is a question of correctness. So there
+are several layers of defence, and each layer catches something the others cannot.
 
 ```mermaid
 flowchart TD
@@ -821,126 +651,106 @@ flowchart TD
     style D4 fill:#e8f4ea
 ```
 
-**Read that diagram from the bottom up, because that is the order the layers were built in.** The
-daily limit and the circuit breaker protect the **Anthropic** balance — the $5 that buys the
-feature. The throttle, the concurrency limit and the fixed capacity protect the **AWS** balance —
-the credit that keeps the account open. Those are two different balances, and for a while only the
-first one had any defence.
+**How to read it.** Start at the top with a flood of requests. At each layer, ask what gets through
+and what is refused.
 
-**The gateway throttle is the layer people forget, and it is the biggest hole when it is missing.**
-Left unset, an API Gateway stage inherits the account default of **10,000 requests a second**. API
-Gateway has no free offer, so it bills from request one: a flood at that rate is roughly **$36 an
-hour**. And authentication happens *inside* the function, so a stranger who is not signed in still
-costs a gateway request and an invocation.
+**There are two different balances to protect.**
 
-Reserved concurrency does **not** help here. It caps the function's work. It does not cap billed
-gateway requests. Those are different meters.
+- The **Anthropic** balance is $5. It pays for the model calls. The daily limit, the circuit breaker
+  and the retry limit protect it.
+- The **AWS** balance is the credit that keeps the account open. The gateway limit, the reserved
+  concurrency and the fixed table capacity protect it.
 
-**The background run added one layer and three traps, all with a setting.** The layer: `assess`
-runs one copy at a time and the workflow retries at most twice, so the most one photo can cost is
-three calls. The traps, each a default that is wrong on this account: the CDK task adds a hidden
-six-attempt retry unless `retryOnServiceExceptions` is off; an EventBridge rule retries a broken
-target for 24 hours unless it is told 2 attempts and 5 minutes; and a queue that a function reads
-costs requests even when it is empty, so the one queue here is a dead-letter queue nobody reads.
-`docs/800-infra/02-cost-guardrails.md` §6 has the full list.
+**The gateway rate limit is the layer people forget.** If you do not set it, API Gateway uses the
+account default: **10,000 requests a second**. API Gateway has no free offer, so a flood at that
+rate costs about **$36 an hour**. And the sign-in check runs inside the function, so even a stranger
+who is not signed in costs one gateway request.
 
-**One layer has no automatic defence, and it is written down as such.** A flood that stops at the
-CloudFront edge is billed once the 10 million free requests are used, and nothing on this account
-can stop it automatically. The honest answer is a manual one: an alarm fires on request count, and
-you disable the distribution by hand. **An accepted risk written down is worth more than a defence
-that does not exist.**
+Reserved concurrency does **not** help here. It limits how much the function works. It does not
+limit how many gateway requests are billed. These are two different meters.
 
-**Two things that spend money quietly, and both are switched off.**
+**Three default settings that are wrong on this account.** The background workflow brought them in:
 
-- **Detailed API Gateway metrics** are charged as custom metrics. The basic ones are free.
-- **CloudWatch Logs ingestion** is a classic free-tier killer. Log retention is 30 days in `prod`
-  and 7 days in `dev`.
+- The CDK task for Lambda adds a hidden retry of up to six attempts. It is switched off with
+  `retryOnServiceExceptions: false`.
+- An EventBridge rule retries a broken target for 24 hours. Here it is set to 2 attempts and 5
+  minutes.
+- A queue that a function reads costs requests even when it is empty. So the only queue here is a
+  dead-letter queue that nothing reads automatically.
 
-There is also a small trap in how measurements are counted. Putting the failure code on a metric
-**dimension** — a label that splits a measurement into separate series — turns 6 custom metrics into
-36, each billed. The failure code is read with a Logs Insights query instead, which is free.
+**One layer has no automatic defence, and this is written down.** CloudFront has no rate limit on
+this account. Once its free 10 million requests are used, a flood costs money, and nothing stops it
+automatically. The answer is manual: an alarm fires on the request count, and you switch off the
+distribution by hand. An accepted risk that is written down is better than a defence that does not
+exist.
 
-**And there are no backups.** Point-in-time recovery is charged per gigabyte with no free amount.
-The replacement is a calendar entry: export the table and the photo bucket by hand before the free
-plan ends. That is written down plainly rather than implying a protection that is not there.
+**Things that cost money quietly, and are switched off or limited:**
+
+- **Detailed API Gateway metrics** are charged. The basic ones are free.
+- **CloudWatch Logs** are charged for each gigabyte written. Logs are kept for 30 days in `prod` and
+  7 days in `dev`.
+- A **dimension** is a label that splits one metric into several. Putting the error code on a
+  dimension would turn 6 custom metrics into 36, and each one is charged. The error code is read
+  with a free Logs Insights query instead.
+- **There are no backups.** DynamoDB point-in-time recovery is charged for each gigabyte. Instead,
+  there is a calendar entry: export the table and the photos by hand before the free plan ends.
 
 ---
 
 ## 9. What you can see when it breaks — observability
 
-**The topic has a name, and it is worth knowing as a name.** **Observability** is a standard backend
-subject and close to a non-functional requirement: **can you tell what the running system is doing,
-without attaching a debugger to it?** You cannot debug a Lambda function that ran once at 3 a.m. for
-somebody else and no longer exists. Observability is what replaces that.
+**Observability** is a standard backend topic, and it is close to a non-functional requirement. It
+asks one question: **can you tell what the running system is doing, without a debugger?** You cannot
+debug a Lambda that ran once at 3 a.m. for someone else and no longer exists. Observability is what
+you have instead.
 
-**It is three things, and all three are expected in an answer:**
+**It has three parts:**
 
-| Part | The question it answers | The AWS tool | Where it is here |
+| Part | The question it answers | The AWS tool | In zamphora |
 | --- | --- | --- | --- |
-| **Logs** | **What happened in this one request?** Which route, which outcome, that it ended in a `400` or a `409`, and why | **CloudWatch Logs** | One structured line per request, with a failure code |
-| **Metrics** | **How many, how often, how fast?** How many requests, how many succeeded, how long the slowest 5% took | **CloudWatch Metrics** | AWS's own, plus six custom ones |
+| **Logs** | **What happened in this one request?** Which route, which result, and why it ended in a `400` or a `409` | **CloudWatch Logs** | One structured line per request, with an error code |
+| **Metrics** | **How many, how often, how fast?** How many requests, how many worked, how slow the slowest 5% were | **CloudWatch Metrics** | AWS's own metrics, plus six custom ones |
 | **Traces** | **Which services did this one request pass through, and where did the time go?** | **AWS X-Ray** | `api` → Step Functions → `assess` → Anthropic |
 
-**The difference that decides where something belongs.** A **log line is per event and is billed per
-gigabyte**. A **metric is a number aggregated over time and is cheap to keep for a year**. So "how
-many calls failed today" has to be a metric — answering it by reading a year of log lines is slow and
-expensive. Most of the traps later in this section are that distinction being got wrong.
+- **A log line is about one event and is charged per gigabyte. A metric is a number over time and is
+  cheap to keep for a year.** So "how many calls failed today" must be a metric. Answering it by
+  reading a year of logs is slow and expensive.
+- **Traces matter once a request crosses several services.** Inside one program, a stack trace shows
+  the whole path. When a request passes through four services, no single machine has seen all of
+  it. A trace gives the request an id that travels with it, so you can see which step was slow.
 
-**Why traces only started to matter once the work was split.** Inside one program, a stack trace
-shows the whole path. Once a request crosses four pieces — `api`, the workflow, `assess`, the provider — **no
-single machine has seen the whole thing**. A trace gives the request an id that travels with it, and
-each piece reports its own part against that id. It is the only one of the three that answers *which
-step was slow*. Before the split there was one function, so there was nothing to trace.
+`backend-concepts.md` entry 55 explains the same three parts away from AWS.
 
-`docs/learn/backend-concepts.md` 55 has the same three parts away from AWS, with the alternatives —
-OpenTelemetry, Prometheus, Grafana — and 56 covers alerting.
+### What is watched in zamphora
 
-### What is actually watched here
-
-Twelve alarms and one dashboard, in `ZamphoraOpsStack`. Most are the ordinary ones any system has.
-**Four are the ones this project actually needs**, and they are the ones about a balance:
+There are twelve alarms and one dashboard, in `ZamphoraOpsStack`. Most are normal alarms that any
+system has. **Four are special to this project, and each one is about a balance:**
 
 | Alarm | Fires when | What it means |
 | --- | --- | --- |
-| **Runaway model calls** | more than 30 in an hour | Expected use is about 30 a **month**. Thirty in an hour is a loop or an attack |
-| **Runaway spend** | more than $0.10 in an hour | At $5 of balance, a dollar an hour empties it in an evening |
-| **The breaker opened** | 5 model calls failed in a row | The product stopped calling the model on its own |
-| **Front door flood** | more than 50,000 CloudFront requests in an hour | The only warning of a flood that never reaches the throttled gateway |
+| **Runaway model calls** | more than 30 in an hour | Normal use is about 30 a **month**. Thirty in an hour is a loop or an attack |
+| **Runaway spend** | more than $0.10 in an hour | With $5 of balance, a dollar an hour empties it in one evening |
+| **The breaker opened** | 5 model calls failed in a row | The product stopped calling the model by itself |
+| **Front door flood** | more than 50,000 CloudFront requests in an hour | The only warning of a flood that never reaches the gateway |
 
-**The count is past the free allowance, and it drifted twice.** CloudWatch gives **ten** alarm
-metrics free. An eleventh was added to close the flood hole, and three files kept saying "the ten
-alarms" afterwards. A twelfth arrived with the background run, and the heading still said eleven
-until somebody read it against the table. So **two alarms are charged** — cents a month, far below
-everything else in section 8, but the documents claimed $0 and claimed the wrong number, twice.
+CloudWatch gives ten alarms for free, so two of the twelve are charged. That is a few cents a month.
 
-**The lesson is not about alarms, and the fact that it happened twice is the proof.** A number that
-appears in a heading, in a sentence and in two other files is a number that will disagree with itself
-the first time it changes. When a count is also a limit, write it in one place and point at it from
-the others.
+**Three things about measurements that are easy to get wrong:**
 
-**Two things about measurements that are easy to get wrong, and both were found here.**
-
-**There is no `InitDuration` CloudWatch metric.** Cold start time is written into the log line at the
-end of every cold invocation, not published as a measurement. So it is read with a Logs Insights
-query. A plan that says "read the `InitDuration` metric" describes something that does not exist.
-
-**CloudFront measurements only exist in `us-east-1`.** An alarm on them, created in another Region,
-deploys with no error and **never fires**. A graph of them draws an empty box. This is the worst kind
-of monitoring bug: everything looks configured, and nothing is watching.
-
-**One number that was wrong for a good reason, and is worth remembering.** The cold-start budget was
-800 ms, taken from published figures. Those figures measure a **plain Node.js handler**. This is a
-bundled Nest.js application with six libraries loaded before the handler runs, and a published
-measurement of that shape is about **905 ms when nearly empty**. The budget is now 2,000 ms.
-
-The lesson is not "800 was too low". It is: **check that a borrowed number describes the same kind
-of thing you are building.**
+- **There is no `InitDuration` metric in CloudWatch.** The cold-start time is written into a log
+  line, so you read it with a Logs Insights query.
+- **CloudFront metrics exist only in us-east-1.** An alarm in another Region deploys without an error
+  and never fires (section 2).
+- **Check that a borrowed number describes the same thing.** The first cold-start budget was 800 ms,
+  taken from published numbers. Those numbers were for a plain Node.js handler. A bundled Nest.js app
+  is closer to 900 ms when it is almost empty. The budget is now 2,000 ms.
 
 ---
 
 ## 10. Two switches that look the same and are not
 
-Both stop the AI feature. They are completely separate, and each answers a different problem.
+Both switches stop the AI feature. They are completely separate, and each one solves a different
+problem.
 
 ```mermaid
 flowchart TD
@@ -963,28 +773,24 @@ flowchart TD
     style B fill:#e8f0f8
 ```
 
-**The breaker never writes the kill-switch row.** It has its own row. That is what lets both things
-be true at once:
+**The breaker never writes the kill-switch row.** It has its own row. So both of these are true at
+the same time:
 
-- The kill-switch is **yours**, and it stays off until **you** turn it on. A machine never touches
-  it.
-- A run of failures at three in the morning stops itself, and starts again on its own when the
-  problem goes away.
+- The **kill-switch** is yours. It stays off until **you** turn it on. The app never touches it.
+- The **circuit breaker** is the app's. If the model fails again and again at 3 a.m., the app stops
+  calling it, and starts again by itself when the problem is gone.
 
-Without the separation, the app would have to write your switch, and the decision record that says
-"only a person flips this" would have had to be reversed. **The separation kept the record true and
-still got the protection.** That is usually the better shape when a rule and a feature seem to
-conflict: find the version where both survive.
+If there were only one switch, the app would have to write your switch. That would break the
+decision that only a person may flip it. With two rows, the decision stays true and the app is still
+protected.
 
-**One placement detail that matters to the person using the app.** The breaker is checked *before*
-the daily attempt is counted. So an open breaker does not spend one of their ten tries on a call
-that was never going to happen.
+**Two more details on the same path:**
 
-**One more guard on the same path, for a different problem.** The photo upload is allowed up to four
-seconds on a weak signal — and a weak signal is exactly when a person taps twice. So the browser
-makes one id per photo, and the API claims it with a conditional write before anything else happens.
-A second tap finds the id already claimed and gets the first result back. Without it, one tap could
-be two paid calls and two of the person's ten attempts, for one result on screen.
+- **The breaker is checked before the daily attempt is counted.** So an open breaker does not use
+  one of the person's ten tries.
+- **A double tap does not cost twice.** On a weak signal, people often tap twice. So the browser
+  makes one id per photo, and the API claims that id in the table before it counts the attempt. The
+  second tap finds the id already claimed and gets the first result back.
 
 ---
 
@@ -992,21 +798,23 @@ be two paid calls and two of the person's ten attempts, for one result on screen
 
 ## 11. How the build signs in to AWS with no password
 
-This is the part of the pipeline worth understanding properly. Everything else in Part B is detail.
+This is the most important part of the pipeline.
 
-### The way it is normally done, and why it is dangerous
+### The usual way, and why it is dangerous
 
-You create a user in AWS, get an **access key** and a **secret key**, and paste both into GitHub
-secrets. Your build then signs in with them.
+The usual way: you create a user in AWS, get an **access key** and a **secret key**, and paste both
+into GitHub secrets. The build signs in with them.
 
-Those two strings are a **permanent password**. They work from anywhere, forever, until somebody
-notices and changes them. If one ever appears in a log line, in a screenshot, or inside a
-third-party tool your build ran, the account is gone. This is the most common way an AWS account
-gets taken over.
+These two strings are a **permanent password**. They work from anywhere, forever, until someone
+changes them. If one appears in a log, in a screenshot or in a tool your build runs, someone else
+owns your account. This is the most common way AWS accounts are taken over.
 
 **There is no access key anywhere in this project.**
 
-### What happens instead
+### What happens instead: OIDC
+
+The build uses **OIDC** (OpenID Connect). GitHub gives the build a signed token, and AWS trusts that
+token.
 
 ```mermaid
 sequenceDiagram
@@ -1025,25 +833,25 @@ sequenceDiagram
     A-->>W: credentials that stop<br/>working in 1 hour
 ```
 
-**Read step 2 again, because it is the whole idea.** The token is written and signed by **GitHub**,
-not by your workflow. Your workflow cannot write its own token, and cannot change what the token
-says. It only asks for one and passes it along.
+**How to read it.** It is a sequence diagram: read it from top to bottom. Each arrow is one message.
 
-**So there is nothing to steal.** Somebody can copy your entire public repository, read every file,
-and still reach nothing — because they cannot make GitHub sign a statement saying they are your
-repository on your branch.
+**The key step is the second one.** **GitHub** writes and signs the token, not your workflow. Your
+workflow cannot write its own token, and it cannot change what the token says.
+
+So there is nothing to steal. Someone can copy the whole public repository and still reach nothing,
+because they cannot make GitHub sign a token that says they are this repository on this branch.
 
 ### The one line that makes it safe
 
-The role's trust rule names the **branch**, not only the repository:
+The role's **trust rule** names the branch, not only the repository:
 
 ```
 repo:poszetkristof/zamphora:ref:refs/heads/main     <- correct
 repo:poszetkristof/zamphora:*                       <- wrong, and it looks fine
 ```
 
-The second one accepts **any branch** in the repository. Anyone whose pull request you approve
-creates a branch. That single character is the difference between safe and not.
+The second line accepts **any branch** in the repository. Every pull request creates a branch. So
+that one `*` decides whether a pull request can deploy to production.
 
 ### Three roles, not one
 
@@ -1061,32 +869,29 @@ flowchart LR
     style RO fill:#e8f4ea
 ```
 
-If the `dev` role were also the deploy role, then any pull request could change production. Two
-roles cost nothing and remove that entirely. Neither role ever writes a `CONFIG` row: the owner
-writes those by hand in both environments.
+- If the `dev` role could also deploy, any pull request could change production. A second role costs
+  nothing.
+- Neither role ever writes a `CONFIG` row. The owner writes those by hand.
 
-**The third role exists because of a subtle trap.** The monthly retention audit runs on a schedule.
-A scheduled workflow runs on the **default branch** — so its token says `ref:refs/heads/main`, which
-matches the **deploy** role. An unattended job, running every month with nobody watching, would have
-held full deploy rights on production.
+**Why there is a third role.** The monthly retention audit runs on a schedule. A scheduled workflow
+runs on the main branch, so its token says `ref:refs/heads/main`. That matches the **deploy** role.
+So a job that runs every month, with nobody watching, would have full deploy rights.
 
-The fix is to make the token say something else. The workflow declares `environment: audit`, and
-GitHub then puts `environment:audit` in the token instead of the branch. The deploy role no longer
-matches it, and the audit role matches nothing else.
+The fix: the workflow declares `environment: audit`. Then GitHub writes `environment:audit` into the
+token instead of the branch. The deploy role does not match it, and the audit role can only read.
 
-**The general lesson: when you write "this job uses a read-only role", check that such a role
-exists.** A sentence in a document is not a trust policy.
+**The lesson:** when a document says "this job uses a read-only role", check that the role really
+exists. A sentence in a document is not a trust rule.
 
 ---
 
 ## 12. A public repository, and the two walls
 
-The repository is **public**, on purpose, so anyone can read it. That means anyone can also **fork
-it and open a pull request**. There is no setting to stop that, and branch protection does not do
-it — branch protection stops a **merge**, never an **open**.
+The repository is **public** on purpose. So anyone can read it, and anyone can **fork it and open a
+pull request**. No setting stops that. Branch protection stops a **merge**, not an **open**.
 
-A pull request contains somebody else's code, and pull requests run your build. So the question is
-what that code can reach.
+A pull request contains someone else's code, and pull requests run your build. So the question is:
+what can that code reach?
 
 ```mermaid
 flowchart TD
@@ -1100,19 +905,17 @@ flowchart TD
     style STOP2 fill:#e8f4ea
 ```
 
-**Wall 2 is GitHub's, not ours.** GitHub refuses to hand secrets or an AWS token to a workflow
-started by a fork's pull request. It is built in and there is no switch for it.
-
-**Wall 1 is ours.** The repository is set to *"Require approval for all external contributors"*, so
-nothing runs at all until the owner presses approve — every time, not only the first time.
+- **Wall 1 is ours.** The repository setting *"Require approval for all external contributors"*
+  means nothing runs until the owner approves it. Every time, not only the first time.
+- **Wall 2 is GitHub's.** GitHub never gives secrets or an AWS token to a workflow started by a
+  pull request from a fork. There is no switch for it.
 
 ### The one way to break it
 
 Someone sees three checks stuck on "pending", searches the internet, and finds
-**`pull_request_target`**. That trigger runs a pull request **with your secrets**. A stranger's code
-plus your AWS access, in the same run.
-
-`04-ci-cd.md` §4 says do not use it. That is why the rule is written down.
+**`pull_request_target`**. This trigger runs a pull request **with your secrets**. That means a
+stranger's code and your AWS access in the same run. `docs/800-infra/04-ci-cd.md` §4 says: never
+use it.
 
 ### Why every action is pinned to an exact commit
 
@@ -1121,27 +924,24 @@ uses: actions/checkout@v7        # a label. Its owner can move it to different c
 uses: actions/checkout@8f4b7f8…  # an exact commit. It can never change.
 ```
 
-`v7` is a label, not a version of code. The person who owns the action can point that label at
-something else whenever they like, and your next build runs the new code without you doing
-anything.
+`v7` is only a label. The owner of the action can point it at new code at any time, and your next
+build runs that new code. OIDC does not protect you here, because the attacker's code already runs
+inside your workflow, next to the AWS credentials. Pinning to a commit removes this risk.
 
-**This is the attack that OIDC does not stop**, because by then the attacker's code is already
-running inside your workflow, next to the one-hour AWS credentials. Pinning to a commit removes it.
-
-Updates still arrive: **Dependabot** raises a pull request when a new version exists. You approve
-it instead of receiving it in silence.
+You still get updates: **Dependabot** opens a pull request when a new version exists, and you
+approve it.
 
 ---
 
-## 13. What has to be green before a merge
+## 13. What must be green before a merge
 
-There are **two different kinds of rule**, and confusing them is the trap.
+GitHub has **two different kinds of merge rule**, and mixing them up is the trap.
 
-- A **required status check** watches one job in a workflow. It can only name a job.
+- A **required status check** watches one job in a workflow.
 - A **code scanning rule** watches what CodeQL found. It is not a job, so a required status check
-  can never carry it.
+  cannot cover it.
 
-That is why this repository needs both kinds. One would not cover everything.
+So this repository needs both kinds.
 
 ```mermaid
 flowchart TD
@@ -1168,33 +968,24 @@ flowchart TD
     style CR fill:#e8f4ea
 ```
 
-**One aggregate job per workflow, instead of naming every job in the settings.** If branch
-protection lists eleven job names, then a job you add next month is a job nobody enforces, until
-you remember to go and edit the settings. An aggregate covers everything it needs. Adding a job to
-its `needs:` list is a code change, reviewed like any other change.
+- **One summary job per workflow.** If the settings listed eleven job names, a job you add next month
+  would not be required until you remember to edit the settings. A summary job, such as `ci-ok`,
+  lists the jobs it needs in code, so adding a job is a reviewed code change.
+- **The summary job uses `if: always()`.** In GitHub, a **skipped** check counts as a **pass**.
+  Without `always()`, a failed `build` would make `ci-ok` skip, the skip would count as green, and
+  the broken build would merge. So `ci-ok` always runs and checks each job's result itself.
+- **A test that can only pass is not a test.** The performance test replaces the model with a fake
+  that waits 8,000 ms. But 8,000 ms is only a guess. So the test also runs with 18,000 ms, the
+  model's own timeout. Both runs must still keep the 30-second and 60-second promises. A third run
+  makes the fake fail twice and then answer, to prove the retry limit works.
 
-**`if: always()` on the aggregate, and this is the sharp part.** In GitHub, a **skipped** check
-counts as a **pass**. Without `always()`, a failed `build` would make `ci-ok` skip, the skip would
-be read as green, and the failed build would merge. So `ci-ok` runs every time and then checks each
-job's result itself.
+**Two facts to remember:**
 
-**One test that could never fail, and the fix.** The performance job replaces the model with a stub
-that sleeps for the budgeted 8,000 ms — and 8,000 ms is the weakest guess in the whole design, with
-no source behind it. So the job could never fail for the reason the architecture itself names as its
-biggest risk. It now runs **twice**: once at 8,000 ms and once at **18,000 ms**, the model's own
-abort point. Both must confirm the run inside 30 seconds and show the result inside 60. A third run
-makes the stub fail twice and then answer, which is the only way to prove the retry cap is real.
-
-**A test that can only pass is not a test.** Give it the value that would break the design and see
-whether it still holds.
-
-**Two things to remember, because both cost something real:**
-
-- **A pull request from a fork can never satisfy `dev-ok`**, because GitHub will not sign an AWS
-  token for a fork. So a stranger's pull request can never merge on its own. That was accepted: the
-  owner merges their own branches.
-- **A required check that never reports blocks every merge, forever.** So `dev-ok` goes into
-  branch protection **in the same change that adds the workflow**, never before it.
+- **A pull request from a fork can never pass `dev-ok`**, because GitHub never gives a fork an AWS
+  token. So a stranger's pull request can never merge by itself. This is accepted, because the owner
+  merges their own branches.
+- **A required check that never reports blocks every merge, forever.** So `dev-ok` is added to
+  branch protection in the same change that adds the workflow, never before.
 
 ---
 
@@ -1202,41 +993,41 @@ whether it still holds.
 
 ## 14. Lookup: what was chosen, and what lost
 
-Come back to this table. Do not try to remember it.
+You do not need to remember this table. Come back to it when you need it.
 
 | Question | Chosen | What lost, and why |
 | --- | --- | --- |
-| Compute | **One Lambda holding every route, plus two split by job: `assess` and `watch`** | One function per route: many cold starts, many small things to look at. A container: charged by the hour, so it spends credit every night nobody uses the app |
-| Database | **One DynamoDB table, provisioned, fixed** | On demand: AWS recommends it, and the free amount does not cover it. It also serves a runaway loop instead of refusing it |
-| Test environment | **One permanent `dev`, next to `prod`.** The units are split: prod 20/20, dev 5/5 | A fresh `preview` copy for every pull request: a pipeline would have to write the `CONFIG` rows into every new table, and it is harder to follow. No test environment at all: three tests would have nothing to run against |
-| Photo upload | **Through the API** | Presigned PUT straight to S3: validates nothing, so size, type and contents all go unchecked |
-| Photo handling | **Decode and re-encode every photo** | Reading the header only: cannot strip EXIF, so the person's home GPS reaches storage and the model |
-| Photo deletion | **An S3 lifecycle rule** | Application code on a schedule: it stops working exactly when the application is broken |
-| A cache in front of the table | **None** | ElastiCache or DAX: saves 24 ms out of 8,000, is charged by the hour, and drags the function into a VPC that then needs a NAT Gateway |
-| The API build | **`nest build`, then esbuild bundles the output** | esbuild alone: it cannot emit decorator metadata, so the function deploys and fails on the first request |
-| Gateway rate | **100 a second, burst 50** | Unset: inherits 10,000 a second, about $36 an hour if somebody floods it |
-| Region | **eu-central-1**, Frankfurt | Ireland: also EU, further away. Virginia: the data would leave the EU |
-| CloudFront alarms | **A small stack in us-east-1** | Keeping them in eu-central-1: they deploy with no error and never fire |
-| Host name | **CloudFront's free name** | A bought domain: $0.50 a month forever, the largest line item in the product |
-| Sign-in | **Cognito, tokens kept in the API** | Tokens in the browser: a browser cannot keep a secret, so any script bug becomes token theft |
-| Cognito tier | **Essentials** | Lite: it has only the older sign-in pages and no branding, and both tiers are free at this size |
-| Backup | **None in run 1** | Point-in-time recovery is charged per gigabyte. Replaced by a calendar entry: export by hand before the plan ends |
-| Repository | **Public** | Private: CodeQL is not free and Actions minutes are capped |
-| Deploy | **A person presses the button** | Deploy on merge: normal on a paid plan, and here a bad merge can close the account |
-| Sign-up | **Closed. The owner makes accounts** | Open sign-up: the daily limit is per account, so ten accounts is ten times the spend on one $5 balance |
-| Breaker | **Self-healing, its own row** | Flipping the real kill-switch: it reverses ADR-0009 for no extra safety |
-| Local development | **DynamoDB Local and MinIO** | Real AWS: every local test would spend the free amount and mix test data with real data |
-| Required checks | **One aggregate check, `ci-ok`** | Eleven separate entries: a new job you forget to add becomes a check nobody enforces |
-| Actions | **Pinned to exact commits** | Moving labels: easier to read, and the code can change under you |
-| Node version | **24 everywhere** | Node 22: patched for a year less, and the decision would come back in 2027 |
-| Asynchronous assessment | **Option E**: a Step Functions workflow, the result over server-sent events, a retry cap of 2, a refund when no call was made (gate 72, ADR-0014 to ADR-0016) | Keeping the phone waiting: the 30-second ceiling, no retry, one role over everything. Option F, direct upload and a stream of events: nothing planned needs it. The paid container shape: about $150 a month idle |
+| Compute | **One Lambda for every route, plus `assess` and `watch`, split by job** | One function per route: many cold starts and many small pieces. A container: charged every hour, even at night when nobody uses the app |
+| Database | **One DynamoDB table, provisioned, fixed** | On demand: AWS recommends it, but the free amount does not cover it, and it serves a runaway loop instead of refusing it |
+| Test environment | **One permanent `dev`, next to `prod`.** Units split 20/20 and 5/5 | A new copy for every pull request: every new table would need its `CONFIG` rows written. No test environment: three kinds of test would have nothing to run against |
+| Photo upload | **Through the API** | Presigned PUT straight to S3: it checks nothing |
+| Photo handling | **Decode and re-encode every photo** | Reading only the header: it cannot remove EXIF, so the person's home GPS would reach storage and the model |
+| Photo deletion | **An S3 lifecycle rule** | App code on a schedule: it stops working exactly when the app is broken |
+| A cache in front of the table | **None** | ElastiCache or DAX: saves 24 ms out of 8,000, is charged every hour, and needs a VPC with a NAT Gateway |
+| The API build | **`nest build`, then esbuild bundles the result** | esbuild alone: it cannot write decorator metadata, so the function fails on its first request |
+| Gateway rate limit | **100 a second, burst 50** | Not set: 10,000 a second, about $36 an hour in a flood |
+| Region | **eu-central-1**, Frankfurt | Ireland: also EU, but further away. Virginia: the data would leave the EU |
+| CloudFront alarms | **A small stack in us-east-1** | In eu-central-1: they deploy without an error and never fire |
+| Host name | **CloudFront's free name** | A bought domain: $0.50 a month, the biggest cost in the product |
+| Sign-in | **Cognito, with the tokens kept in the API** | Tokens in the browser: a browser cannot keep a secret, so any script bug becomes token theft |
+| Cognito tier | **Essentials** | Lite: only the older sign-in pages and no branding. Both are free at this size |
+| Backup | **None in run 1** | Point-in-time recovery: charged per gigabyte. Instead, a manual export before the free plan ends |
+| Repository | **Public** | Private: CodeQL is not free, and Actions minutes are limited |
+| Deploy | **A person presses the button** | Deploy on every merge: normal on a paid plan, but here one bad merge can close the account |
+| Sign-up | **Closed. The owner creates accounts** | Open sign-up: the daily limit is per account, so ten accounts means ten times the spend |
+| Circuit breaker | **Heals itself, with its own row** | Flipping the real kill-switch: the app would write the owner's switch |
+| Local development | **DynamoDB Local and MinIO** | Real AWS: every local test would use the free amount and mix test data with real data |
+| Required checks | **One summary check per workflow, such as `ci-ok`** | Eleven separate entries: a new job you forget to add is never required |
+| Actions | **Pinned to exact commits** | Version labels: easier to read, but the code can change under you |
+| Node version | **24 everywhere** | Node 22: supported for one year less |
+| Background assessment | **Option E: Step Functions, server-sent events, a retry limit of 2** | The phone waits: a 30-second limit and no retry. Option F: nothing planned needs it. The container shape: about $150 a month idle |
 
-**Still open, on purpose:**
+**Still open:**
 
-- **One box in GitHub's settings.** `aws-actions/configure-aws-credentials` is Amazon's action, not
-  GitHub's, and the current allow-list would refuse it. It must be allowed before the first deploy.
-- **`.github/workflows/ci.yml` is still written for npm.** Every command has to become pnpm before
-  the first `package.json` lands. `04-ci-cd.md` §6.1 has the six changes.
+- **One setting in GitHub.** `aws-actions/configure-aws-credentials` is Amazon's action, not
+  GitHub's, and the current allow-list refuses it. It must be allowed before the first deploy.
+- **`.github/workflows/ci.yml` still uses npm.** Every command must change to pnpm before the first
+  `package.json` is added. `docs/800-infra/04-ci-cd.md` §6.1 lists the six changes.
 
-**Where the detail lives.** Every number here comes from `docs/800-infra/`. The five files there are
-the plan; this note is the reason behind it.
+Every number in this note comes from `docs/800-infra/`. Those five files are the plan. This note is
+the reason behind it.
