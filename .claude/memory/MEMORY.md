@@ -19,7 +19,7 @@ already in `CLAUDE.md`.
 - [What the app is](project-zamphora.md) — plant care, and why cost counts as correctness on the AWS free plan.
 - [Decisions already made](decisions-made.md) — stack, roles, scope, two repositories. Do not re-ask these.
 - [The factory is a plugin](factory-as-plugin.md) — how this repo turns it on, the trap that breaks a bundled script, and the one thing a plugin cannot do.
-- [Where things are](where-things-are.md) — the one learning note in this repo, and where the pointers outside it live.
+- [Where things are](where-things-are.md) — the four learning notes, which one is the approved model, and where the pointers outside the repo live.
 
 **Every file in this list is public.** Anything that belongs to the owner rather than to the
 software goes in `../../PRIVATE-NOTES.md`, which is in `.gitignore`. Read that file at the start of

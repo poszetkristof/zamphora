@@ -43,9 +43,28 @@ the wrong item, then put their own wording into the document.
 - After a note is approved, new details **replace** — they never stack. Growing an approved file is
   a failure.
 
-**Where the full rules and the golden example live** (on this machine):
-`C:\Learn\asmt-prep\aws\associate-dev\.claude\memory\learning-style.md` and the golden file
-`C:\Learn\asmt-prep\aws\associate-dev\learn\17_elastic_beanstalk.md`. Read both before writing any
-long study document.
+## Why the notes were hard to read, and what fixed it
+
+On 2026-11-27 the owner came back after two months and could not follow the four learning notes,
+58,000 words together. Earlier passes had changed the words and kept every fact, so they did not
+help. Research says the same: a rewrite that only changes the style helps a second-language reader
+very little, while choosing what to leave out, splitting into short parts and learning the key terms
+first all help clearly. The rewrite that the owner accepted did this:
+
+- **Remove what the learner does not need:** gate numbers, finding numbers, section references,
+  the history of a design ("it used to…"), and details that matter only while building.
+- **The problem first, then one real example walked step by step**, then the decisions with the
+  option that lost, then the trap.
+- **Compare with frontend**, where the owner is an expert: `EventSource` for server-sent events,
+  props for dependency injection. Skip what a frontend expert already knows.
+- **A "start with these" list** at the top of a long reference file, so the reader knows what to
+  read first.
+- **Keep every diagram**, each with a short "how to read it".
+
+**Drafts for the owner never go to a temp or scratchpad path.** Show the text in the chat or put it
+in a file in the repo. The owner says which one each time.
+
+**The golden example** from the AWS study notes, and the full rules that go with it, are on this
+machine. `PRIVATE-NOTES.md` has the paths. Read both before writing any long study document.
 
 See [[write-plain-b1-english]] and [[where-things-are]].

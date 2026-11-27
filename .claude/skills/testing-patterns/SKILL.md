@@ -103,13 +103,16 @@ code does with the answer — especially the ugly cases:
   yes** (`confirmedUnsure`, NFR-31). **There is no confidence number and no threshold anywhere** —
   the band is a word the model returns, and a percentage must never reach a screen. A test that
   needs a threshold is asking you to build a forbidden feature.
-- **A timeout** → `provider-timeout`, `retryHint: 'may-work'`, and a screen with a try-again button
-  the **person** taps. **Nothing retries by itself.**
+- **A timeout** → `provider-timeout`. The workflow may call the model again, and only the
+  workflow. When it stops, the result has `retryHint: 'may-work'`, and the screen shows a try-again
+  button the **person** taps. **No app code retries by itself.**
 
-**Assert the provider was called exactly once — in every failure case.** Timeout, 429, 503, refusal,
-truncation, bad request, empty balance, rejected photo. That count *is* the test for NFR-04, and it
-is the most important assertion in this repo: one model call per assessment, whatever goes wrong
-(NFR-05 requires zero retries, and the client is built with `maxRetries: 0`).
+**Assert the provider was called exactly once per `assess` invocation — in every case.** Retries
+happen between invocations, in the workflow, never inside the code. At the assessment level, the
+count is the test for NFR-04: every failure that is not retried gives exactly 1 call (refusal,
+truncation, bad request, empty balance, rejected photo), and a stub that throws three timeouts gives
+exactly 3, never more. NFR-05 is the other half: the client is built with `maxRetries: 0`, and
+`infra-assert` reads the retry rules from the synthesised state machine.
 
 **The cost properties are testable, and they are the ones that can end the project:**
 

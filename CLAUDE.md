@@ -115,8 +115,8 @@ the mitigations and the evidence pack. Two things in it change what you may writ
   re-open it is the day a second person uses the app.
 
 **600 QA ran on 2026-09-17**, and the line is complete. Four more gates are open: 74, 79, 80 and
-81. The top of `docs/600-qa/001-photo-assessment/00-test-plan.md` lists them. None of them blocks
-code.
+81. The top of `docs/600-qa/001-photo-assessment/00-test-plan.md` lists them. Gate 88, from an 800
+Infra repair pass, is open too. None of these five blocks code.
 
 ## Hard rules
 

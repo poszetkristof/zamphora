@@ -22,7 +22,7 @@ on **2026-08-27**.
 | Task runner | **Turborepo** | latest | ADR-0012 |
 | Web framework | **Next.js**, built with `output: 'export'` | **`16.3.3`** | ADR-0010 |
 | UI library | **React** | **`19.2.8`** | with Next.js |
-| API framework | **Nest.js**, Express adapter. One codebase, three Lambda functions | **`11.2.3`** | ADR-0002, ADR-0014 |
+| API framework | **Nest.js**, Express adapter. One codebase, four Lambda functions | **`11.2.3`** | ADR-0002, ADR-0014 |
 | Lambda bridge for the API | **`@codegenie/serverless-express`**. Turns the gateway event into an Express request — Nest.js alone cannot do this | latest | `03-api-spec.md` §1 |
 | The background run | **AWS Step Functions**, Standard type, defined in CDK. Runs the `assess` function and writes the rows | — | ADR-0014 |
 | The result stream | **Native Lambda response streaming** behind a Function URL, in the `watch` function. No bridge library | — | ADR-0015 |
@@ -46,9 +46,10 @@ custom messages with the single `error` parameter. `01-contracts.md` §9a has th
 
 ```
 apps/web            Next.js. Screens, both languages. No credentials, no data store
-apps/api            Nest.js. Three Lambda entry points from one codebase: the API (session,
+apps/api            Nest.js. Four Lambda entry points from one codebase: the API (session,
                     ownership, daily limit, kill-switch, starts the run), assess (the one
-                    model call), watch (streams the result)
+                    model call), watch (streams the result), mark-failed (writes failed when
+                    a run ends outside its own Catch)
 packages/contracts  Zod schemas for everything that crosses the wire
 packages/llm        The LlmProvider port and the one Anthropic adapter
 infra/              CDK. One stack per deployable unit

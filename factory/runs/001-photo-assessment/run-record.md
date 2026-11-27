@@ -2,7 +2,7 @@
 
 The summary a person reads instead of the whole folder. Fill it in last.
 
-**Date:** started 2026-08-24 · **Feature:** see `factory/feature.md` · **Roles run:** 8 of 8. The line is complete
+**Date:** started 2026-08-24, closed 2026-11-04 · **Feature:** see `factory/feature.md` · **Roles run:** 8 of 8. The line is complete
 
 ## What ran, and what it cost
 
@@ -63,18 +63,34 @@ Full list in `seam-ledger.md`. The three that matter:
    the service, a confidence threshold that must never exist. Each is ordinary good advice for a
    generic app and false for this one, which is why it survived review.
 
+4. **Three files each looked correct, and together they broke a story.** The web spec, the design
+   spec and the API spec each wrote one sentence about the try-again button. Together, the button
+   did nothing for ten minutes (finding 41). Seven roles missed it. QA found it because it is the
+   only role that reads all of them.
+
+**The walk over every edge, done at the close:** 43 edges, 19 `clean`, 21 `under-supply`, 2
+`missing`, 1 `routing`, and no `over-supply`. Most breaks come from a file the map did not deliver,
+or from a decision that changed with no correction pass after it. The table in `seam-ledger.md` has
+the trace for each.
+
 ## What stayed with a human
 
-**Seventy-three gates. Sixty-eight closed, two `n/a`, three open. None marked `missed`.**
-*(Updated 2026-09-17, in two passes. Gate 72, the architecture choice, closed gate 70 with it, and
-gate 67 was closed by the same structure rather than by an answer. Then an audit of the whole pack
-closed gates 65, 66 and 68 and opened gate 73, the `sharp` packaging gap.)*
+**Eighty-eight gates. Seventy-eight closed, two `n/a`, eight open.** No gate in the table has the
+status `missed`. Two `missed` gates were found by reading the outputs afterwards, and they are in
+the review section of `human-gates.md`.
 
-**Three are still open, all from 900-security.** Gate 64, how much web reach a research role gets.
-Gate 69, a named and reachable person for every residual risk, which the project's own privacy rule
-makes hard. Gate 71, multi-factor sign-in on the AWS account. **Gates 69 and 71 are hard stops
-before the first deploy, and none of the three blocks work that could start today** — gate 65, which
-did block the photo path, was answered on 2026-09-17.
+**Eight are still open:**
+
+- **From 900-security:** gate 64, how much web reach a research role gets. Gate 69, a named and
+  reachable person for every residual risk, which the project's own privacy rule makes hard. Gate
+  71, multi-factor sign-in on the AWS account.
+- **From 600-qa:** gates 74, 79, 80 and 81. They are about which checks are release gates, and how
+  far the LLM judge can be trusted.
+- **From 800-infra:** gate 88, whether the `dev` pipeline may delete the test account's daily
+  counter. The owner chose not to decide it now.
+
+**Gates 69 and 71 are hard stops before the first deploy. None of the eight blocks code** — gate 65,
+which did block the photo path, was answered on 2026-09-17.
 
 The owner answered sixteen in the last two days. The four that changed the most:
 
@@ -114,10 +130,6 @@ number" is.
 | 12 | Change 11 landed incompletely. The handoff map, the registry and the scripts were updated for `{feature}`; the **slot contracts were not**. `300-design.md` still describes its inputs as `docs/200-product/00-prd.md`, the flat path. The generated adapter is right, because it is built from the map, so nothing breaks — the hand-written prose is the stale half | Update the `description` line and the `Inputs & outputs` block in every slot contract that names a per-feature path, then re-derive. Better: stop repeating paths in the contract prose at all, and let the adapter be the only place they are listed — a path written twice is a path that will disagree | `factory/subagent-slots/*.md` in the `ai-factory` repo | no | |
 | 13 | 300 caught two contradictions inside `factory/feature.md` that the assistant wrote and did not notice: a leftover sentence from a rejected palette, and a contrast pair that the same file measures as failing. Both survived because `feature.md` is hand-edited many times in a session and nothing re-reads it whole | Add a step to the run-role command: before dispatching, re-read `factory/feature.md` end to end and check it against itself — every colour pair against its own measured table, and every sentence about the look against the current palette. It is the one file every role reads, and it is the one file no role checks | `commands/run-role.md` in the `ai-factory` repo | no | |
 | 14 | Finding 21 — three files in `.claude/skills/` had already chosen a component library and a styling engine, and no role can read that folder. A role could write a correct ADR that contradicts rules that load on every coding session, and neither side would see the other | Give the line one job at the start of a run: read the project’s own rules layer — `CLAUDE.md`, `AGENTS.md`, `.claude/skills/` — and list every technical choice it already assumes. Those are decisions, whether or not anybody decided them. Either they earn an ADR or they get deleted; left where they are, the line runs against a stack nobody chose. The check belongs beside the wiring check, because this is a wiring problem: an input the roles need is sitting where none of them can reach it | `scripts/check-wiring.mjs` and `commands/factory-run.md` in the `ai-factory` repo | no | |
-The last column is filled in during the **next** run, not this one. That column is the whole point:
-without it you never learn whether the fix worked.
-
----
 | 15 | Finding 28 — a role flagged a figure as unverified, then made a choice that only works if the figure lands one way. ADR-0002 said the free amount was "not treated as verified here" and still picked on-demand DynamoDB capacity, which the free amount does not cover | Add a rule to every slot contract: **a figure marked unverified may not be the basis of a choice.** Either pick the option that is safe under every reading of it, or record the choice as a gate. Flagging a number and then betting on it is worse than not flagging it, because the flag reads as care | `factory/subagent-slots/*.md` in the `ai-factory` repo | no | |
 | 16 | Finding 29 — `02-containers.mmd` claimed in its own header that every box had an arrow, which was true and did not catch a connection the prose described and the diagram never drew | Change the diagram check in the slot contract from "no orphan boxes" to **"every connection a box's description claims has a matching `Rel()`"**. The weak version passed a container diagram with no `web -> api` arrow, and the arrow was hiding an undecided question | `factory/subagent-slots/400-architecture.md` in the `ai-factory` repo | no | |
 | 17 | Finding 30 — the pre-mortem found three real defects **before** the next role read the files. Every earlier instance of finding 14 was caught after the next role had already built on the wrong value | Make the pre-mortem a **gate on the role rather than its last output**. The role is not complete until a fresh session has read only its folder and reported. Today it is one of eight files the role writes, which means a role can be marked done with a defect still in it | `factory/subagent-slots/400-architecture.md` and `commands/run-role.md` in the `ai-factory` repo | no | |
@@ -133,13 +145,18 @@ without it you never learn whether the fix worked.
 | 27 | Findings 44 to 49 — the same wiring bug **six more times in one role call**. Six files `600-qa` needed are not in its `reads:` block, and three of them are pointed at by a header or a spec line that says the file is part of another file the role does read | The same bug as findings 14, 21, 31 and 34 and changes 18, 21, 23 and 26 — it has now hit 500, 900 and 600. **The owed fix from change 26 is no longer optional.** Build `check-wiring.mjs`: for every file whose header says *"read next by X"*, assert that X's `reads:` block contains it, and for every file a spec declares *"part of this spec"*, assert that both travel together. The check is mechanical and would have caught every one of them, and the five in finding 51 too | `scripts/check-wiring.mjs` and `factory/handoff-map.yaml` in the `ai-factory` repo | no | |
 | 28 | Finding 41 — three roles each wrote a correct-looking half of one behaviour, and the whole is broken. `02-web-spec.md`, `02-SPEC.md` and `03-api-spec.md` each pass their own review. No role owns the seam between them | The pre-mortem in change 17 is per role. **Add a whole-line pre-mortem before the run closes:** a fresh session reads every spec and traces two or three paths end to end, retry being one. Finding 41 survived seven roles and was found by the eighth only because QA reads all of them at once | `commands/factory-run.md` in the `ai-factory` repo | no | |
 | 29 | Finding 52 — the 600-qa files were correct and too long for the owner to check | Every role gets one shared "How to write" block: B1 English, a first screen that says what the file decides, what is open and what to do next, lookup tables labelled as lookup, no edit history, and a length instruction, because Opus 5 writes longer files than older models. **Three before/after examples** set the tone — Anthropic's guide says examples steer tone more reliably than rules. **The option that lost:** a hard word budget checked by a script, rejected by the owner because it pushes a model to shrink text until the structure breaks | `scripts/derive-agents.mjs` in the `ai-factory` repo — one shared "How to write" block reaches all eight agents | **yes, 0.2.4** | First sign: the three repair passes on 2026-10-29 reported in short, plain sentences, with old and new text side by side. A full role run is the real test |
+| 30 | Finding 64 — ADR-0018 depends on Step Functions workflow variables, and nobody checked whether Step Functions Local can run them. 800 could not check it, because its contract allows web checks only for prices and free allowances | Widen the web-check rule in the 800 contract: **a role may check on the web any service feature that an accepted ADR depends on**, and must name the source and the date. Prices stay in the rule as they are | `factory/subagent-slots/800-infra.md` in the `ai-factory` repo | no | |
+| 31 | Found while closing the run. **29 of the 43 edges had no row in the seam table.** Findings were recorded one by one as they came up, and nobody walked the edges until the close. By then the evidence was spread over 70 findings | At the end of every role call, add one row to the seam table **for each edge that ends at that role**, before the next role runs. The close then checks the rows instead of writing them from memory | `commands/run-role.md` in the `ai-factory` repo | no | |
+
+The last column is filled in during the **next** run, not this one. That column is the whole point:
+without it you never learn whether the fix worked.
 
 ## Done bar
 
-- [x] ≥3 seam findings, each naming a file and a fact — **78 findings**
-- [x] ≥2 human-gate observations — **82 gates, 8 still open, none `missed`**. Gates 75 to 78 were closed on 2026-09-17 by the assistant, on the owner's instruction to take the best-practice option in each — the same shape as gate 8, and every answer names the option that lost. **No hard stop is left before the first line of code.** Gates 69 and 71 are still hard stops before the first deploy
-- [x] ≥1 change to make, naming its file — **29 changes; numbers 11, 22, 26 and 29 are applied**
-- [x] one row per role call above — **8 rows, including two repair passes**
+- [x] ≥3 seam findings, each naming a file and a fact — **43 of 43 edges have a row, plus 13 rows for seams outside the map, and 70 numbered findings**
+- [x] ≥2 human-gate observations — **88 gates: 78 closed, 2 `n/a`, 8 open. Two `missed` gates were found by review**, both in `human-gates.md`. Gates 75 to 78 were closed on 2026-09-17 by the assistant, on the owner's instruction to take the best-practice option in each — the same shape as gate 8, and every answer names the option that lost. **No hard stop is left before the first line of code.** Gates 69 and 71 are still hard stops before the first deploy
+- [x] ≥1 change to make, naming its file — **31 changes; numbers 11, 22, 26 and 29 are applied**
+- [x] one row per role call above — **32 rows: the 8 role calls, and 24 repair passes or passes outside the line**
 - [x] no file was hand-fed outside a role's `reads:` list — **with one exception, written down here.**
       When 500 Engineering was resumed for its repair pass, it was *told* that four values had
       changed (the 18,000 ms timeout, the retry wording, the `--color-warn` rule, the Q-3 line)

@@ -20,7 +20,7 @@ One repository, `zamphora` (ADR-0001). Four workspace packages and one infrastru
 | Package name | Folder | What it is |
 | --- | --- | --- |
 | `@zamphora/web` | `apps/web` | Next.js, built with `output: 'export'` |
-| `@zamphora/api` | `apps/api` | Nest.js. Three Lambda entry points from one codebase: `main.ts` (the API), `assess.ts` (the model call), `watch.ts` (the result stream). ADR-0014, ADR-0015 |
+| `@zamphora/api` | `apps/api` | Nest.js. Four Lambda entry points from one codebase: `main.ts` (the API), `assess.ts` (the model call), `watch.ts` (the result stream), `mark-failed.ts` (writes `failed` when a run ends outside its own `Catch`). ADR-0014, ADR-0015 |
 | `@zamphora/contracts` | `packages/contracts` | Zod schemas for everything crossing the wire |
 | `@zamphora/llm` | `packages/llm` | The `LlmProvider` port and the one Anthropic adapter |
 | — | `infra/` | CDK. One stack per deployable unit |
